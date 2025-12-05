@@ -26,6 +26,9 @@
             overflow: hidden;
             background-color: #000;
             font-family: sans-serif;
+            /* テキスト選択を無効化 */
+            user-select: none;
+            -webkit-user-select: none;
         }
 
         #ar-container {
@@ -104,6 +107,13 @@
             right: 10px;
         }
 
+        /* 縦画面時のスタイル上書き: 最大高さを50%に制限 */
+        @media (orientation: portrait) {
+            .control-panel {
+                max-height: 50vh;
+            }
+        }
+
         .tab-container {
             display: flex;
             justify-content: space-around;
@@ -160,6 +170,7 @@
             display: flex;
             align-items: center;
             margin-bottom: 12px;
+            position: relative; /* 数値表示用 */
         }
         .slider-label {
             width: 90px;
@@ -170,12 +181,19 @@
         input[type="range"] {
             flex-grow: 1;
         }
+        
+        /* スライダー値表示用スタイル */
         .val-display {
-            width: 40px;
-            font-size: 10px;
-            text-align: right;
-            margin-left: 5px;
+            position: absolute;
+            right: 0;
+            bottom: -4px; /* -8pxから-4pxに変更 */
+            font-size: 9px;
+            color: #666;
             font-family: monospace;
+            pointer-events: none;
+            background-color: rgba(255,255,255,0.7);
+            padding: 0 2px;
+            border-radius: 2px;
         }
 
         .toggle-label {
@@ -305,7 +323,7 @@
 </head>
 <body>
 
-    <div id="app-version">v5.5.0 (Updated MinCF)</div>
+    <div id="app-version">v5.9.0 (Auto Open Menu)</div>
 
     <div id="toast">設定を適用しました</div>
 
@@ -338,14 +356,17 @@
             <div class="slider-container">
                 <span class="slider-label">サイズ</span>
                 <input type="range" id="scale-slider" min="0.5" max="12.0" step="0.1" value="1.0">
+                <span id="scale-slider-val" class="val-display">1.0</span>
             </div>
             <div class="slider-container">
                 <span class="slider-label">高さ</span>
                 <input type="range" id="y-slider" min="-2.0" max="2.0" step="0.1" value="0.0">
+                <span id="y-slider-val" class="val-display">0.0</span>
             </div>
             <div class="slider-container">
                 <span class="slider-label">前後</span>
                 <input type="range" id="z-slider" min="-2.0" max="2.0" step="0.1" value="0.0">
+                <span id="z-slider-val" class="val-display">0.0</span>
             </div>
 
             <!-- マスキング設定 -->
@@ -367,27 +388,33 @@
             <div class="slider-container">
                 <span class="slider-label">X Position</span>
                 <input type="range" id="occ-pos-x" min="-0.5" max="0.5" step="0.001" value="0.0">
+                <span id="occ-pos-x-val" class="val-display">0.0</span>
             </div>
             <div class="slider-container">
                 <span class="slider-label">Y Position</span>
                 <input type="range" id="occ-pos-y" min="-1.0" max="1.0" step="0.002" value="-0.5">
+                <span id="occ-pos-y-val" class="val-display">-0.5</span>
             </div>
             <div class="slider-container">
                 <span class="slider-label">Z Position</span>
                 <input type="range" id="occ-pos-z" min="-1.0" max="1.0" step="0.002" value="0.0">
+                <span id="occ-pos-z-val" class="val-display">0.0</span>
             </div>
             
             <div class="slider-container" style="margin-top:10px;">
                 <span class="slider-label">X Size<br>(幅)</span>
                 <input type="range" id="occ-size-x" min="0.05" max="1.5" step="0.05" value="1.0">
+                <span id="occ-size-x-val" class="val-display">1.0</span>
             </div>
             <div class="slider-container">
                 <span class="slider-label">Y Size<br>(高さ)</span>
                 <input type="range" id="occ-size-z" min="0.05" max="1.5" step="0.05" value="0.05">
+                <span id="occ-size-z-val" class="val-display">0.05</span>
             </div>
             <div class="slider-container">
                 <span class="slider-label">Z Size<br>(奥行)</span>
                 <input type="range" id="occ-size-y" min="0.05" max="1.5" step="0.05" value="1.0">
+                <span id="occ-size-y-val" class="val-display">1.0</span>
             </div>
 
             <h2>表情設定</h2>
@@ -400,20 +427,24 @@
             <div class="slider-container">
                 <span class="slider-label">目の感度</span>
                 <input type="range" id="eye-sens-slider" min="0.5" max="5.0" step="0.1" value="2.0">
+                <span id="eye-sens-slider-val" class="val-display">2.0</span>
             </div>
             <div class="slider-container">
                 <span class="slider-label">口の感度</span>
                 <input type="range" id="mouth-sens-slider" min="0.5" max="5.0" step="0.1" value="1.5">
+                <span id="mouth-sens-slider-val" class="val-display">1.5</span>
             </div>
 
             <h2>トラッキング</h2>
             <div class="slider-container">
                 <span class="slider-label">滑らかさ</span>
                 <input type="range" id="mincf-slider" min="0.0001" max="0.01" step="0.0001" value="0.0005">
+                <span id="mincf-slider-val" class="val-display">0.0005</span>
             </div>
             <div class="slider-container">
                 <span class="slider-label">敏感さ</span>
                 <input type="range" id="beta-slider" min="0.001" max="2.0" step="0.02" value="0.04">
+                <span id="beta-slider-val" class="val-display">0.04</span>
             </div>
 
             <button id="apply-tracking-btn" class="restart-btn">設定を適用して再起動</button>
@@ -428,7 +459,8 @@
 
             <!-- VRM照明タブ -->
             <div id="vrm-light-settings">
-                <div class="slider-container" style="background: #e8f0fe; padding: 10px; border-radius: 8px; border: 1px solid #4a90e2; margin-bottom:10px;">
+                <!-- 親コンテナのdisplayをblockにして改行を強制 -->
+                <div class="slider-container" style="background: #e8f0fe; padding: 10px; border-radius: 8px; border: 1px solid #4a90e2; margin-bottom:10px; display: block;">
                     <label class="toggle-label" style="color: #4a90e2; margin-bottom: 5px;">
                         <input type="checkbox" id="force-shadow-toggle" class="toggle-checkbox" checked>
                         <strong>影を強制的に出す</strong>
@@ -437,10 +469,12 @@
                         <div class="slider-container">
                             <span class="slider-label" style="font-size:10px; color:#333;">影の柔らかさ<br>(Softness)</span>
                             <input type="range" id="shadow-softness-slider" min="0.0" max="1.0" step="0.1" value="0.5">
+                            <span id="shadow-softness-slider-val" class="val-display">0.5</span>
                         </div>
                         <div class="slider-container" style="margin-bottom:5px;">
                             <span class="slider-label" style="font-size:10px; color:#333;">影の濃さ<br>(Darkness)</span>
                             <input type="range" id="shadow-darkness-slider" min="0.0" max="1.0" step="0.1" value="0.5">
+                            <span id="shadow-darkness-slider-val" class="val-display">0.5</span>
                         </div>
                         <div class="slider-container" style="margin-bottom:0;">
                             <span class="slider-label" style="font-size:10px; color:#333;">影の色<br>(Color)</span>
@@ -452,26 +486,32 @@
                 <div class="slider-container">
                     <span class="slider-label">メイン光<br>強さ</span>
                     <input type="range" id="light-int-slider" min="0.0" max="5.0" step="0.1" value="2.0">
+                    <span id="light-int-slider-val" class="val-display">2.0</span>
                 </div>
                 <div class="slider-container">
                     <span class="slider-label">環境光<br>強さ</span>
                     <input type="range" id="amb-int-slider" min="0.0" max="2.0" step="0.1" value="0.2">
+                    <span id="amb-int-slider-val" class="val-display">0.2</span>
                 </div>
                 <div class="slider-container">
                     <span class="slider-label">光の高さ<br>(上下)</span>
                     <input type="range" id="light-y-slider" min="-10.0" max="10.0" step="0.1" value="2.0">
+                    <span id="light-y-slider-val" class="val-display">2.0</span>
                 </div>
                 <div class="slider-container">
                     <span class="slider-label">光の向き<br>(回転)</span>
                     <input type="range" id="light-rot-slider" min="0" max="360" step="10" value="45">
+                    <span id="light-rot-slider-val" class="val-display">45</span>
                 </div>
                 <div class="slider-container">
                     <span class="slider-label">色味<br>(暖色⇔寒色)</span>
                     <input type="range" id="light-color-slider" min="0" max="100" step="1" value="50">
+                    <span id="light-color-slider-val" class="val-display">50</span>
                 </div>
                 <div class="slider-container">
                     <span class="slider-label">VRM彩度<br>(Vividness)</span>
                     <input type="range" id="vrm-sat-slider" min="0" max="200" step="5" value="100">
+                    <span id="vrm-sat-slider-val" class="val-display">100</span>
                 </div>
             </div>
 
@@ -480,26 +520,32 @@
                 <div class="slider-container" style="background: #e8f0fe; padding: 5px; border-radius: 8px; border: 1px solid #4a90e2;">
                     <span class="slider-label" style="color: #4a90e2;">✨美肌補正<br>(Skin Smooth)</span>
                     <input type="range" id="skin-smooth-slider" min="0" max="100" step="1" value="0">
+                    <span id="skin-smooth-slider-val" class="val-display">0</span>
                 </div>
                 <div class="slider-container">
                     <span class="slider-label">明るさ<br>(Brightness)</span>
                     <input type="range" id="cam-bright-slider" min="50" max="150" step="1" value="100">
+                    <span id="cam-bright-slider-val" class="val-display">100</span>
                 </div>
                 <div class="slider-container">
                     <span class="slider-label">彩度<br>(Saturate)</span>
                     <input type="range" id="cam-sat-slider" min="0" max="200" step="5" value="100">
+                    <span id="cam-sat-slider-val" class="val-display">100</span>
                 </div>
                 <div class="slider-container">
                     <span class="slider-label">コントラスト<br>(Contrast)</span>
                     <input type="range" id="cam-cont-slider" min="50" max="150" step="1" value="100">
+                    <span id="cam-cont-slider-val" class="val-display">100</span>
                 </div>
                 <div class="slider-container">
                     <span class="slider-label">ぼかし<br>(Blur)</span>
                     <input type="range" id="cam-blur-slider" min="0" max="5" step="0.5" value="0">
+                    <span id="cam-blur-slider-val" class="val-display">0</span>
                 </div>
                 <div class="slider-container">
                     <span class="slider-label">セピア<br>(Sepia)</span>
                     <input type="range" id="cam-sepia-slider" min="0" max="100" step="1" value="0">
+                    <span id="cam-sepia-slider-val" class="val-display">0</span>
                 </div>
             </div>
         </div>
@@ -616,21 +662,45 @@
             minCfSlider, betaSlider, mouthSensSlider, eyeSensSlider,
             lightIntSlider, ambIntSlider, lightYSlider, lightRotSlider, lightColorSlider, vrmSatSlider,
             skinSmoothSlider, camBrightSlider, camSatSlider, camContSlider, camBlurSlider, camSepiaSlider,
-            occPosXSlider, occPosYSlider, occPosZSlider, occSizeXSlider, occSizeYSlider, occSizeZSlider
+            occPosXSlider, occPosYSlider, occPosZSlider, occSizeXSlider, occSizeYSlider, occSizeZSlider,
+            // Main transform
+            scaleSlider, ySlider, zSlider, 
+            // Shadow detail
+            shadowSoftnessSlider, shadowDarknessSlider
         ];
         
-        allSliders.forEach(el => el.addEventListener('input', () => {
-            updateLight(); 
-            updateCameraFilter(); 
-            updateVRMFilter(); 
-            updateOccluder();
-        }));
+        function updateSliderDisplay(slider) {
+            if(!slider) return;
+            const disp = document.getElementById(slider.id + '-val');
+            if(disp) {
+                disp.textContent = slider.value;
+            }
+        }
 
+        allSliders.forEach(el => {
+            if(!el) return;
+            // 初期表示
+            updateSliderDisplay(el);
+            
+            el.addEventListener('input', () => {
+                updateSliderDisplay(el);
+                updateLight(); 
+                updateCameraFilter(); 
+                updateVRMFilter(); 
+                updateOccluder();
+            });
+        });
+
+        // 個別のイベントリスナー (Transform用)
         [scaleSlider, ySlider, zSlider].forEach(el => el.addEventListener('input', updateTransform));
 
         minCfSlider.value = 0.0005;
         betaSlider.value = 0.04;
         eyeSensSlider.value = 2.0; 
+        // JSでの初期値設定後に表示更新
+        updateSliderDisplay(minCfSlider);
+        updateSliderDisplay(betaSlider);
+        updateSliderDisplay(eyeSensSlider);
 
         autoBlinkToggle.addEventListener('change', (e) => { isAutoBlink = e.target.checked; saveSettings(); });
         occlusionToggle.addEventListener('change', (e) => { updateOccluder(); saveSettings(); });
@@ -802,6 +872,9 @@
                     if(s.camCont) camContSlider.value = s.camCont;
                     if(s.camBlur) camBlurSlider.value = s.camBlur;
                     if(s.camSepia) camSepiaSlider.value = s.camSepia;
+
+                    // 値の表示を更新
+                    allSliders.forEach(el => updateSliderDisplay(el));
 
                     updateLight(); 
                     updateCameraFilter();
@@ -1190,6 +1263,9 @@
                 startScreen.style.display = 'none';
                 loadingText.style.display = 'none';
                 uiContainer.style.display = 'block';
+                
+                // --- 設定パネルを自動的に開く ---
+                controlPanel.style.display = 'block';
                 
                 updateCameraFilter();
                 updateVRMFilter();
