@@ -1,0 +1,1473 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>VRM Face AR</title>
+    
+    <!-- ログ抑制スクリプト -->
+    <script>
+        (function() {
+            const originalConsoleError = console.error;
+            console.error = function(...args) {
+                const msg = args.join(' ');
+                if (msg.includes("TensorFlow") || msg.includes("XNNPACK") || msg.includes("delegate")) {
+                    console.log(" [TFLite Info] " + msg); 
+                    return;
+                }
+                originalConsoleError.apply(console, args);
+            };
+        })();
+    </script>
+
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #000;
+            font-family: sans-serif;
+        }
+
+        #ar-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+            overflow: hidden;
+        }
+        
+        #ar-container video {
+            transition: filter 0.2s; 
+        }
+        
+        #ar-container canvas {
+            transition: filter 0.2s;
+        }
+
+        #ui-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            padding: 10px;
+            box-sizing: border-box;
+            z-index: 1000;
+            pointer-events: none;
+        }
+
+        .icon-buttons {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            display: flex;
+            gap: 10px;
+            pointer-events: auto;
+            z-index: 2001;
+        }
+
+        .icon-btn {
+            background: rgba(255, 255, 255, 0.8);
+            border: none;
+            border-radius: 50%;
+            width: 44px;
+            height: 44px;
+            font-size: 22px;
+            cursor: pointer;
+            backdrop-filter: blur(5px);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+            transition: background 0.2s;
+        }
+
+        .icon-btn:active {
+            background: rgba(200, 200, 200, 0.9);
+            transform: scale(0.95);
+        }
+
+        .control-panel {
+            background: rgba(255, 255, 255, 0.95);
+            padding: 15px;
+            border-radius: 12px;
+            pointer-events: auto;
+            backdrop-filter: blur(5px);
+            margin-top: 50px;
+            max-width: 300px;
+            max-height: 80vh;
+            overflow-y: auto;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            position: absolute;
+            right: 10px;
+        }
+
+        .tab-container {
+            display: flex;
+            justify-content: space-around;
+            margin-bottom: 15px;
+            border-bottom: 1px solid #ddd;
+            padding-bottom: 5px;
+        }
+        .tab-btn {
+            background: none;
+            border: none;
+            font-weight: bold;
+            color: #888;
+            cursor: pointer;
+            padding: 5px 10px;
+            font-size: 14px;
+        }
+        .tab-btn.active {
+            color: #4a90e2;
+            border-bottom: 2px solid #4a90e2;
+        }
+
+        h1, h2 {
+            margin: 0 0 10px 0;
+            font-size: 16px;
+            color: #333;
+            text-align: center;
+        }
+        
+        h2 {
+            font-size: 14px;
+            margin-top: 15px;
+            border-top: 1px solid #ccc;
+            padding-top: 10px;
+        }
+
+        input[type="file"] {
+            display: none;
+        }
+        
+        .custom-file-upload {
+            display: block;
+            border: 2px dashed #666;
+            background: #f0f0f0;
+            color: #333;
+            padding: 10px;
+            text-align: center;
+            cursor: pointer;
+            border-radius: 8px;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+
+        .slider-container {
+            display: flex;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+        .slider-label {
+            width: 90px;
+            font-size: 11px;
+            font-weight: bold;
+            line-height: 1.2;
+        }
+        input[type="range"] {
+            flex-grow: 1;
+        }
+        .val-display {
+            width: 40px;
+            font-size: 10px;
+            text-align: right;
+            margin-left: 5px;
+            font-family: monospace;
+        }
+
+        .toggle-label {
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+            width: 100%;
+            font-weight: bold;
+            font-size: 12px;
+            margin-bottom: 8px;
+        }
+        .toggle-checkbox {
+            margin-right: 10px;
+            transform: scale(1.2);
+        }
+
+        .restart-btn {
+            width: 100%;
+            background: #ff9800;
+            color: white;
+            border: none;
+            padding: 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: bold;
+            margin-top: 10px;
+            font-size: 14px;
+        }
+        .restart-btn:active {
+            background: #f57c00;
+        }
+
+        #loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-weight: bold;
+            text-shadow: 0 0 5px black;
+            z-index: 500;
+            pointer-events: none;
+        }
+
+        #start-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.8);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 2000;
+            color: white;
+        }
+        #start-btn {
+            padding: 15px 40px;
+            font-size: 18px;
+            background: #4a90e2;
+            color: white;
+            border: none;
+            border-radius: 30px;
+            cursor: pointer;
+            margin-top: 20px;
+        }
+        #status-msg {
+            margin-top: 10px;
+            font-size: 12px;
+            color: #ccc;
+            text-align: center;
+            padding: 0 20px;
+        }
+
+        #app-version {
+            position: absolute;
+            bottom: 5px;
+            right: 10px;
+            color: rgba(255, 255, 255, 0.5);
+            font-size: 12px;
+            z-index: 2000;
+            pointer-events: none;
+            text-shadow: 0 0 2px black;
+            font-family: monospace;
+        }
+
+        #toast {
+            visibility: hidden;
+            min-width: 200px;
+            background-color: rgba(30, 30, 30, 0.95);
+            color: #fff;
+            text-align: center;
+            border-radius: 50px;
+            padding: 12px 24px;
+            position: fixed;
+            z-index: 3000;
+            left: 50%;
+            bottom: 30px;
+            transform: translateX(-50%);
+            font-size: 14px;
+            opacity: 0;
+            transition: opacity 0.3s, bottom 0.3s;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.4);
+            white-space: pre-line;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+
+        #toast.show {
+            visibility: visible;
+            opacity: 1;
+            bottom: 50px;
+        }
+    </style>
+
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/",
+            "@pixiv/three-vrm": "https://unpkg.com/@pixiv/three-vrm@2.1.2/lib/three-vrm.module.js",
+            "mindar-face-three": "https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-face-three.prod.js"
+        }
+    }
+    </script>
+</head>
+<body>
+
+    <div id="app-version">v5.5.0 (Updated MinCF)</div>
+
+    <div id="toast">設定を適用しました</div>
+
+    <!-- AR専用コンテナ -->
+    <div id="ar-container"></div>
+
+    <div id="start-screen">
+        <h2>VRM Face AR</h2>
+        <p>カメラへのアクセスを許可してください</p>
+        <button id="start-btn">カメラを開始</button>
+        <div id="status-msg"></div>
+    </div>
+
+    <div id="ui-container" style="display:none;">
+        <div class="icon-buttons">
+            <button id="toggle-light-btn" class="icon-btn" title="照明・画質設定">💡</button>
+            <button id="toggle-menu-btn" class="icon-btn" title="モデル・トラッキング設定">⚙️</button>
+            <button id="toggle-fullscreen-btn" class="icon-btn" title="全画面表示切替">⛶</button>
+        </div>
+
+        <!-- メイン設定パネル -->
+        <div class="control-panel" id="control-panel" style="display:none;">
+            <h1>モデル・トラッキング</h1>
+            
+            <label for="vrm-upload" class="custom-file-upload">
+                📂 VRMファイルを選択
+            </label>
+            <input type="file" id="vrm-upload">
+
+            <div class="slider-container">
+                <span class="slider-label">サイズ</span>
+                <input type="range" id="scale-slider" min="0.5" max="12.0" step="0.1" value="1.0">
+            </div>
+            <div class="slider-container">
+                <span class="slider-label">高さ</span>
+                <input type="range" id="y-slider" min="-2.0" max="2.0" step="0.1" value="0.0">
+            </div>
+            <div class="slider-container">
+                <span class="slider-label">前後</span>
+                <input type="range" id="z-slider" min="-2.0" max="2.0" step="0.1" value="0.0">
+            </div>
+
+            <!-- マスキング設定 -->
+            <h2>肩マスキング (アーチ型)</h2>
+            <div class="slider-container">
+                <label class="toggle-label">
+                    <input type="checkbox" id="occlusion-toggle" class="toggle-checkbox" checked>
+                    マスク有効
+                </label>
+            </div>
+            <div class="slider-container" style="margin-bottom:5px;">
+                <label class="toggle-label" style="color:#ff6b6b;">
+                    <input type="checkbox" id="occlusion-debug-toggle" class="toggle-checkbox">
+                    マスク・照明位置を表示
+                </label>
+            </div>
+            
+            <!-- 6DOF調整スライダー -->
+            <div class="slider-container">
+                <span class="slider-label">X Position</span>
+                <input type="range" id="occ-pos-x" min="-0.5" max="0.5" step="0.001" value="0.0">
+            </div>
+            <div class="slider-container">
+                <span class="slider-label">Y Position</span>
+                <input type="range" id="occ-pos-y" min="-1.0" max="1.0" step="0.002" value="-0.5">
+            </div>
+            <div class="slider-container">
+                <span class="slider-label">Z Position</span>
+                <input type="range" id="occ-pos-z" min="-1.0" max="1.0" step="0.002" value="0.0">
+            </div>
+            
+            <div class="slider-container" style="margin-top:10px;">
+                <span class="slider-label">X Size<br>(幅)</span>
+                <input type="range" id="occ-size-x" min="0.05" max="1.5" step="0.05" value="1.0">
+            </div>
+            <div class="slider-container">
+                <span class="slider-label">Y Size<br>(高さ)</span>
+                <input type="range" id="occ-size-z" min="0.05" max="1.5" step="0.05" value="0.05">
+            </div>
+            <div class="slider-container">
+                <span class="slider-label">Z Size<br>(奥行)</span>
+                <input type="range" id="occ-size-y" min="0.05" max="1.5" step="0.05" value="1.0">
+            </div>
+
+            <h2>表情設定</h2>
+            <div class="slider-container">
+                <label class="toggle-label">
+                    <input type="checkbox" id="autoblink-toggle" class="toggle-checkbox" checked>
+                    自動まばたき
+                </label>
+            </div>
+            <div class="slider-container">
+                <span class="slider-label">目の感度</span>
+                <input type="range" id="eye-sens-slider" min="0.5" max="5.0" step="0.1" value="2.0">
+            </div>
+            <div class="slider-container">
+                <span class="slider-label">口の感度</span>
+                <input type="range" id="mouth-sens-slider" min="0.5" max="5.0" step="0.1" value="1.5">
+            </div>
+
+            <h2>トラッキング</h2>
+            <div class="slider-container">
+                <span class="slider-label">滑らかさ</span>
+                <input type="range" id="mincf-slider" min="0.0001" max="0.01" step="0.0001" value="0.0005">
+            </div>
+            <div class="slider-container">
+                <span class="slider-label">敏感さ</span>
+                <input type="range" id="beta-slider" min="0.001" max="2.0" step="0.02" value="0.04">
+            </div>
+
+            <button id="apply-tracking-btn" class="restart-btn">設定を適用して再起動</button>
+        </div>
+
+        <!-- 照明・画質設定パネル -->
+        <div class="control-panel" id="light-panel" style="display:none;">
+            <div class="tab-container">
+                <button class="tab-btn active" id="tab-vrm">VRM照明</button>
+                <button class="tab-btn" id="tab-camera">カメラ画質</button>
+            </div>
+
+            <!-- VRM照明タブ -->
+            <div id="vrm-light-settings">
+                <div class="slider-container" style="background: #e8f0fe; padding: 10px; border-radius: 8px; border: 1px solid #4a90e2; margin-bottom:10px;">
+                    <label class="toggle-label" style="color: #4a90e2; margin-bottom: 5px;">
+                        <input type="checkbox" id="force-shadow-toggle" class="toggle-checkbox" checked>
+                        <strong>影を強制的に出す</strong>
+                    </label>
+                    <div id="shadow-details" style="border-top:1px dashed #abc; padding-top:8px; margin-top:5px;">
+                        <div class="slider-container">
+                            <span class="slider-label" style="font-size:10px; color:#333;">影の柔らかさ<br>(Softness)</span>
+                            <input type="range" id="shadow-softness-slider" min="0.0" max="1.0" step="0.1" value="0.5">
+                        </div>
+                        <div class="slider-container" style="margin-bottom:5px;">
+                            <span class="slider-label" style="font-size:10px; color:#333;">影の濃さ<br>(Darkness)</span>
+                            <input type="range" id="shadow-darkness-slider" min="0.0" max="1.0" step="0.1" value="0.5">
+                        </div>
+                        <div class="slider-container" style="margin-bottom:0;">
+                            <span class="slider-label" style="font-size:10px; color:#333;">影の色<br>(Color)</span>
+                            <input type="color" id="shadow-color-picker" value="#ffa3d0" style="height:30px; width:50px; border:none; background:none; cursor:pointer;">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="slider-container">
+                    <span class="slider-label">メイン光<br>強さ</span>
+                    <input type="range" id="light-int-slider" min="0.0" max="5.0" step="0.1" value="2.0">
+                </div>
+                <div class="slider-container">
+                    <span class="slider-label">環境光<br>強さ</span>
+                    <input type="range" id="amb-int-slider" min="0.0" max="2.0" step="0.1" value="0.2">
+                </div>
+                <div class="slider-container">
+                    <span class="slider-label">光の高さ<br>(上下)</span>
+                    <input type="range" id="light-y-slider" min="-10.0" max="10.0" step="0.1" value="2.0">
+                </div>
+                <div class="slider-container">
+                    <span class="slider-label">光の向き<br>(回転)</span>
+                    <input type="range" id="light-rot-slider" min="0" max="360" step="10" value="45">
+                </div>
+                <div class="slider-container">
+                    <span class="slider-label">色味<br>(暖色⇔寒色)</span>
+                    <input type="range" id="light-color-slider" min="0" max="100" step="1" value="50">
+                </div>
+                <div class="slider-container">
+                    <span class="slider-label">VRM彩度<br>(Vividness)</span>
+                    <input type="range" id="vrm-sat-slider" min="0" max="200" step="5" value="100">
+                </div>
+            </div>
+
+            <!-- カメラ画質タブ -->
+            <div id="camera-settings" style="display:none;">
+                <div class="slider-container" style="background: #e8f0fe; padding: 5px; border-radius: 8px; border: 1px solid #4a90e2;">
+                    <span class="slider-label" style="color: #4a90e2;">✨美肌補正<br>(Skin Smooth)</span>
+                    <input type="range" id="skin-smooth-slider" min="0" max="100" step="1" value="0">
+                </div>
+                <div class="slider-container">
+                    <span class="slider-label">明るさ<br>(Brightness)</span>
+                    <input type="range" id="cam-bright-slider" min="50" max="150" step="1" value="100">
+                </div>
+                <div class="slider-container">
+                    <span class="slider-label">彩度<br>(Saturate)</span>
+                    <input type="range" id="cam-sat-slider" min="0" max="200" step="5" value="100">
+                </div>
+                <div class="slider-container">
+                    <span class="slider-label">コントラスト<br>(Contrast)</span>
+                    <input type="range" id="cam-cont-slider" min="50" max="150" step="1" value="100">
+                </div>
+                <div class="slider-container">
+                    <span class="slider-label">ぼかし<br>(Blur)</span>
+                    <input type="range" id="cam-blur-slider" min="0" max="5" step="0.5" value="0">
+                </div>
+                <div class="slider-container">
+                    <span class="slider-label">セピア<br>(Sepia)</span>
+                    <input type="range" id="cam-sepia-slider" min="0" max="100" step="1" value="0">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="loading">Initialize AR...</div>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+        import { VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm';
+        import { MindARThree } from 'mindar-face-three';
+
+        let mindarThree = null;
+        let currentVrm = null;
+        let anchorGroup;
+        let pivotGroup;       
+        let adjustmentGroup;  
+        
+        let appliedMinCF = 0.0005;
+        let appliedBeta = 0.04;
+        let currentFileName = "";
+
+        let dirLight = null;
+        let hemiLight = null;
+        let lightHelper = null; 
+        let occluderGroup = null; 
+
+        let faceMesh = null;
+
+        let smoothedMouthRatio = 0;
+        let smoothedEyeL = 1;
+        let smoothedEyeR = 1;
+
+        let isAutoBlink = true;
+        let blinkTimer = 0;
+        let nextBlinkTime = 3.0;
+        let blinkState = 0; 
+        let blinkDuration = 0.15; 
+
+        let lightRelativePos = new THREE.Vector3(1, 1, 1);
+
+        const startScreen = document.getElementById('start-screen');
+        const startBtn = document.getElementById('start-btn');
+        const uiContainer = document.getElementById('ui-container');
+        const controlPanel = document.getElementById('control-panel');
+        const lightPanel = document.getElementById('light-panel');
+        const loadingText = document.getElementById('loading');
+        const statusMsg = document.getElementById('status-msg');
+        const arContainer = document.getElementById('ar-container');
+
+        const scaleSlider = document.getElementById('scale-slider');
+        const ySlider = document.getElementById('y-slider');
+        const zSlider = document.getElementById('z-slider');
+        const minCfSlider = document.getElementById('mincf-slider');
+        const betaSlider = document.getElementById('beta-slider');
+        const mouthSensSlider = document.getElementById('mouth-sens-slider');
+        const eyeSensSlider = document.getElementById('eye-sens-slider');
+        const autoBlinkToggle = document.getElementById('autoblink-toggle');
+        
+        const occlusionToggle = document.getElementById('occlusion-toggle');
+        const occlusionDebugToggle = document.getElementById('occlusion-debug-toggle');
+        
+        // 6点パラメータ用スライダー
+        const occPosXSlider = document.getElementById('occ-pos-x');
+        const occPosYSlider = document.getElementById('occ-pos-y');
+        const occPosZSlider = document.getElementById('occ-pos-z');
+        const occSizeXSlider = document.getElementById('occ-size-x');
+        const occSizeYSlider = document.getElementById('occ-size-y');
+        const occSizeZSlider = document.getElementById('occ-size-z');
+
+        const applyBtn = document.getElementById('apply-tracking-btn');
+
+        const forceShadowToggle = document.getElementById('force-shadow-toggle'); 
+        const shadowDetails = document.getElementById('shadow-details');
+        const shadowSoftnessSlider = document.getElementById('shadow-softness-slider');
+        const shadowDarknessSlider = document.getElementById('shadow-darkness-slider');
+        const shadowColorPicker = document.getElementById('shadow-color-picker');
+
+        const lightIntSlider = document.getElementById('light-int-slider');
+        const ambIntSlider = document.getElementById('amb-int-slider');
+        const lightYSlider = document.getElementById('light-y-slider');
+        const lightRotSlider = document.getElementById('light-rot-slider');
+        const lightColorSlider = document.getElementById('light-color-slider');
+        const vrmSatSlider = document.getElementById('vrm-sat-slider');
+
+        const skinSmoothSlider = document.getElementById('skin-smooth-slider');
+        const camBrightSlider = document.getElementById('cam-bright-slider');
+        const camSatSlider = document.getElementById('cam-sat-slider');
+        const camContSlider = document.getElementById('cam-cont-slider');
+        const camBlurSlider = document.getElementById('cam-blur-slider');
+        const camSepiaSlider = document.getElementById('cam-sepia-slider');
+
+        const tabVrm = document.getElementById('tab-vrm');
+        const tabCamera = document.getElementById('tab-camera');
+        const vrmLightSettings = document.getElementById('vrm-light-settings');
+        const cameraSettings = document.getElementById('camera-settings');
+
+        tabVrm.addEventListener('click', () => {
+            tabVrm.classList.add('active');
+            tabCamera.classList.remove('active');
+            vrmLightSettings.style.display = 'block';
+            cameraSettings.style.display = 'none';
+        });
+
+        tabCamera.addEventListener('click', () => {
+            tabCamera.classList.add('active');
+            tabVrm.classList.remove('active');
+            vrmLightSettings.style.display = 'none';
+            cameraSettings.style.display = 'block';
+        });
+
+        const allSliders = [
+            minCfSlider, betaSlider, mouthSensSlider, eyeSensSlider,
+            lightIntSlider, ambIntSlider, lightYSlider, lightRotSlider, lightColorSlider, vrmSatSlider,
+            skinSmoothSlider, camBrightSlider, camSatSlider, camContSlider, camBlurSlider, camSepiaSlider,
+            occPosXSlider, occPosYSlider, occPosZSlider, occSizeXSlider, occSizeYSlider, occSizeZSlider
+        ];
+        
+        allSliders.forEach(el => el.addEventListener('input', () => {
+            updateLight(); 
+            updateCameraFilter(); 
+            updateVRMFilter(); 
+            updateOccluder();
+        }));
+
+        [scaleSlider, ySlider, zSlider].forEach(el => el.addEventListener('input', updateTransform));
+
+        minCfSlider.value = 0.0005;
+        betaSlider.value = 0.04;
+        eyeSensSlider.value = 2.0; 
+
+        autoBlinkToggle.addEventListener('change', (e) => { isAutoBlink = e.target.checked; saveSettings(); });
+        occlusionToggle.addEventListener('change', (e) => { updateOccluder(); saveSettings(); });
+        occlusionDebugToggle.addEventListener('change', (e) => { 
+            updateOccluder(); 
+            if(lightHelper) lightHelper.visible = e.target.checked;
+        });
+        
+        forceShadowToggle.addEventListener('change', () => {
+            shadowDetails.style.display = forceShadowToggle.checked ? 'block' : 'none';
+            if(currentVrm) updateMaterialSettings(currentVrm);
+            saveSettings();
+        });
+        
+        shadowSoftnessSlider.addEventListener('input', () => { 
+            if(currentVrm) updateMaterialSettings(currentVrm); 
+            saveSettings();
+        });
+        shadowDarknessSlider.addEventListener('input', () => { 
+            if(currentVrm) updateMaterialSettings(currentVrm); 
+            saveSettings();
+        });
+        shadowColorPicker.addEventListener('input', () => {
+            if(currentVrm) updateMaterialSettings(currentVrm);
+            saveSettings();
+        });
+        
+        shadowDetails.style.display = forceShadowToggle.checked ? 'block' : 'none';
+
+        document.getElementById('toggle-menu-btn').addEventListener('click', () => {
+            lightPanel.style.display = 'none'; 
+            controlPanel.style.display = controlPanel.style.display === 'none' ? 'block' : 'none';
+        });
+
+        document.getElementById('toggle-light-btn').addEventListener('click', () => {
+            controlPanel.style.display = 'none'; 
+            lightPanel.style.display = lightPanel.style.display === 'none' ? 'block' : 'none';
+        });
+
+        document.getElementById('toggle-fullscreen-btn').addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(e => console.error(e));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        });
+
+        window.addEventListener('resize', () => {
+            if (mindarThree) {
+                const { renderer, camera } = mindarThree;
+                if(renderer) {
+                    renderer.setSize(window.innerWidth, window.innerHeight);
+                }
+                if(camera) {
+                    camera.aspect = window.innerWidth / window.innerHeight;
+                    camera.updateProjectionMatrix();
+                }
+            }
+        });
+
+        startBtn.addEventListener('click', async () => {
+            startBtn.disabled = true;
+            statusMsg.textContent = "カメラを起動中...";
+            await startAR();
+        });
+
+        applyBtn.addEventListener('click', async () => {
+            applyBtn.disabled = true;
+            applyBtn.textContent = "再起動中...";
+            saveSettings();
+            await restartAR();
+            applyBtn.disabled = false;
+            applyBtn.textContent = "設定を適用して再起動";
+        });
+
+        function showToast(message) {
+            const toast = document.getElementById("toast");
+            toast.textContent = message;
+            toast.className = "show";
+            setTimeout(function(){ toast.className = toast.className.replace("show", ""); }, 3000);
+        }
+
+        function saveSettings() {
+            if (!currentFileName) return;
+            const settings = {
+                scale: scaleSlider.value,
+                y: ySlider.value,
+                z: zSlider.value,
+                minCF: minCfSlider.value,
+                beta: betaSlider.value,
+                mouthSens: mouthSensSlider.value,
+                eyeSens: eyeSensSlider.value,
+                autoBlink: autoBlinkToggle.checked,
+                occlusion: occlusionToggle.checked,
+                forceShadow: forceShadowToggle.checked, 
+                shadowSoft: shadowSoftnessSlider.value, 
+                shadowDark: shadowDarknessSlider.value, 
+                shadowColor: shadowColorPicker.value,
+                // 6DOF設定の保存
+                occPosX: occPosXSlider.value,
+                occPosY: occPosYSlider.value,
+                occPosZ: occPosZSlider.value,
+                occSizeX: occSizeXSlider.value,
+                occSizeY: occSizeYSlider.value,
+                occSizeZ: occSizeZSlider.value,
+                
+                lightInt: lightIntSlider.value,
+                ambInt: ambIntSlider.value,
+                lightY: lightYSlider.value,
+                lightRot: lightRotSlider.value,
+                lightColor: lightColorSlider.value,
+                vrmSat: vrmSatSlider.value,
+                skinSmooth: skinSmoothSlider.value, 
+                camBright: camBrightSlider.value,
+                camSat: camSatSlider.value,
+                camCont: camContSlider.value,
+                camBlur: camBlurSlider.value,
+                camSepia: camSepiaSlider.value
+            };
+            try {
+                localStorage.setItem("vrm_settings_" + currentFileName, JSON.stringify(settings));
+            } catch(e) {
+                console.error("Save failed:", e);
+            }
+        }
+
+        function loadSettings(fname) {
+            try {
+                const data = localStorage.getItem("vrm_settings_" + fname);
+                if (data) {
+                    const s = JSON.parse(data);
+                    if(s.scale) scaleSlider.value = s.scale;
+                    if(s.y) ySlider.value = s.y;
+                    if(s.z) zSlider.value = s.z;
+                    if(s.minCF) minCfSlider.value = s.minCF;
+                    if(s.beta) betaSlider.value = s.beta;
+                    if(s.mouthSens) mouthSensSlider.value = s.mouthSens;
+                    if(s.eyeSens) eyeSensSlider.value = s.eyeSens;
+                    if(s.autoBlink !== undefined) {
+                        autoBlinkToggle.checked = s.autoBlink;
+                        isAutoBlink = s.autoBlink;
+                    }
+                    if(s.occlusion !== undefined) occlusionToggle.checked = s.occlusion;
+                    if(s.forceShadow !== undefined) {
+                        forceShadowToggle.checked = s.forceShadow;
+                        shadowDetails.style.display = s.forceShadow ? 'block' : 'none';
+                    }
+                    if(s.shadowSoft) shadowSoftnessSlider.value = s.shadowSoft;
+                    if(s.shadowDark) shadowDarknessSlider.value = s.shadowDark;
+                    if(s.shadowColor) shadowColorPicker.value = s.shadowColor;
+                    
+                    // 6DOF設定の復元
+                    if(s.occPosX) occPosXSlider.value = s.occPosX;
+                    if(s.occPosY) occPosYSlider.value = s.occPosY;
+                    if(s.occPosZ) occPosZSlider.value = s.occPosZ;
+                    if(s.occSizeX) occSizeXSlider.value = s.occSizeX;
+                    if(s.occSizeY) occSizeYSlider.value = s.occSizeY;
+                    if(s.occSizeZ) occSizeZSlider.value = s.occSizeZ;
+
+                    if(s.lightInt) lightIntSlider.value = s.lightInt;
+                    if(s.ambInt) ambIntSlider.value = s.ambInt;
+                    if(s.lightY) lightYSlider.value = s.lightY;
+                    if(s.lightRot) lightRotSlider.value = s.lightRot;
+                    if(s.lightColor) lightColorSlider.value = s.lightColor;
+                    if(s.vrmSat) vrmSatSlider.value = s.vrmSat;
+                    if(s.skinSmooth) skinSmoothSlider.value = s.skinSmooth;
+                    if(s.camBright) camBrightSlider.value = s.camBright;
+                    if(s.camSat) camSatSlider.value = s.camSat;
+                    if(s.camCont) camContSlider.value = s.camCont;
+                    if(s.camBlur) camBlurSlider.value = s.camBlur;
+                    if(s.camSepia) camSepiaSlider.value = s.camSepia;
+
+                    updateLight(); 
+                    updateCameraFilter();
+                    updateVRMFilter();
+                    updateOccluder();
+                    showToast(`設定を復元しました:\n${fname}`);
+                    return true;
+                }
+            } catch(e) {
+                console.error("Load failed:", e);
+            }
+            return false;
+        }
+
+        [scaleSlider, ySlider, zSlider, minCfSlider, betaSlider, mouthSensSlider, eyeSensSlider, 
+         lightIntSlider, ambIntSlider, lightYSlider, lightRotSlider, lightColorSlider, vrmSatSlider,
+         skinSmoothSlider, camBrightSlider, camSatSlider, camContSlider, camBlurSlider, camSepiaSlider, 
+         occlusionToggle, forceShadowToggle, shadowSoftnessSlider, shadowDarknessSlider, shadowColorPicker,
+         occPosXSlider, occPosYSlider, occPosZSlider, occSizeXSlider, occSizeYSlider, occSizeZSlider].forEach(el => {
+            el.addEventListener('change', () => {
+                saveSettings(); 
+            });
+        });
+
+        function updateOccluder() {
+            if (!occluderGroup) return;
+            const isEnabled = occlusionToggle.checked;
+            const isDebug = occlusionDebugToggle.checked;
+            occluderGroup.visible = isEnabled || isDebug;
+            if (!isEnabled && !isDebug) return;
+
+            occluderGroup.children.forEach(child => {
+                if (child.isMesh) {
+                    child.visible = isEnabled || isDebug;
+                    if (isDebug) {
+                        child.material.colorWrite = true;
+                        child.material.color.set(0xff0000);
+                        child.material.transparent = true;
+                        child.material.opacity = 0.5;
+                        child.material.depthWrite = false;
+                        child.material.side = THREE.DoubleSide; // デバッグ時は裏も見えると便利
+                    } else {
+                        child.material.colorWrite = false;
+                        child.material.transparent = false;
+                        child.material.opacity = 1.0; 
+                        child.material.depthWrite = true;
+                        child.material.side = THREE.DoubleSide; // 裏側もオクルージョンとして機能させる
+                    }
+                    
+                    // 6DOFパラメータの適用
+                    const px = parseFloat(occPosXSlider.value);
+                    const py = parseFloat(occPosYSlider.value);
+                    const pz = parseFloat(occPosZSlider.value);
+                    const sx = parseFloat(occSizeXSlider.value);
+                    const sy = parseFloat(occSizeYSlider.value);
+                    const sz = parseFloat(occSizeZSlider.value);
+
+                    child.position.set(px, py, pz);
+                    child.scale.set(sx, sy, sz);
+                }
+            });
+        }
+
+        function updateVRMFilter() {
+            const canvas = document.querySelector('#ar-container canvas');
+            if(canvas) {
+                const s = vrmSatSlider.value;
+                canvas.style.filter = `saturate(${s}%)`;
+            }
+        }
+
+        function updateCameraFilter() {
+            const video = document.querySelector('#ar-container video');
+            if(video) {
+                let b = parseFloat(camBrightSlider.value);
+                let s = parseFloat(camSatSlider.value);
+                let c = parseFloat(camContSlider.value);
+                let bl = parseFloat(camBlurSlider.value);
+                const sp = parseFloat(camSepiaSlider.value);
+
+                const skin = parseFloat(skinSmoothSlider.value);
+                if (skin > 0) {
+                    b += skin * 0.3;
+                    s += skin * 0.2;
+                    bl += skin * 0.008; 
+                    c -= skin * 0.15;
+                }
+
+                video.style.filter = `brightness(${b}%) saturate(${s}%) contrast(${c}%) blur(${bl}px) sepia(${sp}%)`;
+            }
+        }
+
+        function updateLight() {
+            if (!dirLight || !hemiLight) return;
+
+            hemiLight.intensity = parseFloat(ambIntSlider.value);
+            dirLight.intensity = parseFloat(lightIntSlider.value);
+
+            const rotRad = parseFloat(lightRotSlider.value) * (Math.PI / 180);
+            const yPos = parseFloat(lightYSlider.value);
+            const x = Math.sin(rotRad);
+            const z = Math.cos(rotRad);
+            
+            lightRelativePos.set(x, yPos, z);
+
+            const colorVal = parseInt(lightColorSlider.value);
+            const color = new THREE.Color();
+            
+            if (colorVal < 50) {
+                const r = 1.0;
+                const g = 1.0 - (50 - colorVal) * 0.005; 
+                const b = 1.0 - (50 - colorVal) * 0.01;
+                color.setRGB(r, g, b);
+            } else {
+                const r = 1.0 - (colorVal - 50) * 0.005;
+                const g = 1.0 - (colorVal - 50) * 0.003;
+                const b = 1.0;
+                color.setRGB(r, g, b);
+            }
+            dirLight.color = color;
+            
+            if(lightHelper) lightHelper.update();
+        }
+
+        // --- ロード時に初期設定を保存 (VRM1.0対応) ---
+        function backupMaterialSettings(vrm) {
+            vrm.scene.traverse((obj) => {
+                if (obj.isMesh && obj.material) {
+                    const materials = Array.isArray(obj.material) ? obj.material : [obj.material];
+                    materials.forEach(mat => {
+                        if (!mat.userData.originalSettings) {
+                            mat.userData.originalSettings = {};
+                            const orig = mat.userData.originalSettings;
+                            
+                            // VRM0.0 / Common Properties
+                            if (mat.shadeToony !== undefined) orig.shadeToony = mat.shadeToony;
+                            if (mat.shadeShift !== undefined) orig.shadeShift = mat.shadeShift;
+                            if (mat.shadeColor) orig.shadeColor = mat.shadeColor.clone();
+                            if (mat.color) orig.color = mat.color.clone();
+
+                            // VRM1.0 Properties
+                            if (mat.shadingToonyFactor !== undefined) orig.shadingToonyFactor = mat.shadingToonyFactor;
+                            if (mat.shadingShiftFactor !== undefined) orig.shadingShiftFactor = mat.shadingShiftFactor;
+                            if (mat.shadeColorFactor) orig.shadeColorFactor = mat.shadeColorFactor.clone(); // Color?
+
+                            // Uniforms
+                            if (mat.uniforms) {
+                                if (mat.uniforms.shadeToony) orig.u_shadeToony = mat.uniforms.shadeToony.value;
+                                if (mat.uniforms.shadeShift) orig.u_shadeShift = mat.uniforms.shadeShift.value;
+                                if (mat.uniforms.shadeColor) orig.u_shadeColor = mat.uniforms.shadeColor.value.clone();
+                                if (mat.uniforms.color) orig.u_color = mat.uniforms.color.value.clone();
+                            }
+                        }
+                    });
+                }
+            });
+        }
+
+        // --- 設定を適用または復元 (VRM1.0対応) ---
+        function updateMaterialSettings(vrm) {
+            const isForced = forceShadowToggle.checked;
+            
+            const softness = parseFloat(shadowSoftnessSlider.value);
+            const darkness = parseFloat(shadowDarknessSlider.value);
+
+            // 計算値
+            const targetShadeToony = Math.max(0.0, Math.min(1.0, 1.0 - softness));
+            // 濃さ: 0(元) -> 1(黒)
+            const colorLerpAlpha = Math.max(0.0, Math.min(1.0, darkness));
+            
+            const targetShadeShift = -0.2; 
+            
+            // ピッカーから影色を取得 (Hex string -> THREE.Color)
+            const shadowColorHex = shadowColorPicker.value;
+            const targetShadowBase = new THREE.Color(shadowColorHex);
+
+            console.log(`[UpdateMat] Force:${isForced} Toony:${targetShadeToony.toFixed(2)} Dark:${colorLerpAlpha.toFixed(2)} Color:${shadowColorHex}`);
+
+            vrm.scene.traverse((obj) => {
+                if (obj.isMesh && obj.material) {
+                    const materials = Array.isArray(obj.material) ? obj.material : [obj.material];
+                    
+                    materials.forEach(mat => {
+                        const orig = mat.userData.originalSettings;
+                        if (!orig) return; 
+
+                        if (isForced) {
+                            // --- Lit Color (Base) の取得 ---
+                            // VRM0: mat.color (or uniforms.color)
+                            // VRM1: mat.color (ThreeJS standard) ??
+                            // 安全のためバックアップから取得
+                            let baseColor = new THREE.Color(1,1,1);
+                            if (orig.color) baseColor.copy(orig.color);
+                            else if (orig.u_color) baseColor.copy(orig.u_color);
+
+                            // 影色の計算: Base -> 指定色 (lerpAlphaが濃さとして機能)
+                            const targetShadeColor = baseColor.clone().lerp(targetShadowBase, colorLerpAlpha);
+
+                            // VRM0.0
+                            if (mat.shadeToony !== undefined) mat.shadeToony = targetShadeToony;
+                            if (mat.shadeShift !== undefined) mat.shadeShift = targetShadeShift;
+                            if (mat.shadeColor) mat.shadeColor.copy(targetShadeColor);
+
+                            // VRM1.0 (Three-VRM v1+)
+                            if (mat.shadingToonyFactor !== undefined) mat.shadingToonyFactor = targetShadeToony;
+                            if (mat.shadingShiftFactor !== undefined) mat.shadingShiftFactor = targetShadeShift;
+                            // VRM1.0 MToonNodeMaterial uses shadeColorFactor (Color)
+                            if (mat.shadeColorFactor && mat.shadeColorFactor.isColor) {
+                                mat.shadeColorFactor.copy(targetShadeColor);
+                            }
+
+                            // Uniforms (ShaderMaterial)
+                            if (mat.uniforms) {
+                                if (mat.uniforms.shadeToony) mat.uniforms.shadeToony.value = targetShadeToony;
+                                if (mat.uniforms.shadeShift) mat.uniforms.shadeShift.value = targetShadeShift;
+                                if (mat.uniforms.shadeColor) mat.uniforms.shadeColor.value.copy(targetShadeColor);
+                            }
+
+                        } else {
+                            // --- Restore ---
+                            if (mat.shadeToony !== undefined && orig.shadeToony !== undefined) mat.shadeToony = orig.shadeToony;
+                            if (mat.shadeShift !== undefined && orig.shadeShift !== undefined) mat.shadeShift = orig.shadeShift;
+                            if (mat.shadeColor && orig.shadeColor) mat.shadeColor.copy(orig.shadeColor);
+
+                            if (mat.shadingToonyFactor !== undefined && orig.shadingToonyFactor !== undefined) mat.shadingToonyFactor = orig.shadingToonyFactor;
+                            if (mat.shadingShiftFactor !== undefined && orig.shadingShiftFactor !== undefined) mat.shadingShiftFactor = orig.shadingShiftFactor;
+                            if (mat.shadeColorFactor && orig.shadeColorFactor) mat.shadeColorFactor.copy(orig.shadeColorFactor);
+
+                            if (mat.uniforms) {
+                                if (mat.uniforms.shadeToony && orig.u_shadeToony !== undefined) mat.uniforms.shadeToony.value = orig.u_shadeToony;
+                                if (mat.uniforms.shadeShift && orig.u_shadeShift !== undefined) mat.uniforms.shadeShift.value = orig.u_shadeShift;
+                                if (mat.uniforms.shadeColor && orig.u_shadeColor) mat.uniforms.shadeColor.value.copy(orig.u_shadeColor);
+                            }
+                        }
+                        
+                        mat.needsUpdate = true;
+                    });
+                }
+            });
+        }
+
+        async function restartAR() {
+            loadingText.style.display = 'block';
+            loadingText.textContent = "Restarting AR...";
+            
+            if (mindarThree) {
+                try {
+                    const videos = document.querySelectorAll('video');
+                    videos.forEach(v => {
+                        if (v.srcObject) {
+                            const tracks = v.srcObject.getTracks();
+                            tracks.forEach(track => {
+                                track.stop();
+                                v.srcObject.removeTrack(track);
+                            });
+                            v.srcObject = null;
+                        }
+                        v.remove();
+                    });
+
+                    mindarThree.stop();
+                    mindarThree.renderer.setAnimationLoop(null);
+                    mindarThree.renderer.dispose();
+                    mindarThree.renderer.forceContextLoss();
+                } catch(e) {
+                    console.log("Cleanup warning:", e);
+                }
+                
+                mindarThree = null;
+                faceMesh = null;
+                dirLight = null;
+                hemiLight = null;
+                lightHelper = null;
+                occluderGroup = null;
+                adjustmentGroup = null; 
+                pivotGroup = null;      
+                if(arContainer) {
+                    arContainer.innerHTML = '';
+                }
+            }
+
+            return new Promise(resolve => {
+                setTimeout(async () => {
+                    await startAR(true);
+                    resolve();
+                }, 2000); 
+            });
+        }
+
+        async function startAR(isRestart = false) {
+            let startTimeout;
+            
+            try {
+                appliedMinCF = parseFloat(minCfSlider.value);
+                appliedBeta = parseFloat(betaSlider.value);
+
+                console.log(`Starting AR -> MinCF:${appliedMinCF}, Beta:${appliedBeta}`);
+
+                mindarThree = new MindARThree({
+                    container: arContainer,
+                    filterMinCF: appliedMinCF, 
+                    filterBeta: appliedBeta    
+                });
+
+                const { renderer, scene, camera } = mindarThree;
+                
+                renderer.outputColorSpace = THREE.SRGBColorSpace;
+                renderer.toneMapping = THREE.LinearToneMapping;
+
+                hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444);
+                hemiLight.position.set(0, 1, 0);
+                scene.add(hemiLight);
+
+                const anchor = mindarThree.addAnchor(1);
+                anchorGroup = anchor.group; 
+
+                pivotGroup = new THREE.Group();
+                pivotGroup.visible = false; 
+                scene.add(pivotGroup);
+
+                adjustmentGroup = new THREE.Group();
+                pivotGroup.add(adjustmentGroup);
+
+                occluderGroup = new THREE.Group();
+                const occMat = new THREE.MeshBasicMaterial({ colorWrite: false });
+                
+                // --- "New"形状（アーチ型/チューブ）の作成 ---
+                // TorusGeometry(radius, tube, radialSegments, tubularSegments, arc)
+                // 半径1.0、チューブ半径0.4、滑らかさ優先
+                const torusGeom = new THREE.TorusGeometry(1.0, 0.4, 16, 64, Math.PI);
+                const mesh = new THREE.Mesh(torusGeom, occMat);
+                mesh.name = 'occluder-mesh';
+                
+                // 上から見てアーチ型になるように回転
+                // TorusGeometryはデフォルトでXY平面に作成されるため、X軸で90度回転させてXZ平面（水平）にする
+                mesh.rotation.x = Math.PI / 2; 
+                // 凸方向を調整 (必要ならZ軸回転で向きを変える)
+                mesh.rotation.z = Math.PI;
+
+                occluderGroup.add(mesh);
+                occluderGroup.renderOrder = 0;
+                adjustmentGroup.add(occluderGroup);
+                updateOccluder(); 
+
+                dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
+                scene.add(dirLight);
+                scene.add(dirLight.target);
+
+                lightHelper = new THREE.DirectionalLightHelper(dirLight, 1.0);
+                lightHelper.visible = occlusionDebugToggle.checked; 
+                scene.add(lightHelper);
+
+                updateLight();
+
+                faceMesh = mindarThree.addFaceMesh();
+                faceMesh.visible = false;
+
+                if (currentVrm) {
+                    currentVrm.scene.traverse(o => {
+                        if(o.isMesh) o.renderOrder = 1; 
+                    });
+                    
+                    backupMaterialSettings(currentVrm);
+                    updateMaterialSettings(currentVrm);
+
+                    adjustmentGroup.add(currentVrm.scene);
+                    updateTransform(); 
+                }
+
+                startTimeout = setTimeout(() => {
+                    if (loadingText.style.display !== 'none') {
+                        let msg = "起動がタイムアウトしました。\nブラウザをリロードするか、再試行してください。";
+                        statusMsg.textContent = msg;
+                        statusMsg.style.color = "#ff6b6b";
+                        startBtn.disabled = false;
+                        startBtn.textContent = "再試行";
+                        loadingText.style.display = 'none';
+                        showToast(msg);
+                    }
+                }, 20000); 
+
+                await mindarThree.start();
+                
+                clearTimeout(startTimeout);
+                
+                startScreen.style.display = 'none';
+                loadingText.style.display = 'none';
+                uiContainer.style.display = 'block';
+                
+                updateCameraFilter();
+                updateVRMFilter();
+
+                const clock = new THREE.Clock();
+
+                const worldPos = new THREE.Vector3();
+                const worldQuat = new THREE.Quaternion();
+                const worldScale = new THREE.Vector3();
+                const occluderInverseQuat = new THREE.Quaternion();
+
+                renderer.setAnimationLoop(() => {
+                    const delta = clock.getDelta();
+
+                    if (anchorGroup.visible) {
+                        anchorGroup.getWorldPosition(worldPos);
+                        anchorGroup.getWorldQuaternion(worldQuat);
+                        anchorGroup.getWorldScale(worldScale);
+
+                        pivotGroup.position.copy(worldPos);
+                        pivotGroup.quaternion.copy(worldQuat);
+                        pivotGroup.scale.copy(worldScale);
+                        
+                        if (!pivotGroup.visible) pivotGroup.visible = true;
+                    }
+
+                    // --- マスクの回転をキャンセルして常に水平を保つ ---
+                    // 今回削除するため、以下のブロックをコメントアウトまたは削除します。
+                    /* if (occluderGroup && occluderGroup.parent) {
+                        occluderGroup.parent.getWorldQuaternion(occluderInverseQuat);
+                        occluderGroup.quaternion.copy(occluderInverseQuat.invert());
+                    }
+                    */
+                    
+                    if (pivotGroup && dirLight) {
+                        dirLight.target.position.copy(pivotGroup.position);
+                        dirLight.position.copy(pivotGroup.position).add(lightRelativePos);
+
+                        dirLight.updateMatrixWorld();
+                        dirLight.target.updateMatrixWorld();
+                        
+                        if(lightHelper && lightHelper.visible) {
+                            lightHelper.update();
+                        }
+                    }
+
+                    if (currentVrm) {
+                        currentVrm.update(delta);
+                        updateExpressionsFromFaceMesh(currentVrm, delta, anchorGroup.visible);
+                        
+                        if(currentVrm.lookAt) {
+                            currentVrm.lookAt.target = camera;
+                        }
+                    }
+                    renderer.render(scene, camera);
+                });
+
+                if(isRestart) {
+                    showToast(`設定を適用しました。\n滑らかさ: ${appliedMinCF}\n敏感さ: ${appliedBeta}`);
+                }
+
+            } catch (error) {
+                if (startTimeout) clearTimeout(startTimeout);
+                let msg = "起動エラー: " + (error.message || error);
+                if (msg.includes("TensorFlow") || msg.includes("XNNPACK")) return; 
+                console.error(error);
+                statusMsg.textContent = msg;
+                statusMsg.style.color = "#ff6b6b";
+                startBtn.disabled = false;
+                startBtn.textContent = "再試行";
+                loadingText.style.display = 'none';
+                showToast(msg);
+            }
+        }
+
+        function updateExpressionsFromFaceMesh(vrm, delta, isFaceVisible) {
+            if (!vrm.expressionManager) return;
+
+            let autoBlinkValue = 0;
+            if (isAutoBlink) {
+                blinkTimer += delta;
+                if (blinkTimer > nextBlinkTime) {
+                    if (blinkState === 0) { blinkState = 1; blinkTimer = 0; }
+                }
+                if (blinkState === 1) { 
+                    autoBlinkValue = Math.min(1, blinkTimer / blinkDuration);
+                    if (autoBlinkValue >= 1) { blinkState = 2; blinkTimer = 0; }
+                } else if (blinkState === 2) { 
+                    autoBlinkValue = 1;
+                    if (blinkTimer > 0.05) { blinkState = 3; blinkTimer = 0; }
+                } else if (blinkState === 3) { 
+                    autoBlinkValue = 1 - Math.min(1, blinkTimer / blinkDuration);
+                    if (autoBlinkValue <= 0) {
+                        blinkState = 0; blinkTimer = 0;
+                        nextBlinkTime = 2.0 + Math.random() * 4.0;
+                    }
+                }
+            }
+
+            let mouthOpen = 0;
+            let cameraBlinkL = 0;
+            let cameraBlinkR = 0;
+
+            if (faceMesh && isFaceVisible) {
+                const positions = faceMesh.geometry.getAttribute('position');
+                if (positions) {
+                    const getV = (idx) => new THREE.Vector3(positions.getX(idx), positions.getY(idx), positions.getZ(idx));
+                    
+                    const leftEyeTop = getV(159);
+                    const leftEyeBottom = getV(145);
+                    const rightEyeTop = getV(386);
+                    const rightEyeBottom = getV(374);
+                    const mouthTop = getV(13);
+                    const mouthBottom = getV(14);
+                    
+                    const faceTop = getV(10);
+                    const faceBottom = getV(152);
+                    const faceHeight = faceTop.distanceTo(faceBottom);
+
+                    if (faceHeight > 0) {
+                        const mouthDist = mouthTop.distanceTo(mouthBottom);
+                        const mouthRatio = mouthDist / faceHeight;
+                        const mouthSens = parseFloat(mouthSensSlider.value);
+                        mouthOpen = (mouthRatio - 0.02) * 10.0 * mouthSens; 
+                        mouthOpen = Math.max(0, Math.min(1, mouthOpen));
+
+                        const leftEyeDist = leftEyeTop.distanceTo(leftEyeBottom);
+                        const rightEyeDist = rightEyeTop.distanceTo(rightEyeBottom);
+                        const eyeOpenRatioL = leftEyeDist / faceHeight;
+                        const eyeOpenRatioR = rightEyeDist / faceHeight;
+                        const eyeSens = parseFloat(eyeSensSlider.value);
+                        
+                        cameraBlinkL = 1.0 - (eyeOpenRatioL - 0.005) * (40.0 / eyeSens);
+                        cameraBlinkR = 1.0 - (eyeOpenRatioR - 0.005) * (40.0 / eyeSens);
+
+                        cameraBlinkL = Math.max(0, Math.min(1, cameraBlinkL));
+                        cameraBlinkR = Math.max(0, Math.min(1, cameraBlinkR));
+                    }
+                }
+            }
+
+            smoothedMouthRatio += (mouthOpen - smoothedMouthRatio) * 15.0 * delta;
+            smoothedEyeL += (cameraBlinkL - smoothedEyeL) * 20.0 * delta;
+            smoothedEyeR += (cameraBlinkR - smoothedEyeR) * 20.0 * delta;
+
+            const finalBlinkL = Math.max(autoBlinkValue, smoothedEyeL);
+            const finalBlinkR = Math.max(autoBlinkValue, smoothedEyeR);
+
+            vrm.expressionManager.setValue('aa', smoothedMouthRatio);
+            
+            const blinkMax = Math.max(finalBlinkL, finalBlinkR);
+            vrm.expressionManager.setValue('blink', blinkMax);
+            vrm.expressionManager.setValue('blink_l', finalBlinkL);
+            vrm.expressionManager.setValue('blink_r', finalBlinkR);
+        }
+
+        const loader = new GLTFLoader();
+        loader.register((parser) => new VRMLoaderPlugin(parser));
+        const fileInput = document.getElementById('vrm-upload');
+        
+        fileInput.addEventListener('change', (event) => {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            currentFileName = file.name;
+
+            const fileSizeMB = file.size / (1024 * 1024);
+            if (fileSizeMB > 50) {
+                showToast(`ファイルサイズが大きいです (${fileSizeMB.toFixed(1)}MB)。動作が重くなる可能性があります。`);
+            }
+
+            loadingText.style.display = 'block';
+            loadingText.textContent = "Loading VRM...";
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const arrayBuffer = e.target.result;
+                if (!arrayBuffer || arrayBuffer.byteLength === 0) {
+                    showToast("エラー: ファイルが空です。");
+                    loadingText.style.display = 'none';
+                    return;
+                }
+                loader.parse(arrayBuffer, '', (gltf) => {
+                    try {
+                        const vrm = gltf.userData.vrm;
+                        if (currentVrm) {
+                            if (currentVrm.scene.parent) currentVrm.scene.parent.remove(currentVrm.scene);
+                            VRMUtils.deepDispose(currentVrm.scene);
+                        }
+                        currentVrm = vrm;
+                        VRMUtils.rotateVRM0(vrm);
+                        makeHeadOnly(vrm);
+
+                        vrm.scene.rotation.y = Math.PI;
+                        vrm.scene.updateMatrixWorld(true);
+                        const box = new THREE.Box3();
+                        vrm.scene.traverse((obj) => {
+                            if ((obj.isMesh || obj.isSkinnedMesh) && obj.visible) {
+                                if (obj.geometry) obj.geometry.computeBoundingBox();
+                                box.expandByObject(obj);
+                            }
+                        });
+                        if (!box.isEmpty()) {
+                            const center = new THREE.Vector3();
+                            box.getCenter(center);
+                            vrm.scene.position.sub(center);
+                        } else {
+                            const head = vrm.humanoid.getNormalizedBoneNode('head');
+                            if(head) {
+                                const pos = new THREE.Vector3();
+                                head.getWorldPosition(pos);
+                                vrm.scene.position.sub(pos);
+                                vrm.scene.position.y -= 0.1;
+                            }
+                        }
+
+                        if (adjustmentGroup) {
+                            currentVrm.scene.traverse(o => {
+                                if(o.isMesh) o.renderOrder = 1; 
+                            });
+                            
+                            backupMaterialSettings(vrm);
+                            updateMaterialSettings(vrm);
+
+                            adjustmentGroup.add(vrm.scene);
+                        }
+
+                        loadSettings(currentFileName);
+                        updateTransform();
+
+                        loadingText.style.display = 'none';
+                    } catch (e) {
+                        showToast("処理エラー: " + e.message);
+                        loadingText.style.display = 'none';
+                    }
+                }, (err) => {
+                    console.error(err);
+                    showToast("読み込みエラー: " + err.message);
+                    loadingText.style.display = 'none';
+                });
+            };
+            reader.readAsArrayBuffer(file);
+        });
+
+        function makeHeadOnly(vrm) {
+            const hips = vrm.humanoid.getNormalizedBoneNode('hips');
+            const head = vrm.humanoid.getNormalizedBoneNode('head');
+            if (hips && head) {
+                hips.scale.setScalar(0.0001); 
+                head.scale.setScalar(10000.0); 
+                hips.updateMatrixWorld(true);
+                head.updateMatrixWorld(true);
+            }
+            vrm.scene.traverse((obj) => {
+                if (obj.isMesh || obj.isSkinnedMesh) {
+                    const name = obj.name.toLowerCase();
+                    const hideKeywords = ['body', 'cloth', 'top', 'bottom', 'skirt', 'pants', 'suit', 'arm', 'leg', 'hand', 'shoe'];
+                    const keepKeywords = ['face', 'head', 'hair', 'eye', 'tooth', 'teeth', 'mouth', 'tongue', 'brow', 'lash'];
+                    if (hideKeywords.some(k => name.includes(k)) && !keepKeywords.some(k => name.includes(k))) {
+                        obj.visible = false;
+                    }
+                }
+            });
+        }
+
+        function updateTransform() {
+            if (!adjustmentGroup) return;
+            const s = parseFloat(scaleSlider.value);
+            adjustmentGroup.scale.set(s, s, s);
+            const y = parseFloat(ySlider.value);
+            const z = parseFloat(zSlider.value);
+            adjustmentGroup.position.set(0, y, z);
+        }
+
+        scaleSlider.addEventListener('input', updateTransform);
+        ySlider.addEventListener('input', updateTransform);
+        zSlider.addEventListener('input', updateTransform);
+
+    </script>
+</body>
+</html>
