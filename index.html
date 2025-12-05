@@ -323,7 +323,7 @@
 </head>
 <body>
 
-    <div id="app-version">v5.9.0 (Auto Open Menu)</div>
+    <div id="app-version">v5.10.0 (Updated Transform Defaults)</div>
 
     <div id="toast">設定を適用しました</div>
 
@@ -355,18 +355,18 @@
 
             <div class="slider-container">
                 <span class="slider-label">サイズ</span>
-                <input type="range" id="scale-slider" min="0.5" max="12.0" step="0.1" value="1.0">
-                <span id="scale-slider-val" class="val-display">1.0</span>
+                <input type="range" id="scale-slider" min="0.5" max="12.0" step="0.1" value="8.0">
+                <span id="scale-slider-val" class="val-display">8.0</span>
             </div>
             <div class="slider-container">
                 <span class="slider-label">高さ</span>
-                <input type="range" id="y-slider" min="-2.0" max="2.0" step="0.1" value="0.0">
-                <span id="y-slider-val" class="val-display">0.0</span>
+                <input type="range" id="y-slider" min="-2.0" max="2.0" step="0.05" value="0.2">
+                <span id="y-slider-val" class="val-display">0.2</span>
             </div>
             <div class="slider-container">
                 <span class="slider-label">前後</span>
-                <input type="range" id="z-slider" min="-2.0" max="2.0" step="0.1" value="0.0">
-                <span id="z-slider-val" class="val-display">0.0</span>
+                <input type="range" id="z-slider" min="-2.0" max="2.0" step="0.05" value="-1.0">
+                <span id="z-slider-val" class="val-display">-1.0</span>
             </div>
 
             <!-- マスキング設定 -->
@@ -1064,7 +1064,7 @@
                         if (isForced) {
                             // --- Lit Color (Base) の取得 ---
                             // VRM0: mat.color (or uniforms.color)
-                            // VRM1: mat.color (ThreeJS standard) ??
+                            // VRM1: mat.color (or uniforms.color)
                             // 安全のためバックアップから取得
                             let baseColor = new THREE.Color(1,1,1);
                             if (orig.color) baseColor.copy(orig.color);
