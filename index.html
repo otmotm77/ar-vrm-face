@@ -186,7 +186,7 @@
         .val-display {
             position: absolute;
             right: 0;
-            bottom: -4px; /* -8pxから-4pxに変更 */
+            bottom: -4px; 
             font-size: 9px;
             color: #666;
             font-family: monospace;
@@ -323,8 +323,6 @@
 </head>
 <body>
 
-    <div id="app-version">v5.10.0 (Updated Transform Defaults)</div>
-
     <div id="toast">設定を適用しました</div>
 
     <!-- AR専用コンテナ -->
@@ -335,10 +333,12 @@
         <p>カメラへのアクセスを許可してください</p>
         <button id="start-btn">カメラを開始</button>
         <div id="status-msg"></div>
+        <div id="app-version">v5.12.0 (Version on Start Screen)</div>
     </div>
 
     <div id="ui-container" style="display:none;">
         <div class="icon-buttons">
+            <button id="toggle-camera-btn" class="icon-btn" title="カメラ切替">📷</button>
             <button id="toggle-light-btn" class="icon-btn" title="照明・画質設定">💡</button>
             <button id="toggle-menu-btn" class="icon-btn" title="モデル・トラッキング設定">⚙️</button>
             <button id="toggle-fullscreen-btn" class="icon-btn" title="全画面表示切替">⛶</button>
@@ -568,6 +568,7 @@
         let appliedMinCF = 0.0005;
         let appliedBeta = 0.04;
         let currentFileName = "";
+        let currentFacingMode = 'user'; // カメラの向き (user / environment)
 
         let dirLight = null;
         let hemiLight = null;
@@ -745,6 +746,15 @@
                 document.documentElement.requestFullscreen().catch(e => console.error(e));
             } else {
                 if (document.exitFullscreen) document.exitFullscreen();
+            }
+        });
+
+        // カメラ切り替えボタンのイベント
+        document.getElementById('toggle-camera-btn').addEventListener('click', () => {
+            if (mindarThree) {
+                mindarThree.switchCamera();
+                currentFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
+                showToast(currentFacingMode === 'user' ? "インカメラに切り替えます" : "アウトカメラに切り替えます");
             }
         });
 
@@ -1176,7 +1186,10 @@
                 mindarThree = new MindARThree({
                     container: arContainer,
                     filterMinCF: appliedMinCF, 
-                    filterBeta: appliedBeta    
+                    filterBeta: appliedBeta,
+                    videoSettings: {
+                        facingMode: currentFacingMode
+                    }
                 });
 
                 const { renderer, scene, camera } = mindarThree;
