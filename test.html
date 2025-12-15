@@ -755,13 +755,6 @@
                 mindarThree.switchCamera();
                 currentFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
                 showToast(currentFacingMode === 'user' ? "インカメラに切り替えます" : "アウトカメラに切り替えます");
-
-                // レンズ一覧test
-                await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-                const devices = await navigator.mediaDevices.enumerateDevices(); // :contentReference[oaicite:7]{index=7}
-                const cams = devices.filter(d => d.kind === 'videoinput');
-                console.table(cams.map(c => ({ label: c.label, deviceId: c.deviceId, groupId: c.groupId })));
-            
             }
         });
 
