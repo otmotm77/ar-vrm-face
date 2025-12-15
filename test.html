@@ -323,8 +323,6 @@
 </head>
 <body>
 
-    <div id="app-version">v5.11.0 (Camera Toggle)</div>
-
     <div id="toast">設定を適用しました</div>
 
     <!-- AR専用コンテナ -->
@@ -335,6 +333,7 @@
         <p>カメラへのアクセスを許可してください</p>
         <button id="start-btn">カメラを開始</button>
         <div id="status-msg"></div>
+        <div id="app-version">v5.12.0 (Version on Start Screen)</div>
     </div>
 
     <div id="ui-container" style="display:none;">
@@ -752,9 +751,11 @@
 
         // カメラ切り替えボタンのイベント
         document.getElementById('toggle-camera-btn').addEventListener('click', () => {
-            currentFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
-            showToast(currentFacingMode === 'user' ? "インカメラに切り替えます" : "アウトカメラに切り替えます");
-            restartAR();
+            if (mindarThree) {
+                mindarThree.switchCamera();
+                currentFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
+                showToast(currentFacingMode === 'user' ? "インカメラに切り替えます" : "アウトカメラに切り替えます");
+            }
         });
 
         window.addEventListener('resize', () => {
