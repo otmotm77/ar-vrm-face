@@ -334,7 +334,7 @@
         <p>カメラへのアクセスを許可してください</p>
         <button id="start-btn">カメラを開始</button>
         <div id="status-msg"></div>
-        <div id="app-version">v5.12.0 (Version on Start Screen)</div>
+        <div id="app-version"></div>
     </div>
 
     <div id="ui-container" style="display:none;">
@@ -577,7 +577,21 @@
     <div id="loading">Initialize AR...</div>
 
     <script type="module">
-        import * as THREE from 'three';
+        
+// ===== App Version (single source of truth) =====
+const APP_VERSION = "v5.12.1";
+const APP_VERSION_NOTE = "breath-fix + debug";
+function setAppVersionLabel() {
+  const el = document.getElementById("app-version");
+  if (!el) return;
+  el.textContent = `${APP_VERSION} (${APP_VERSION_NOTE})`;
+}
+// ===============================================
+
+setAppVersionLabel();
+window.addEventListener('DOMContentLoaded', setAppVersionLabel);
+
+import * as THREE from 'three';
         import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
         import { VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm';
         // MediaPipe Tasks Vision (ESM via jsDelivr +esm)
@@ -1276,28 +1290,23 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
             breathParticles.add(sp);
         }
 
-        function updateBreathEffect(delta) {
-            // --- 2D overlay render ---
-            if (!breathOverlayCanvas || !breathOverlayCtx || !camera) return;
+                function updateBreathEffect(delta) {
+            // 2D overlay "breath" effect drawn on breathOverlayCanvas.
+            // Designed to be visible regardless of 3D depth/scale differences.
 
-            // Ensure correct size
-            const pr = renderer ? renderer.getPixelRatio() : (window.devicePixelRatio || 1);
-            const w = window.innerWidth;
-            const h = window.innerHeight;
-            const tw = Math.floor(w * pr);
-            const th = Math.floor(h * pr);
-            if (breathOverlayCanvas.width !== tw || breathOverlayCanvas.height !== th) {
-                breathOverlayCanvas.width = tw;
-                breathOverlayCanvas.height = th;
-                breathOverlayCanvas.style.width = '100%';
-                breathOverlayCanvas.style.height = '100%';
-            }
-            // Draw in CSS pixel coordinates
+            if (!breathOverlayCanvas || !breathOverlayCtx || !breathTexture) return;
+
+            // Keep overlay canvas in sync with displayCanvas (same pixel space as video)
+            const pr = window.devicePixelRatio || 1;
+            const w = breathOverlayCanvas.width / pr;
+            const h = breathOverlayCanvas.height / pr;
+            if (w <= 0 || h <= 0) return;
+
             breathOverlayCtx.setTransform(pr, 0, 0, pr, 0, 0);
             breathOverlayCtx.clearRect(0, 0, w, h);
 
-            // Update mouth screen position from 3D pose (even if tracking lost, pose is held)
-            if (breathEmitter && pivotGroup && pivotGroup.visible) {
+            // Update mouth screen position from 3D pose (pose is held even if tracking is lost)
+            if (breathEmitter && pivotGroup) {
                 const wp = new THREE.Vector3();
                 breathEmitter.getWorldPosition(wp);
                 const ndc = wp.project(camera);
@@ -1308,7 +1317,7 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
                 }
             }
 
-            // Update existing particles
+            // Update + draw existing particles
             const keep = [];
             for (const p of breathParticles2D) {
                 p.age += delta;
@@ -1317,24 +1326,35 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
 
                 p.x += p.vx * delta;
                 p.y += p.vy * delta;
-                p.vx *= (1 - 0.35 * delta);
-                p.vy *= (1 - 0.15 * delta);
+
+                // Gentle drift & damping
+                p.vx *= Math.pow(0.92, delta * 60);
+                p.vy *= Math.pow(0.94, delta * 60);
 
                 const size = p.s0 + (p.s1 - p.s0) * t;
-
-                const fadeIn = Math.min(1, t / 0.12);
+                const fadeIn = Math.min(1, t / 0.15);
                 const fadeOut = 1 - t;
                 const a = p.a0 * fadeIn * fadeOut;
 
                 breathOverlayCtx.globalAlpha = a;
-                breathOverlayCtx.drawImage(breathTexture.image, p.x - size / 2, p.y - size / 2, size, size);
+                // breathTexture.image is the backing canvas (from makeBreathTexture)
+                breathOverlayCtx.drawImage(
+                    breathTexture.image,
+                    p.x - size / 2,
+                    p.y - size / 2,
+                    size,
+                    size
+                );
 
                 keep.push(p);
             }
             breathOverlayCtx.globalAlpha = 1.0;
             breathParticles2D = keep;
 
-            // Emit new particles (only while face is actually visible to avoid "ghost breathing")
+            // Emit new particles only when:
+            // - option enabled
+            // - mouth position is known
+            // - face is currently visible (prevents "ghost breathing" when tracking is lost)
             if (!isBreathEnabled || !lastMouthScreenValid || !lastFaceVisibleNow) {
                 if (breathDebugEnabled && breathDebugEl) {
                     breathDebugEl.textContent =
@@ -1344,7 +1364,9 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
 ` +
                         `faceVisible: ${lastFaceVisibleNow}
 ` +
-                        `particles: ${breathParticles2D.length}`;
+                        `particles: ${breathParticles2D.length}
+` +
+                        `emit: off`;
                 }
                 return;
             }
@@ -1369,7 +1391,7 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
             const rate = 38 * m * breathStrength; // particles/sec
             breathEmitAcc += rate * delta;
 
-            const maxAdd = 8; // cap per frame to stay light
+            const maxAdd = 10; // cap per frame
             let added = 0;
             while (breathEmitAcc >= 1.0 && added < maxAdd) {
                 breathEmitAcc -= 1.0;
@@ -1379,7 +1401,7 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
                 const s0 = (8 + Math.random() * 10) * (0.7 + breathStrength * 0.3);
                 const s1 = s0 * (2.0 + Math.random() * 1.4);
 
-                // Spread slightly; "breath" floats upward
+                // Breath: slight sideways spread + upward drift (screen coords: +y is down)
                 const vx = (Math.random() - 0.5) * (90 + 60 * breathStrength);
                 const vy = -(120 + Math.random() * 140) * (0.7 + 0.3 * breathStrength);
 
@@ -1392,7 +1414,8 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
                     s0, s1,
                     a0: 0.9
                 });
-                if (breathParticles2D.length > 120) breathParticles2D.shift();
+
+                if (breathParticles2D.length > 140) breathParticles2D.shift();
             }
 
             if (breathDebugEnabled && breathDebugEl) {
@@ -1405,31 +1428,9 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
 ` +
                     `particles: ${breathParticles2D.length}
 ` +
-                    `emitRate: ${(rate).toFixed(1)}/s`;
+                    `emitRate: ${rate.toFixed(1)}/s`;
             }
         }
-
-                sp.position.addScaledVector(ud.vel, delta);
-                sp.scale.setScalar(ud.s0 + (ud.s1 - ud.s0) * t);
-
-                const fadeIn = Math.min(1, t / 0.15);
-                const fadeOut = 1 - t;
-                sp.material.opacity = 0.85 * fadeIn * fadeOut;
-            }
-
-            if (!isBreathEnabled) return;
-
-            const m = Math.max(0, lastMouthOpenForEffects - BREATH_THRESHOLD);
-            if (m <= 0) return;
-
-            const rate = 28 * m * breathStrength; // particles/sec
-            breathEmitAcc += rate * delta;
-            while (breathEmitAcc >= 1.0) {
-                spawnBreathParticle();
-                breathEmitAcc -= 1.0;
-            }
-        }
-
 
         function ensureDisplayCanvasSize() {
             if (!videoEl || !displayCanvas) return;
