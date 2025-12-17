@@ -603,7 +603,7 @@
 
         let isAutoBlink = true;
         let blinkTimer = 0;
-        let nextBlinkTime = getRandomBlinkTime();
+        let nextBlinkTime = 0;
         let blinkState = 0; 
         let blinkDuration = 0.15; 
 
@@ -615,7 +615,10 @@
         }
 
 
-        let lightRelativePos = new THREE.Vector3(1, 1, 1);
+        
+	        // Initialize next blink time after constants are defined
+	        nextBlinkTime = getRandomBlinkTime();
+let lightRelativePos = new THREE.Vector3(1, 1, 1);
         // --- Device tilt (for rotation-locked capture) ---
         function computeInputRotationDeg(beta, gamma) {
             const b = (typeof beta === 'number') ? beta : 0;
