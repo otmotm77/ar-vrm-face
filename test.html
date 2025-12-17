@@ -603,9 +603,17 @@
 
         let isAutoBlink = true;
         let blinkTimer = 0;
-        let nextBlinkTime = 3.0;
+        let nextBlinkTime = getRandomBlinkTime();
         let blinkState = 0; 
         let blinkDuration = 0.15; 
+
+        // --- Blink timing helper ---
+        const BLINK_INTERVAL_MIN = 2.0;   // seconds
+        const BLINK_INTERVAL_MAX = 5.0;   // seconds
+        function getRandomBlinkTime() {
+            return BLINK_INTERVAL_MIN + Math.random() * (BLINK_INTERVAL_MAX - BLINK_INTERVAL_MIN);
+        }
+
 
         let lightRelativePos = new THREE.Vector3(1, 1, 1);
         // --- Device tilt (for rotation-locked capture) ---
