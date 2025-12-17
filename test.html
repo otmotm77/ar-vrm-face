@@ -579,8 +579,8 @@
     <script type="module">
         
 // ===== App Version (single source of truth) =====
-const APP_VERSION = "v5.12.1";
-const APP_VERSION_NOTE = "breath-fix + debug";
+const APP_VERSION = "v5.12.2";
+const APP_VERSION_NOTE = "breath-center+diffuse";
 function setAppVersionLabel() {
   const el = document.getElementById("app-version");
   if (!el) return;
@@ -1404,6 +1404,11 @@ function updateBreathEffect(delta) {
                 p.x += p.vx * delta;
                 p.y += p.vy * delta;
 
+                // Turbulence (diffusion)
+                const turb = 35 * (0.7 + 0.3 * breathStrength);
+                p.vx += (Math.random() - 0.5) * turb * delta;
+                p.vy += (Math.random() - 0.5) * turb * delta;
+
                 // Gentle drift & damping
                 p.vx *= Math.pow(0.92, delta * 60);
                 p.vy *= Math.pow(0.94, delta * 60);
@@ -1486,9 +1491,13 @@ function updateBreathEffect(delta) {
                 const s0 = (8 + Math.random() * 10) * (0.7 + breathStrength * 0.3);
                 const s1 = s0 * (2.0 + Math.random() * 1.4);
 
-                // Breath: slight sideways spread + upward drift (screen coords: +y is down)
-                const vx = (Math.random() - 0.5) * (90 + 60 * breathStrength);
-                const vy = -(120 + Math.random() * 140) * (0.7 + 0.3 * breathStrength);
+                // Breath: diffuse around mouth with gentle turbulence (screen coords: +y is down)
+                const ang = Math.random() * Math.PI * 2;
+                const spd = (25 + Math.random() * 55) * (0.7 + 0.3 * breathStrength);
+                let vx = Math.cos(ang) * spd;
+                let vy = Math.sin(ang) * spd;
+                // slight upward bias (negative y)
+                vy -= (18 + Math.random() * 22) * (0.7 + 0.3 * breathStrength);
 
                 breathParticles2D.push({
                     x: lastMouthScreenX + (Math.random() - 0.5) * 10,
@@ -2036,7 +2045,8 @@ function updateBreathEffect(delta) {
                                 latestMouthOpenFromLandmarks = Math.min(0.5, Math.max(0, mouthO / mouthW));
                             
                                 // Mouth center (normalized) in MediaPipe input space
-                                const mx = (up.x + lo.x) * 0.5;
+                                // Use corners for X (more stable) and inner lips for Y.
+                                const mx = (lc.x + rc.x) * 0.5;
                                 const my = (up.y + lo.y) * 0.5;
 
                                 // Convert to ORIGINAL video space (undo analysis rotation)
