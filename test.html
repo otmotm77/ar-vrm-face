@@ -593,6 +593,8 @@
         let mirrorEnabled = true; // デフォルト: インカメはミラー
         let mirrorUserOverride = false; // 手動切替したら自動追従しない
 
+        const holdLastPoseOnLost = true; // 顔認識が外れても最後の姿勢・表情を保持
+
         let dirLight = null;
         let hemiLight = null;
         let lightHelper = null; 
@@ -1469,7 +1471,7 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
 
                     // Face detection
                     isFaceVisible = false;
-                    latestBlendshapeMap = new Map();
+                    // keep last blendshapes when tracking is lost
 
                     if (faceLandmarker && videoEl.readyState >= 2) {
                         const res = faceLandmarker.detectForVideo(mpInput, performance.now());
@@ -1482,14 +1484,15 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
                             worldMatrix.scale(new THREE.Vector3(baseScale, baseScale, baseScale));
 
                             if (inputRotationDeg !== 0) {
-                                rotComp.makeRotationZ(THREE.MathUtils.degToRad(-inputRotationDeg));
+                                rotComp.makeRotationZ(THREE.MathUtils.degToRad(inputRotationDeg));
                                 worldMatrix.premultiply(rotComp);
                             }
 
                             pivotGroup.matrix.copy(worldMatrix);
                             if (!pivotGroup.visible) pivotGroup.visible = true;
                         } else {
-                            pivotGroup.visible = false;
+                            // tracking lost: keep last pose visible
+                            // (do nothing)
                         }
 
                         const bss = res && res.faceBlendshapes;
@@ -1499,7 +1502,7 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
                             }
                         }
                     } else {
-                        pivotGroup.visible = false;
+                        // detector not ready: keep last pose visible
                     }
 
                     // Light follows pivot
@@ -1515,7 +1518,7 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
 
                     if (currentVrm) {
                         currentVrm.update(delta);
-                        updateExpressionsFromFaceMesh(currentVrm, delta, isFaceVisible);
+                        updateExpressionsFromFaceMesh(currentVrm, delta, isFaceVisible || holdLastPoseOnLost);
 
                         if (currentVrm.lookAt) {
                             // keep existing lookAt behavior if any
