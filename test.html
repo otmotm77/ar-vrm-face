@@ -558,7 +558,8 @@
         import * as THREE from 'three';
         import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
         import { VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm';
-        import vision from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest";
+        // MediaPipe Tasks Vision (ESM via jsDelivr +esm)
+        const vision = await import("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/+esm");
         const { FaceLandmarker, FilesetResolver } = vision;
 
         let renderer = null;
