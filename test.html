@@ -1290,7 +1290,22 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
             breathParticles.add(sp);
         }
 
-                function updateBreathEffect(delta) {
+                
+        function resizeBreathOverlayCanvas() {
+            if (!breathOverlayCanvas) return;
+            const pr = Math.min(window.devicePixelRatio || 1, 2);
+            const w = Math.max(1, Math.floor(window.innerWidth * pr));
+            const h = Math.max(1, Math.floor(window.innerHeight * pr));
+            if (breathOverlayCanvas.width !== w || breathOverlayCanvas.height !== h) {
+                breathOverlayCanvas.width = w;
+                breathOverlayCanvas.height = h;
+            }
+            // Keep CSS sizing to cover the viewport
+            breathOverlayCanvas.style.width = '100%';
+            breathOverlayCanvas.style.height = '100%';
+        }
+
+function updateBreathEffect(delta) {
             // 2D overlay "breath" effect drawn on breathOverlayCanvas.
             // Designed to be visible regardless of 3D depth/scale differences.
 
@@ -1305,7 +1320,10 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
             breathOverlayCtx.setTransform(pr, 0, 0, pr, 0, 0);
             breathOverlayCtx.clearRect(0, 0, w, h);
 
-            // Update mouth screen position from 3D pose (pose is held even if tracking is lost)
+            
+            breathOverlayCtx.globalCompositeOperation = 'source-over';
+            breathOverlayCtx.filter = 'none';
+// Update mouth screen position from 3D pose (pose is held even if tracking is lost)
             if (breathEmitter && pivotGroup) {
                 const wp = new THREE.Vector3();
                 breathEmitter.getWorldPosition(wp);
@@ -1364,6 +1382,10 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
 ` +
                         `faceVisible: ${lastFaceVisibleNow}
 ` +
+                        `mouthXY(px): ${lastMouthScreenX.toFixed(1)},${lastMouthScreenY.toFixed(1)}
+` +
+                        `canvas(css): ${w.toFixed(0)}x${h.toFixed(0)} (pr:${(window.devicePixelRatio||1).toFixed(2)})
+` +
                         `particles: ${breathParticles2D.length}
 ` +
                         `emit: off`;
@@ -1380,6 +1402,10 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
                         `mouth(landmark): ${latestMouthOpenFromLandmarks.toFixed(3)}
 ` +
                         `faceVisible: ${lastFaceVisibleNow}
+` +
+                        `mouthXY(px): ${lastMouthScreenX.toFixed(1)},${lastMouthScreenY.toFixed(1)}
+` +
+                        `canvas(css): ${w.toFixed(0)}x${h.toFixed(0)} (pr:${(window.devicePixelRatio||1).toFixed(2)})
 ` +
                         `particles: ${breathParticles2D.length}
 ` +
@@ -1739,8 +1765,10 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
                 breathOverlayCanvas.style.width = '100%';
                 breathOverlayCanvas.style.height = '100%';
                 breathOverlayCanvas.style.pointerEvents = 'none';
-                breathOverlayCanvas.style.zIndex = '5';
+                breathOverlayCanvas.style.zIndex = '100';
+                breathOverlayCanvas.style.transformOrigin = '50% 50%';
                 arContainer.appendChild(breathOverlayCanvas);
+                resizeBreathOverlayCanvas();
                 breathOverlayCtx = breathOverlayCanvas.getContext('2d');
 
                 applyMirrorToRenderer();
