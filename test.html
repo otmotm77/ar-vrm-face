@@ -593,7 +593,7 @@ window.addEventListener('DOMContentLoaded', setAppVersionLabel);
 
 import * as THREE from 'three';
         import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-        import { VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm';
+        import { VRMLoaderPlugin, VRMUtils, VRMSchema } from '@pixiv/three-vrm';
         // MediaPipe Tasks Vision (ESM via jsDelivr +esm)
         const vision = await import("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/+esm");
         const { FaceLandmarker, FilesetResolver } = vision;
@@ -1285,13 +1285,60 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
         }
 
         function updateBreathEmitterFromVRM(vrm) {
-            if (!breathEmitter || !vrm || !vrm.scene) return;
+            if (!breathEmitter || !vrm) return;
 
-            const box = new THREE.Box3().setFromObject(vrm.scene);
-            if (box.isEmpty()) {
-                breathEmitter.position.set(0, -0.12, 0.18);
-                return;
+            // detach from previous parent
+            if (breathEmitter.parent) {
+                breathEmitter.parent.remove(breathEmitter);
             }
+
+            // Helpers to get humanoid bones (normalized preferred)
+            const humanoid = vrm.humanoid;
+            const getBone = (name) => {
+                try {
+                    return humanoid?.getNormalizedBoneNode?.(name)
+                        || humanoid?.getRawBoneNode?.(name)
+                        || humanoid?.getBoneNode?.(name)
+                        || null;
+                } catch (_) { return null; }
+            };
+
+            const head = getBone(VRMSchema?.HumanoidBoneName?.Head ?? 'head');
+            const neck = getBone(VRMSchema?.HumanoidBoneName?.Neck ?? 'neck');
+            const jaw  = getBone(VRMSchema?.HumanoidBoneName?.Jaw  ?? 'jaw');
+
+            // Estimate a "head unit" in world space to scale offsets robustly
+            let unit = 0.12;
+            try {
+                if (head && neck) {
+                    const ph = new THREE.Vector3();
+                    const pn = new THREE.Vector3();
+                    head.getWorldPosition(ph);
+                    neck.getWorldPosition(pn);
+                    const d = ph.distanceTo(pn);
+                    if (Number.isFinite(d) && d > 0.001) unit = d;
+                }
+            } catch (_) {}
+
+            // Prefer attaching to Jaw if present; else Head; else fallback to adjustmentGroup
+            const attach = jaw || head;
+            if (attach) {
+                attach.add(breathEmitter);
+
+                // Offsets in attach-local space
+                if (jaw) {
+                    // Slightly forward and a bit up from jaw pivot
+                    breathEmitter.position.set(0, unit * 0.10, unit * 0.22);
+                } else {
+                    // From head pivot: down towards mouth + forward
+                    breathEmitter.position.set(0, -unit * 0.55, unit * 0.85);
+                }
+            } else {
+                // fallback: roughly mouth-ish in adjustmentGroup local space
+                adjustmentGroup.add(breathEmitter);
+                breathEmitter.position.set(0, -0.12, 0.18);
+            }
+        }
             const size = new THREE.Vector3();
             box.getSize(size);
 
@@ -1389,7 +1436,7 @@ function updateBreathEffect(delta) {
             if (breathEmitter && camera) {
                 breathTmpV.setFromMatrixPosition(breathEmitter.matrixWorld);
                 breathTmpV.project(camera);
-                if (Number.isFinite(breathTmpV.x) && Number.isFinite(breathTmpV.y)) {
+                if (Number.isFinite(breathTmpV.x) && Number.isFinite(breathTmpV.y) && Number.isFinite(breathTmpV.z) && breathTmpV.z >= 0 && breathTmpV.z <= 1) {
                     // Draw space is CSS pixels (we setTransform(pr,...)), so use w/h (not canvas.width)
                     lastMouthScreenX = (breathTmpV.x * 0.5 + 0.5) * w;
                     lastMouthScreenY = (-breathTmpV.y * 0.5 + 0.5) * h;
