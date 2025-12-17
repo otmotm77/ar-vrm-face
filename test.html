@@ -340,6 +340,7 @@
     <div id="ui-container" style="display:none;">
         <div class="icon-buttons">
             <button id="toggle-camera-btn" class="icon-btn" title="カメラ切替">📷</button>
+            <button id="toggle-mirror-btn" class="icon-btn" title="ミラー表示切替">🪞</button>
             <button id="toggle-light-btn" class="icon-btn" title="照明・画質設定">💡</button>
             <button id="toggle-menu-btn" class="icon-btn" title="モデル・トラッキング設定">⚙️</button>
             <button id="toggle-fullscreen-btn" class="icon-btn" title="全画面表示切替">⛶</button>
@@ -589,6 +590,8 @@
         let appliedBeta = 0.04;
         let currentFileName = "";
         let currentFacingMode = 'user'; // カメラの向き (user / environment)
+        let mirrorEnabled = true; // デフォルト: インカメはミラー
+        let mirrorUserOverride = false; // 手動切替したら自動追従しない
 
         let dirLight = null;
         let hemiLight = null;
@@ -625,7 +628,7 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
             const g = (typeof gamma === 'number') ? gamma : 0;
 
             // Sideways (landscape) while screen is locked portrait
-            if (Math.abs(g) > 45) return g > 0 ? 90 : -90;
+            if (Math.abs(g) > 45) return g > 0 ? -90 : 90; // invert to match camera frame direction
 
             // Upside-down portrait
             if (Math.abs(b) > 135) return 180;
@@ -808,11 +811,23 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
             }
         });
 
-        // カメラ切り替えボタンのイベント
+        // ミラー表示切り替えボタンのイベント
+        document.getElementById('toggle-mirror-btn').addEventListener('click', () => {
+            mirrorEnabled = !mirrorEnabled;
+            mirrorUserOverride = true;
+            applyMirrorToRenderer();
+            showToast(mirrorEnabled ? 'ミラー表示: ON' : 'ミラー表示: OFF');
+        });
+
+// カメラ切り替えボタンのイベント
         document.getElementById('toggle-camera-btn').addEventListener('click', async () => {
             if (!videoEl) return;
             currentFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
             showToast(currentFacingMode === 'user' ? "インカメラに切り替えます" : "アウトカメラに切り替えます");
+            if (!mirrorUserOverride) {
+                mirrorEnabled = (currentFacingMode === 'user');
+            }
+            applyMirrorToRenderer();
 
             try {
                 if (stream) {
@@ -873,6 +888,17 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
             toast.textContent = message;
             toast.className = "show";
             setTimeout(function(){ toast.className = toast.className.replace("show", ""); }, 3000);
+        }
+
+
+        function applyMirrorToRenderer() {
+            // Mirror only the final rendered output (video plane + VRM overlay)
+            // so detection math can remain unchanged.
+            if (!renderer || !renderer.domElement) return;
+
+            const sx = mirrorEnabled ? -1 : 1;
+            renderer.domElement.style.transform = `scaleX(${sx})`;
+            renderer.domElement.style.transformOrigin = 'center center';
         }
 
         function saveSettings() {
@@ -1319,6 +1345,8 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
                 renderer.domElement.style.height = '100%';
 
                 if (arContainer) arContainer.appendChild(renderer.domElement);
+
+                applyMirrorToRenderer();
 
                 // Video background plane
                 bgPlaneDepth = 500
