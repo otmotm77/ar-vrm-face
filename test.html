@@ -327,6 +327,7 @@
 
     <!-- AR専用コンテナ -->
     <div id="ar-container"></div>
+    <video id="video" autoplay playsinline muted style="display:none;"></video>
 
     <div id="start-screen">
         <h2>VRM Face AR</h2>
@@ -557,11 +558,29 @@
         import * as THREE from 'three';
         import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
         import { VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm';
-        import { MindARThree } from 'mindar-face-three';
+        import vision from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest";
+        const { FaceLandmarker, FilesetResolver } = vision;
 
-        let mindarThree = null;
+        let renderer = null;
+        let scene = null;
+        let camera = null;
+        let videoEl = null;
+        let stream = null;
+        let bgPlane = null;
+        let bgPlaneDepth = 500;
+
+        let faceLandmarker = null;
+        let latestBlendshapeMap = new Map();
+        let isFaceVisible = false;
+
+        const mpOffscreenCanvas = document.createElement('canvas');
+        const mpOffscreenCtx = mpOffscreenCanvas.getContext('2d', { willReadFrequently: false });
+
+        let deviceGamma = 0;
+        let deviceBeta = 0;
+        let inputRotationDeg = 0;
+
         let currentVrm = null;
-        let anchorGroup;
         let pivotGroup;       
         let adjustmentGroup;  
         
@@ -588,6 +607,34 @@
         let blinkDuration = 0.15; 
 
         let lightRelativePos = new THREE.Vector3(1, 1, 1);
+        // --- Device tilt (for rotation-locked capture) ---
+        function computeInputRotationDeg(beta, gamma) {
+            const b = (typeof beta === 'number') ? beta : 0;
+            const g = (typeof gamma === 'number') ? gamma : 0;
+
+            // Sideways (landscape) while screen is locked portrait
+            if (Math.abs(g) > 45) return g > 0 ? 90 : -90;
+
+            // Upside-down portrait
+            if (Math.abs(b) > 135) return 180;
+
+            return 0;
+        }
+
+        function onDeviceOrientation(e) {
+            if (typeof e.gamma === 'number') deviceGamma = e.gamma;
+            if (typeof e.beta === 'number') deviceBeta = e.beta;
+        }
+        window.addEventListener('deviceorientation', onDeviceOrientation, { passive: true });
+
+        async function requestDeviceOrientationPermissionIfNeeded() {
+            // iOS 13+ requires a permission prompt
+            if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+                const r = await DeviceOrientationEvent.requestPermission();
+                if (r !== 'granted') throw new Error('DeviceOrientation permission denied');
+            }
+        }
+
 
         const startScreen = document.getElementById('start-screen');
         const startBtn = document.getElementById('start-btn');
@@ -750,30 +797,53 @@
         });
 
         // カメラ切り替えボタンのイベント
-        document.getElementById('toggle-camera-btn').addEventListener('click', () => {
-            if (mindarThree) {
-                mindarThree.switchCamera();
-                currentFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
-                showToast(currentFacingMode === 'user' ? "インカメラに切り替えます" : "アウトカメラに切り替えます");
+        document.getElementById('toggle-camera-btn').addEventListener('click', async () => {
+            if (!videoEl) return;
+            currentFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
+            showToast(currentFacingMode === 'user' ? "インカメラに切り替えます" : "アウトカメラに切り替えます");
+
+            try {
+                if (stream) {
+                    stream.getTracks().forEach(t => t.stop());
+                    stream = null;
+                }
+                stream = await navigator.mediaDevices.getUserMedia({
+                    audio: false,
+                    video: { facingMode: currentFacingMode, width: { ideal: 1280 }, height: { ideal: 720 } }
+                });
+                videoEl.srcObject = stream;
+                await videoEl.play();
+            } catch (e) {
+                console.error(e);
+                showToast("カメラ切り替えに失敗しました");
             }
         });
 
         window.addEventListener('resize', () => {
-            if (mindarThree) {
-                const { renderer, camera } = mindarThree;
-                if(renderer) {
-                    renderer.setSize(window.innerWidth, window.innerHeight);
-                }
-                if(camera) {
-                    camera.aspect = window.innerWidth / window.innerHeight;
-                    camera.updateProjectionMatrix();
-                }
+            if (!renderer || !camera) return;
+
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+
+            renderer.setSize(window.innerWidth, window.innerHeight);
+
+            if (bgPlane) {
+                // Rebuild background plane geometry to fit new viewport
+                const depth = bgPlaneDepth || 500;
+                const viewportHeightAtDepth = 2 * depth * Math.tan(THREE.MathUtils.degToRad(0.5 * camera.fov));
+                const viewportWidthAtDepth = viewportHeightAtDepth * camera.aspect;
+
+                bgPlane.geometry.dispose();
+                const geom = new THREE.PlaneGeometry(viewportWidthAtDepth, viewportHeightAtDepth);
+                geom.translate(0, 0, -depth);
+                bgPlane.geometry = geom;
             }
         });
 
         startBtn.addEventListener('click', async () => {
             startBtn.disabled = true;
             statusMsg.textContent = "カメラを起動中...";
+            try { await requestDeviceOrientationPermissionIfNeeded(); } catch(_) {}
             await startAR();
         });
 
@@ -1129,224 +1199,302 @@
         async function restartAR() {
             loadingText.style.display = 'block';
             loadingText.textContent = "Restarting AR...";
-            
-            if (mindarThree) {
-                try {
-                    const videos = document.querySelectorAll('video');
-                    videos.forEach(v => {
-                        if (v.srcObject) {
-                            const tracks = v.srcObject.getTracks();
-                            tracks.forEach(track => {
-                                track.stop();
-                                v.srcObject.removeTrack(track);
-                            });
-                            v.srcObject = null;
-                        }
-                        v.remove();
-                    });
 
-                    mindarThree.stop();
-                    mindarThree.renderer.setAnimationLoop(null);
-                    mindarThree.renderer.dispose();
-                    mindarThree.renderer.forceContextLoss();
-                } catch(e) {
-                    console.log("Cleanup warning:", e);
+            try {
+                // Stop camera stream
+                if (stream) {
+                    stream.getTracks().forEach(t => t.stop());
+                    stream = null;
                 }
-                
-                mindarThree = null;
-                faceMesh = null;
+                if (videoEl) {
+                    videoEl.pause();
+                    videoEl.srcObject = null;
+                }
+
+                // Dispose renderer
+                if (renderer) {
+                    renderer.setAnimationLoop(null);
+                    renderer.dispose();
+                    try { renderer.forceContextLoss(); } catch(_) {}
+                    if (renderer.domElement && renderer.domElement.parentElement) {
+                        renderer.domElement.parentElement.removeChild(renderer.domElement);
+                    }
+                }
+
+                renderer = null;
+                bgPlane = null;
+                scene = null;
+                camera = null;
+
                 dirLight = null;
                 hemiLight = null;
                 lightHelper = null;
                 occluderGroup = null;
-                adjustmentGroup = null; 
-                pivotGroup = null;      
-                if(arContainer) {
-                    arContainer.innerHTML = '';
-                }
+                adjustmentGroup = null;
+                pivotGroup = null;
+
+                if (arContainer) arContainer.innerHTML = '';
+            } catch (e) {
+                console.log("Cleanup warning:", e);
             }
 
             return new Promise(resolve => {
                 setTimeout(async () => {
                     await startAR(true);
                     resolve();
-                }, 2000); 
+                }, 600);
             });
         }
 
         async function startAR(isRestart = false) {
             let startTimeout;
-            
+
             try {
                 appliedMinCF = parseFloat(minCfSlider.value);
                 appliedBeta = parseFloat(betaSlider.value);
 
-                console.log(`Starting AR -> MinCF:${appliedMinCF}, Beta:${appliedBeta}`);
+                console.log(`Starting AR (MediaPipe) -> Facing:${currentFacingMode}`);
 
-                mindarThree = new MindARThree({
-                    container: arContainer,
-                    filterMinCF: appliedMinCF, 
-                    filterBeta: appliedBeta,
-                    videoSettings: {
-                        facingMode: currentFacingMode
+                // Prepare video element
+                videoEl = document.getElementById('video');
+                if (!videoEl) {
+                    throw new Error("video element (#video) not found");
+                }
+
+                // Start camera (with a timeout)
+                startTimeout = setTimeout(() => {
+                    throw new Error("カメラの起動がタイムアウトしました。権限/他アプリ使用中/HTTPS を確認してください。");
+                }, 20000);
+
+                if (stream) {
+                    stream.getTracks().forEach(t => t.stop());
+                    stream = null;
+                }
+
+                stream = await navigator.mediaDevices.getUserMedia({
+                    audio: false,
+                    video: {
+                        facingMode: currentFacingMode,
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 }
                     }
                 });
 
-                const { renderer, scene, camera } = mindarThree;
-                
+                videoEl.srcObject = stream;
+                await new Promise(resolve => {
+                    videoEl.onloadedmetadata = () => resolve();
+                });
+                await videoEl.play();
+
+                clearTimeout(startTimeout);
+
+                // --- Three.js scene setup ---
+                if (arContainer) arContainer.innerHTML = '';
+
+                scene = new THREE.Scene();
+                camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.01, 5000);
+                camera.position.set(0, 0, 0);
+
+                renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
                 renderer.outputColorSpace = THREE.SRGBColorSpace;
                 renderer.toneMapping = THREE.LinearToneMapping;
+                renderer.setSize(window.innerWidth, window.innerHeight);
+                renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+                renderer.domElement.style.position = 'absolute';
+                renderer.domElement.style.top = '0';
+                renderer.domElement.style.left = '0';
+                renderer.domElement.style.width = '100%';
+                renderer.domElement.style.height = '100%';
+
+                if (arContainer) arContainer.appendChild(renderer.domElement);
+
+                // Video background plane
+                bgPlaneDepth = 500
+                const inputFramesDepth = bgPlaneDepth;
+                function getViewportSizeAtDepth(depth) {
+                    const viewportHeightAtDepth = 2 * depth * Math.tan(THREE.MathUtils.degToRad(0.5 * camera.fov));
+                    const viewportWidthAtDepth = viewportHeightAtDepth * camera.aspect;
+                    return { width: viewportWidthAtDepth, height: viewportHeightAtDepth };
+                }
+                function createCameraPlaneMesh(depth, material) {
+                    const size = getViewportSizeAtDepth(depth);
+                    const geom = new THREE.PlaneGeometry(size.width, size.height);
+                    geom.translate(0, 0, -depth);
+                    return new THREE.Mesh(geom, material);
+                }
+
+                const videoTexture = new THREE.VideoTexture(videoEl);
+                videoTexture.colorSpace = THREE.SRGBColorSpace;
+                bgPlane = createCameraPlaneMesh(inputFramesDepth, new THREE.MeshBasicMaterial({ map: videoTexture }));
+                bgPlane.renderOrder = -1000;
+                scene.add(bgPlane);
 
                 hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444);
                 hemiLight.position.set(0, 1, 0);
                 scene.add(hemiLight);
 
-                const anchor = mindarThree.addAnchor(1);
-                anchorGroup = anchor.group; 
-
-                pivotGroup = new THREE.Group();
-                pivotGroup.visible = false; 
-                scene.add(pivotGroup);
-
-                adjustmentGroup = new THREE.Group();
-                pivotGroup.add(adjustmentGroup);
-
-                occluderGroup = new THREE.Group();
-                const occMat = new THREE.MeshBasicMaterial({ colorWrite: false });
-                
-                // --- "New"形状（アーチ型/チューブ）の作成 ---
-                // TorusGeometry(radius, tube, radialSegments, tubularSegments, arc)
-                // 半径1.0、チューブ半径0.4、滑らかさ優先
-                const torusGeom = new THREE.TorusGeometry(1.0, 0.4, 16, 64, Math.PI);
-                const mesh = new THREE.Mesh(torusGeom, occMat);
-                mesh.name = 'occluder-mesh';
-                
-                // 上から見てアーチ型になるように回転
-                // TorusGeometryはデフォルトでXY平面に作成されるため、X軸で90度回転させてXZ平面（水平）にする
-                mesh.rotation.x = Math.PI / 2; 
-                // 凸方向を調整 (必要ならZ軸回転で向きを変える)
-                mesh.rotation.z = Math.PI;
-
-                occluderGroup.add(mesh);
-                occluderGroup.renderOrder = 0;
-                adjustmentGroup.add(occluderGroup);
-                updateOccluder(); 
-
                 dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
+                dirLight.position.set(0, 1, 1);
                 scene.add(dirLight);
                 scene.add(dirLight.target);
 
-                lightHelper = new THREE.DirectionalLightHelper(dirLight, 1.0);
-                lightHelper.visible = occlusionDebugToggle.checked; 
+                lightHelper = new THREE.DirectionalLightHelper(dirLight, 0.3);
+                lightHelper.visible = occlusionDebugToggle.checked;
                 scene.add(lightHelper);
 
                 updateLight();
 
-                faceMesh = mindarThree.addFaceMesh();
-                faceMesh.visible = false;
+                // Root group for face pose
+                pivotGroup = new THREE.Group();
+                pivotGroup.visible = false;
+                pivotGroup.matrixAutoUpdate = false;
+                scene.add(pivotGroup);
 
-                if (currentVrm) {
-                    currentVrm.scene.traverse(o => {
-                        if(o.isMesh) o.renderOrder = 1; 
-                    });
-                    
-                    backupMaterialSettings(currentVrm);
-                    updateMaterialSettings(currentVrm);
+                // User adjustment group
+                adjustmentGroup = new THREE.Group();
+                pivotGroup.add(adjustmentGroup);
+                updateTransform();
 
+                // --- Occluder (mask) ---
+                occluderGroup = new THREE.Group();
+                const occMat = new THREE.MeshBasicMaterial({ colorWrite: false });
+                const torusGeom = new THREE.TorusGeometry(1.0, 0.4, 16, 64, Math.PI);
+                const occMesh = new THREE.Mesh(torusGeom, occMat);
+                occMesh.name = 'occluder-mesh';
+                occMesh.rotation.x = Math.PI / 2;
+                occMesh.rotation.z = Math.PI;
+                occluderGroup.add(occMesh);
+                occluderGroup.renderOrder = 0;
+                adjustmentGroup.add(occluderGroup);
+                updateOccluder();
+
+                // If VRM is already loaded, attach it
+                if (currentVrm && currentVrm.scene && adjustmentGroup) {
                     adjustmentGroup.add(currentVrm.scene);
-                    updateTransform(); 
                 }
 
-                startTimeout = setTimeout(() => {
-                    if (loadingText.style.display !== 'none') {
-                        let msg = "起動がタイムアウトしました。\nブラウザをリロードするか、再試行してください。";
-                        statusMsg.textContent = msg;
-                        statusMsg.style.color = "#ff6b6b";
-                        startBtn.disabled = false;
-                        startBtn.textContent = "再試行";
-                        loadingText.style.display = 'none';
-                        showToast(msg);
-                    }
-                }, 20000); 
+                // --- MediaPipe FaceLandmarker init ---
+                const filesetResolver = await FilesetResolver.forVisionTasks(
+                    "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm"
+                );
 
-                await mindarThree.start();
-                
-                clearTimeout(startTimeout);
-                
-                startScreen.style.display = 'none';
-                loadingText.style.display = 'none';
-                uiContainer.style.display = 'block';
-                
-                // --- 設定パネルを自動的に開く ---
-                controlPanel.style.display = 'block';
-                
-                updateCameraFilter();
-                updateVRMFilter();
+                faceLandmarker = await FaceLandmarker.createFromModelPath(
+                    filesetResolver,
+                    "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/latest/face_landmarker.task"
+                );
 
+                await faceLandmarker.setOptions({
+                    baseOptions: { delegate: "GPU" },
+                    runningMode: "VIDEO",
+                    numFaces: 1,
+                    outputFaceBlendshapes: true,
+                    outputFacialTransformationMatrixes: true
+                });
+
+                // --- Render loop ---
                 const clock = new THREE.Clock();
+                const lightRelativePos = new THREE.Vector3(0, 0.5, 1);
 
-                const worldPos = new THREE.Vector3();
-                const worldQuat = new THREE.Quaternion();
-                const worldScale = new THREE.Vector3();
-                const occluderInverseQuat = new THREE.Quaternion();
+                const worldMatrix = new THREE.Matrix4();
+                const rotComp = new THREE.Matrix4();
+                const baseScale = 40;
 
                 renderer.setAnimationLoop(() => {
                     const delta = clock.getDelta();
 
-                    if (anchorGroup.visible) {
-                        anchorGroup.getWorldPosition(worldPos);
-                        anchorGroup.getWorldQuaternion(worldQuat);
-                        anchorGroup.getWorldScale(worldScale);
+                    // Determine device tilt -> choose a rotation for the *input* frame
+                    // (Screen rotation is locked; we rotate analysis input only)
+                    inputRotationDeg = computeInputRotationDeg(deviceBeta, deviceGamma);
 
-                        pivotGroup.position.copy(worldPos);
-                        pivotGroup.quaternion.copy(worldQuat);
-                        pivotGroup.scale.copy(worldScale);
-                        
-                        if (!pivotGroup.visible) pivotGroup.visible = true;
+                    // Draw rotated frame to offscreen canvas when needed
+                    let mpInput = videoEl;
+                    if (inputRotationDeg !== 0 && mpOffscreenCtx) {
+                        const vw = videoEl.videoWidth || 0;
+                        const vh = videoEl.videoHeight || 0;
+                        if (vw > 0 && vh > 0) {
+                            const rot90 = Math.abs(inputRotationDeg) === 90;
+                            mpOffscreenCanvas.width = rot90 ? vh : vw;
+                            mpOffscreenCanvas.height = rot90 ? vw : vh;
+
+                            mpOffscreenCtx.save();
+                            mpOffscreenCtx.clearRect(0, 0, mpOffscreenCanvas.width, mpOffscreenCanvas.height);
+                            mpOffscreenCtx.translate(mpOffscreenCanvas.width / 2, mpOffscreenCanvas.height / 2);
+                            mpOffscreenCtx.rotate(THREE.MathUtils.degToRad(inputRotationDeg));
+                            mpOffscreenCtx.drawImage(videoEl, -vw / 2, -vh / 2, vw, vh);
+                            mpOffscreenCtx.restore();
+
+                            mpInput = mpOffscreenCanvas;
+                        }
                     }
 
-                    // --- マスクの回転をキャンセルして常に水平を保つ ---
-                    // 今回削除するため、以下のブロックをコメントアウトまたは削除します。
-                    /* if (occluderGroup && occluderGroup.parent) {
-                        occluderGroup.parent.getWorldQuaternion(occluderInverseQuat);
-                        occluderGroup.quaternion.copy(occluderInverseQuat.invert());
-                    }
-                    */
-                    
-                    if (pivotGroup && dirLight) {
-                        dirLight.target.position.copy(pivotGroup.position);
-                        dirLight.position.copy(pivotGroup.position).add(lightRelativePos);
+                    // Face detection
+                    isFaceVisible = false;
+                    latestBlendshapeMap = new Map();
 
+                    if (faceLandmarker && videoEl.readyState >= 2) {
+                        const res = faceLandmarker.detectForVideo(mpInput, performance.now());
+                        const tms = res && res.facialTransformationMatrixes;
+                        if (tms && tms.length > 0) {
+                            isFaceVisible = true;
+
+                            // Pose matrix (undo input rotation so overlay aligns to screen)
+                            worldMatrix.fromArray(tms[0].data);
+                            worldMatrix.scale(new THREE.Vector3(baseScale, baseScale, baseScale));
+
+                            if (inputRotationDeg !== 0) {
+                                rotComp.makeRotationZ(THREE.MathUtils.degToRad(-inputRotationDeg));
+                                worldMatrix.premultiply(rotComp);
+                            }
+
+                            pivotGroup.matrix.copy(worldMatrix);
+                            if (!pivotGroup.visible) pivotGroup.visible = true;
+                        } else {
+                            pivotGroup.visible = false;
+                        }
+
+                        const bss = res && res.faceBlendshapes;
+                        if (bss && bss.length > 0 && bss[0].categories) {
+                            for (const c of bss[0].categories) {
+                                latestBlendshapeMap.set(c.categoryName, c.score);
+                            }
+                        }
+                    } else {
+                        pivotGroup.visible = false;
+                    }
+
+                    // Light follows pivot
+                    if (pivotGroup && dirLight && pivotGroup.visible) {
+                        const pos = new THREE.Vector3();
+                        pivotGroup.getWorldPosition(pos);
+                        dirLight.target.position.copy(pos);
+                        dirLight.position.copy(pos).add(lightRelativePos);
                         dirLight.updateMatrixWorld();
                         dirLight.target.updateMatrixWorld();
-                        
-                        if(lightHelper && lightHelper.visible) {
-                            lightHelper.update();
-                        }
+                        if (lightHelper && lightHelper.visible) lightHelper.update();
                     }
 
                     if (currentVrm) {
                         currentVrm.update(delta);
-                        updateExpressionsFromFaceMesh(currentVrm, delta, anchorGroup.visible);
-                        
-                        if(currentVrm.lookAt) {
-                            currentVrm.lookAt.target = camera;
+                        updateExpressionsFromFaceMesh(currentVrm, delta, isFaceVisible);
+
+                        if (currentVrm.lookAt) {
+                            // keep existing lookAt behavior if any
                         }
                     }
+
                     renderer.render(scene, camera);
                 });
 
-                if(isRestart) {
-                    showToast(`設定を適用しました。\n滑らかさ: ${appliedMinCF}\n敏感さ: ${appliedBeta}`);
-                }
-
-            } catch (error) {
+                // UI transitions
+                startScreen.style.display = 'none';
+                loadingText.style.display = 'none';
+                uiContainer.style.display = 'block';
+                showToast(isRestart ? "再起動しました (MediaPipe)" : "カメラを開始しました (MediaPipe)");
+            } catch (err) {
+                console.error(err);
                 if (startTimeout) clearTimeout(startTimeout);
-                let msg = "起動エラー: " + (error.message || error);
-                if (msg.includes("TensorFlow") || msg.includes("XNNPACK")) return; 
-                console.error(error);
+                const msg = (err && err.message) ? err.message : "カメラの起動に失敗しました。";
                 statusMsg.textContent = msg;
-                statusMsg.style.color = "#ff6b6b";
                 startBtn.disabled = false;
                 startBtn.textContent = "再試行";
                 loadingText.style.display = 'none';
@@ -1355,8 +1503,10 @@
         }
 
         function updateExpressionsFromFaceMesh(vrm, delta, isFaceVisible) {
+            // NOTE: この関数名は互換のため残しています（旧MindARのfaceMeshは使いません）
             if (!vrm.expressionManager) return;
 
+            // --- Auto Blink ---
             let autoBlinkValue = 0;
             if (isAutoBlink) {
                 blinkTimer += delta;
@@ -1370,56 +1520,37 @@
                     autoBlinkValue = 1;
                     if (blinkTimer > 0.05) { blinkState = 3; blinkTimer = 0; }
                 } else if (blinkState === 3) { 
-                    autoBlinkValue = 1 - Math.min(1, blinkTimer / blinkDuration);
-                    if (autoBlinkValue <= 0) {
-                        blinkState = 0; blinkTimer = 0;
-                        nextBlinkTime = 2.0 + Math.random() * 4.0;
+                    autoBlinkValue = Math.max(0, 1 - (blinkTimer / blinkDuration));
+                    if (autoBlinkValue <= 0) { 
+                        blinkState = 0; 
+                        blinkTimer = 0; 
+                        nextBlinkTime = getRandomBlinkTime(); 
                     }
                 }
+            } else {
+                blinkState = 0;
+                blinkTimer = 0;
             }
 
+            // --- Camera-driven (MediaPipe blendshapes) ---
             let mouthOpen = 0;
             let cameraBlinkL = 0;
             let cameraBlinkR = 0;
 
-            if (faceMesh && isFaceVisible) {
-                const positions = faceMesh.geometry.getAttribute('position');
-                if (positions) {
-                    const getV = (idx) => new THREE.Vector3(positions.getX(idx), positions.getY(idx), positions.getZ(idx));
-                    
-                    const leftEyeTop = getV(159);
-                    const leftEyeBottom = getV(145);
-                    const rightEyeTop = getV(386);
-                    const rightEyeBottom = getV(374);
-                    const mouthTop = getV(13);
-                    const mouthBottom = getV(14);
-                    
-                    const faceTop = getV(10);
-                    const faceBottom = getV(152);
-                    const faceHeight = faceTop.distanceTo(faceBottom);
+            if (isFaceVisible && latestBlendshapeMap && latestBlendshapeMap.size > 0) {
+                const mouthSens = parseFloat(mouthSensSlider.value);
+                const eyeSens = parseFloat(eyeSensSlider.value);
 
-                    if (faceHeight > 0) {
-                        const mouthDist = mouthTop.distanceTo(mouthBottom);
-                        const mouthRatio = mouthDist / faceHeight;
-                        const mouthSens = parseFloat(mouthSensSlider.value);
-                        mouthOpen = (mouthRatio - 0.02) * 10.0 * mouthSens; 
-                        mouthOpen = Math.max(0, Math.min(1, mouthOpen));
+                const jawOpen = latestBlendshapeMap.get('jawOpen') ?? latestBlendshapeMap.get('mouthOpen') ?? 0;
+                const blinkL = latestBlendshapeMap.get('eyeBlinkLeft') ?? 0;
+                const blinkR = latestBlendshapeMap.get('eyeBlinkRight') ?? 0;
 
-                        const leftEyeDist = leftEyeTop.distanceTo(leftEyeBottom);
-                        const rightEyeDist = rightEyeTop.distanceTo(rightEyeBottom);
-                        const eyeOpenRatioL = leftEyeDist / faceHeight;
-                        const eyeOpenRatioR = rightEyeDist / faceHeight;
-                        const eyeSens = parseFloat(eyeSensSlider.value);
-                        
-                        cameraBlinkL = 1.0 - (eyeOpenRatioL - 0.005) * (40.0 / eyeSens);
-                        cameraBlinkR = 1.0 - (eyeOpenRatioR - 0.005) * (40.0 / eyeSens);
-
-                        cameraBlinkL = Math.max(0, Math.min(1, cameraBlinkL));
-                        cameraBlinkR = Math.max(0, Math.min(1, cameraBlinkR));
-                    }
-                }
+                mouthOpen = Math.min(1, Math.max(0, jawOpen * mouthSens));
+                cameraBlinkL = Math.min(1, Math.max(0, blinkL * eyeSens));
+                cameraBlinkR = Math.min(1, Math.max(0, blinkR * eyeSens));
             }
 
+            // --- Smooth ---
             smoothedMouthRatio += (mouthOpen - smoothedMouthRatio) * 15.0 * delta;
             smoothedEyeL += (cameraBlinkL - smoothedEyeL) * 20.0 * delta;
             smoothedEyeR += (cameraBlinkR - smoothedEyeR) * 20.0 * delta;
@@ -1428,7 +1559,7 @@
             const finalBlinkR = Math.max(autoBlinkValue, smoothedEyeR);
 
             vrm.expressionManager.setValue('aa', smoothedMouthRatio);
-            
+
             const blinkMax = Math.max(finalBlinkL, finalBlinkR);
             vrm.expressionManager.setValue('blink', blinkMax);
             vrm.expressionManager.setValue('blink_l', finalBlinkL);
