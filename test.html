@@ -609,6 +609,9 @@ import * as THREE from 'three';
         let faceLandmarker = null;
         let latestBlendshapeMap = new Map();
         let latestMouthOpenFromLandmarks = 0; // from faceLandmarks (robust mouth-open)
+        let latestMouthCenterVideoX = 0.5; // normalized in ORIGINAL video frame (0..1)
+        let latestMouthCenterVideoY = 0.6;
+        let latestMouthCenterVideoValid = false;
 
         let isFaceVisible = false;
 
@@ -704,6 +707,61 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
             if (Math.abs(b) > 135) return 180;
 
             return 0;
+        }
+
+
+        // Convert a landmark point (normalized) from the MediaPipe input frame (which may be rotated)
+        // back into the ORIGINAL video frame normalized coordinates.
+        // This matches how we draw the rotated frame into mpOffscreenCanvas:
+        // translate(center) -> rotate(inputRotationDeg) -> drawImage(video centered).
+        function mpLandmarkNormToVideoNorm(xNorm, yNorm, videoW, videoH, rotDeg, mpW, mpH) {
+            if (!Number.isFinite(xNorm) || !Number.isFinite(yNorm) || videoW <= 0 || videoH <= 0) {
+                return { x: 0.5, y: 0.5, ok: false };
+            }
+            // If no rotation, MediaPipe input == video frame.
+            if (!rotDeg || rotDeg === 0) return { x: xNorm, y: yNorm, ok: true };
+
+            const px = xNorm * mpW;
+            const py = yNorm * mpH;
+
+            const cxR = mpW * 0.5;
+            const cyR = mpH * 0.5;
+            const dx = px - cxR;
+            const dy = py - cyR;
+
+            const rad = THREE.MathUtils.degToRad(-rotDeg); // inverse rotation
+            const cos = Math.cos(rad);
+            const sin = Math.sin(rad);
+
+            const rx = dx * cos - dy * sin;
+            const ry = dx * sin + dy * cos;
+
+            const outX = rx + videoW * 0.5;
+            const outY = ry + videoH * 0.5;
+
+            return { x: outX / videoW, y: outY / videoH, ok: true };
+        }
+
+        // Compute the on-screen draw rect for a video frame inside a given canvas using "contain" (letterbox/pillarbox).
+        // Returns rect in CSS pixel space of that canvas.
+        function computeContainRect(canvasW, canvasH, videoW, videoH) {
+            const ca = canvasW / canvasH;
+            const va = videoW / videoH;
+            let dw, dh, dx, dy;
+            if (va > ca) {
+                // fit width
+                dw = canvasW;
+                dh = canvasW / va;
+                dx = 0;
+                dy = (canvasH - dh) * 0.5;
+            } else {
+                // fit height
+                dh = canvasH;
+                dw = canvasH * va;
+                dy = 0;
+                dx = (canvasW - dw) * 0.5;
+            }
+            return { x: dx, y: dy, w: dw, h: dh };
         }
 
         function onDeviceOrientation(e) {
@@ -1323,16 +1381,17 @@ function updateBreathEffect(delta) {
             
             breathOverlayCtx.globalCompositeOperation = 'source-over';
             breathOverlayCtx.filter = 'none';
-// Update mouth screen position from 3D pose (pose is held even if tracking is lost)
-            if (breathEmitter && pivotGroup) {
-                const wp = new THREE.Vector3();
-                breathEmitter.getWorldPosition(wp);
-                const ndc = wp.project(camera);
-                if (Number.isFinite(ndc.x) && Number.isFinite(ndc.y) && Number.isFinite(ndc.z)) {
-                    lastMouthScreenX = (ndc.x * 0.5 + 0.5) * w;
-                    lastMouthScreenY = (-ndc.y * 0.5 + 0.5) * h;
-                    lastMouthScreenValid = true;
-                }
+// Update mouth screen position from 2D landmarks (robust & matches letterboxed video)
+            const vw2 = videoEl ? (videoEl.videoWidth || 0) : 0;
+            const vh2 = videoEl ? (videoEl.videoHeight || 0) : 0;
+            if (latestMouthCenterVideoValid && vw2 > 0 && vh2 > 0) {
+                const rect = computeContainRect(w, h, vw2, vh2);
+                const xN = mirrorEnabled ? (1.0 - latestMouthCenterVideoX) : latestMouthCenterVideoX;
+                lastMouthScreenX = rect.x + xN * rect.w;
+                lastMouthScreenY = rect.y + latestMouthCenterVideoY * rect.h;
+                lastMouthScreenValid = Number.isFinite(lastMouthScreenX) && Number.isFinite(lastMouthScreenY);
+            } else {
+                lastMouthScreenValid = false;
             }
 
             // Update + draw existing particles
@@ -1451,6 +1510,10 @@ function updateBreathEffect(delta) {
                     `mouth(landmark): ${latestMouthOpenFromLandmarks.toFixed(3)}
 ` +
                     `faceVisible: ${lastFaceVisibleNow}
+` +
+                    `mouthXY(px): ${lastMouthScreenX.toFixed(1)},${lastMouthScreenY.toFixed(1)}
+` +
+                    `canvas(css): ${w.toFixed(0)}x${h.toFixed(0)} (pr:${(window.devicePixelRatio||1).toFixed(2)})
 ` +
                     `particles: ${breathParticles2D.length}
 ` +
@@ -1971,7 +2034,23 @@ function updateBreathEffect(delta) {
                                 const dxo = (up.x - lo.x), dyo = (up.y - lo.y);
                                 const mouthO = Math.hypot(dxo, dyo);
                                 latestMouthOpenFromLandmarks = Math.min(0.5, Math.max(0, mouthO / mouthW));
-                            }
+                            
+                                // Mouth center (normalized) in MediaPipe input space
+                                const mx = (up.x + lo.x) * 0.5;
+                                const my = (up.y + lo.y) * 0.5;
+
+                                // Convert to ORIGINAL video space (undo analysis rotation)
+                                const vw0 = videoEl.videoWidth || 0;
+                                const vh0 = videoEl.videoHeight || 0;
+                                const mpW0 = (inputRotationDeg !== 0) ? (mpOffscreenCanvas.width || 0) : vw0;
+                                const mpH0 = (inputRotationDeg !== 0) ? (mpOffscreenCanvas.height || 0) : vh0;
+                                const vv = mpLandmarkNormToVideoNorm(mx, my, vw0, vh0, inputRotationDeg, mpW0, mpH0);
+                                if (vv.ok) {
+                                    latestMouthCenterVideoX = Math.min(1, Math.max(0, vv.x));
+                                    latestMouthCenterVideoY = Math.min(1, Math.max(0, vv.y));
+                                    latestMouthCenterVideoValid = true;
+                                }
+}
                         }
 
                         const bss = res && res.faceBlendshapes;
