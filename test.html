@@ -437,6 +437,18 @@
                 <span id="mouth-sens-slider-val" class="val-display">1.5</span>
             </div>
 
+            <div class="slider-container">
+                <label class="toggle-label">
+                    <input type="checkbox" id="breath-toggle" class="toggle-checkbox">
+                    吐息エフェクト（口を開けた時）
+                </label>
+            </div>
+            <div class="slider-container" id="breath-strength-container" style="opacity:0.6;">
+                <span class="slider-label">吐息の強さ</span>
+                <input type="range" id="breath-strength-slider" min="0.0" max="2.0" step="0.1" value="1.0">
+                <span id="breath-strength-slider-val" class="val-display">1.0</span>
+            </div>
+
             <h2>トラッキング</h2>
             <div class="slider-container">
                 <span class="slider-label">滑らかさ</span>
@@ -602,6 +614,18 @@
 
         const holdLastPoseOnLost = true; // 顔認識が外れても最後の姿勢・表情を保持
 
+        // --- Breath (white mist) effect ---
+        let isBreathEnabled = false;
+        let breathStrength = 1.0;
+        let breathEmitter = null;          // attached to adjustmentGroup (mouth position proxy)
+        let breathParticles = null;        // world-space particles group
+        let breathTexture = null;          // shared texture
+        let breathEmitAcc = 0;
+        let lastMouthOpenForEffects = 0;
+        const BREATH_THRESHOLD = 0.35;
+        const BREATH_MAX_PARTICLES = 90;
+
+
         let dirLight = null;
         let hemiLight = null;
         let lightHelper = null; 
@@ -677,6 +701,22 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
         const mouthSensSlider = document.getElementById('mouth-sens-slider');
         const eyeSensSlider = document.getElementById('eye-sens-slider');
         const autoBlinkToggle = document.getElementById('autoblink-toggle');
+
+        const breathToggle = document.getElementById('breath-toggle');
+        const breathStrengthSlider = document.getElementById('breath-strength-slider');
+        const breathStrengthSliderVal = document.getElementById('breath-strength-slider-val');
+        const breathStrengthContainer = document.getElementById('breath-strength-container');
+
+        function updateBreathUI() {
+            isBreathEnabled = !!breathToggle.checked;
+            breathStrength = parseFloat(breathStrengthSlider.value) || 1.0;
+            breathStrengthSliderVal.textContent = breathStrength.toFixed(1);
+            breathStrengthContainer.style.opacity = isBreathEnabled ? '1.0' : '0.6';
+        }
+        breathToggle.addEventListener('change', updateBreathUI);
+        breathStrengthSlider.addEventListener('input', updateBreathUI);
+
+
         
         const occlusionToggle = document.getElementById('occlusion-toggle');
         const occlusionDebugToggle = document.getElementById('occlusion-debug-toggle');
@@ -1117,6 +1157,126 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
             cameraFilterStr = `brightness(${b}%) saturate(${s}%) contrast(${c}%) blur(${bl}px) sepia(${sp}%)`;
         }
 
+        function createBreathTexture() {
+            const c = document.createElement('canvas');
+            c.width = 128; c.height = 128;
+            const ctx = c.getContext('2d');
+            const g = ctx.createRadialGradient(64, 64, 4, 64, 64, 64);
+            g.addColorStop(0.0, 'rgba(255,255,255,0.85)');
+            g.addColorStop(0.35, 'rgba(255,255,255,0.35)');
+            g.addColorStop(1.0, 'rgba(255,255,255,0.0)');
+            ctx.fillStyle = g;
+            ctx.fillRect(0, 0, 128, 128);
+            const tex = new THREE.CanvasTexture(c);
+            tex.colorSpace = THREE.SRGBColorSpace;
+            tex.minFilter = THREE.LinearFilter;
+            tex.magFilter = THREE.LinearFilter;
+            tex.generateMipmaps = false;
+            return tex;
+        }
+
+        function updateBreathEmitterFromVRM(vrm) {
+            if (!breathEmitter || !vrm || !vrm.scene) return;
+
+            const box = new THREE.Box3().setFromObject(vrm.scene);
+            if (box.isEmpty()) {
+                breathEmitter.position.set(0, -0.12, 0.18);
+                return;
+            }
+            const size = new THREE.Vector3();
+            box.getSize(size);
+
+            // mouth-ish: slightly below center, slightly forward
+            breathEmitter.position.set(0, -size.y * 0.18, size.z * 0.22);
+        }
+
+        function clearBreathParticles() {
+            if (!breathParticles) return;
+            for (const s of [...breathParticles.children]) {
+                if (s.material) s.material.dispose();
+                breathParticles.remove(s);
+            }
+            breathEmitAcc = 0;
+        }
+
+        function spawnBreathParticle() {
+            if (!breathParticles || !breathEmitter || !breathTexture) return;
+            if (breathParticles.children.length >= BREATH_MAX_PARTICLES) return;
+
+            const mat = new THREE.SpriteMaterial({
+                map: breathTexture,
+                transparent: true,
+                opacity: 0.0,
+                depthWrite: false,
+                depthTest: true
+            });
+            const sp = new THREE.Sprite(mat);
+            sp.renderOrder = 50;
+
+            const p = new THREE.Vector3();
+            const q = new THREE.Quaternion();
+            breathEmitter.getWorldPosition(p);
+            breathEmitter.getWorldQuaternion(q);
+            sp.position.copy(p);
+
+            // out of face (~local -Z) with randomness
+            const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(q).normalize();
+            dir.x += (Math.random() - 0.5) * 0.25;
+            dir.y += (Math.random() - 0.5) * 0.15;
+            dir.z += (Math.random() - 0.5) * 0.25;
+            dir.normalize();
+
+            const speed = (35 + Math.random() * 25) * (0.6 + breathStrength * 0.4);
+            const vel = dir.multiplyScalar(speed);
+            vel.y += 10 + Math.random() * 8;
+
+            const life = 0.7 + Math.random() * 0.6;
+            const s0 = 10 * (0.7 + Math.random() * 0.6);
+            const s1 = s0 * (2.2 + Math.random() * 1.2);
+
+            sp.userData = { age: 0, life, vel, s0, s1 };
+            sp.scale.setScalar(s0);
+
+            breathParticles.add(sp);
+        }
+
+        function updateBreathEffect(delta) {
+            if (!breathParticles) return;
+
+            // update existing particles
+            for (const sp of [...breathParticles.children]) {
+                const ud = sp.userData;
+                ud.age += delta;
+                const t = ud.age / ud.life;
+
+                if (t >= 1) {
+                    if (sp.material) sp.material.dispose();
+                    breathParticles.remove(sp);
+                    continue;
+                }
+
+                sp.position.addScaledVector(ud.vel, delta);
+                sp.scale.setScalar(ud.s0 + (ud.s1 - ud.s0) * t);
+
+                const fadeIn = Math.min(1, t / 0.15);
+                const fadeOut = 1 - t;
+                sp.material.opacity = 0.55 * fadeIn * fadeOut;
+            }
+
+            if (!isBreathEnabled) return;
+
+            const m = Math.max(0, lastMouthOpenForEffects - BREATH_THRESHOLD);
+            if (m <= 0) return;
+
+            const rate = 28 * m * breathStrength; // particles/sec
+            breathEmitAcc += rate * delta;
+            while (breathEmitAcc >= 1.0) {
+                spawnBreathParticle();
+                breathEmitAcc -= 1.0;
+            }
+        }
+
+
         function ensureDisplayCanvasSize() {
             if (!videoEl || !displayCanvas) return;
             const vw = videoEl.videoWidth || 0;
@@ -1335,6 +1495,11 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
                 adjustmentGroup = null;
                 pivotGroup = null;
 
+                breathEmitter = null;
+                if (breathParticles) { clearBreathParticles(); breathParticles = null; }
+                // keep breathTexture cached across restarts
+
+
                 if (arContainer) arContainer.innerHTML = '';
             } catch (e) {
                 console.log("Cleanup warning:", e);
@@ -1471,6 +1636,21 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
                 adjustmentGroup = new THREE.Group();
                 pivotGroup.add(adjustmentGroup);
                 updateTransform();
+
+                // --- Breath effect setup ---
+                if (!breathParticles) {
+                    breathParticles = new THREE.Group();
+                    breathParticles.renderOrder = 50;
+                    scene.add(breathParticles);
+                } else {
+                    clearBreathParticles();
+                }
+                if (!breathTexture) breathTexture = createBreathTexture();
+
+                breathEmitter = new THREE.Object3D();
+                breathEmitter.position.set(0, -0.12, 0.18); // fallback
+                adjustmentGroup.add(breathEmitter);
+
 
                 // --- Occluder (mask) ---
                 occluderGroup = new THREE.Group();
@@ -1614,6 +1794,7 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
                         }
                     }
 
+                    updateBreathEffect(delta);
                     renderer.render(scene, camera);
                 });
 
@@ -1684,6 +1865,8 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
 
             // --- Smooth ---
             smoothedMouthRatio += (mouthOpen - smoothedMouthRatio) * 15.0 * delta;
+            lastMouthOpenForEffects = smoothedMouthRatio;
+
             smoothedEyeL += (cameraBlinkL - smoothedEyeL) * 20.0 * delta;
             smoothedEyeR += (cameraBlinkR - smoothedEyeR) * 20.0 * delta;
 
@@ -1767,6 +1950,7 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
                             updateMaterialSettings(vrm);
 
                             adjustmentGroup.add(vrm.scene);
+                        updateBreathEmitterFromVRM(vrm);
                         }
 
                         loadSettings(currentFileName);
