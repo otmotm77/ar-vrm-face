@@ -656,6 +656,7 @@ import * as THREE from 'three';
         let lastMouthScreenY = 0;
         let lastMouthScreenValid = false;
         let lastFaceVisibleNow = false;
+        const breathTmpV = new THREE.Vector3(); // reuse for projection
 
         let breathEmitter = null;          // attached to adjustmentGroup (mouth position proxy)
         let breathParticles = null;        // world-space particles group
@@ -1381,13 +1382,25 @@ function updateBreathEffect(delta) {
             
             breathOverlayCtx.globalCompositeOperation = 'source-over';
             breathOverlayCtx.filter = 'none';
-// Update mouth screen position from 2D landmarks (robust & matches letterboxed video)
+// Update mouth screen position from VRM mouth emitter (follows VRM transforms incl. height slider).
             const vw2 = videoEl ? (videoEl.videoWidth || 0) : 0;
             const vh2 = videoEl ? (videoEl.videoHeight || 0) : 0;
-            if (latestMouthCenterVideoValid && vw2 > 0 && vh2 > 0) {
+
+            if (breathEmitter && camera) {
+                breathTmpV.setFromMatrixPosition(breathEmitter.matrixWorld);
+                breathTmpV.project(camera);
+                if (Number.isFinite(breathTmpV.x) && Number.isFinite(breathTmpV.y)) {
+                    // Draw space is CSS pixels (we setTransform(pr,...)), so use w/h (not canvas.width)
+                    lastMouthScreenX = (breathTmpV.x * 0.5 + 0.5) * w;
+                    lastMouthScreenY = (-breathTmpV.y * 0.5 + 0.5) * h;
+                    lastMouthScreenValid = Number.isFinite(lastMouthScreenX) && Number.isFinite(lastMouthScreenY);
+                } else {
+                    lastMouthScreenValid = false;
+                }
+            } else if (latestMouthCenterVideoValid && vw2 > 0 && vh2 > 0) {
+                // Fallback: from 2D landmarks mapped into letterboxed video (NO extra mirroring; the overlay canvas is mirrored via CSS together with renderer)
                 const rect = computeContainRect(w, h, vw2, vh2);
-                const xN = mirrorEnabled ? (1.0 - latestMouthCenterVideoX) : latestMouthCenterVideoX;
-                lastMouthScreenX = rect.x + xN * rect.w;
+                lastMouthScreenX = rect.x + latestMouthCenterVideoX * rect.w;
                 lastMouthScreenY = rect.y + latestMouthCenterVideoY * rect.h;
                 lastMouthScreenValid = Number.isFinite(lastMouthScreenX) && Number.isFinite(lastMouthScreenY);
             } else {
