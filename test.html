@@ -585,6 +585,8 @@
 
         let faceLandmarker = null;
         let latestBlendshapeMap = new Map();
+        let latestMouthOpenFromLandmarks = 0; // from faceLandmarks (robust mouth-open)
+
         let isFaceVisible = false;
 
         const mpOffscreenCanvas = document.createElement('canvas');
@@ -622,7 +624,7 @@
         let breathTexture = null;          // shared texture
         let breathEmitAcc = 0;
         let lastMouthOpenForEffects = 0;
-        const BREATH_THRESHOLD = 0.35;
+        const BREATH_THRESHOLD = 0.08;
         const BREATH_MAX_PARTICLES = 90;
 
 
@@ -1208,7 +1210,7 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
                 transparent: true,
                 opacity: 0.0,
                 depthWrite: false,
-                depthTest: true
+                depthTest: false
             });
             const sp = new THREE.Sprite(mat);
             sp.renderOrder = 50;
@@ -1220,7 +1222,7 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
             sp.position.copy(p);
 
             // out of face (~local -Z) with randomness
-            const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(q).normalize();
+            const dir = new THREE.Vector3(0, 0, 1).applyQuaternion(q).normalize();
             dir.x += (Math.random() - 0.5) * 0.25;
             dir.y += (Math.random() - 0.5) * 0.15;
             dir.z += (Math.random() - 0.5) * 0.25;
@@ -1260,7 +1262,7 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
 
                 const fadeIn = Math.min(1, t / 0.15);
                 const fadeOut = 1 - t;
-                sp.material.opacity = 0.55 * fadeIn * fadeOut;
+                sp.material.opacity = 0.85 * fadeIn * fadeOut;
             }
 
             if (!isBreathEnabled) return;
@@ -1764,6 +1766,20 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
                             // (do nothing)
                         }
 
+                        
+                        // Mouth open estimate from faceLandmarks (fallback if blendshapes are weak/unsupported)
+                        const lms = res && res.faceLandmarks && res.faceLandmarks[0];
+                        if (lms) {
+                            const up = lms[13], lo = lms[14], lc = lms[78], rc = lms[308];
+                            if (up && lo && lc && rc) {
+                                const dxw = (lc.x - rc.x), dyw = (lc.y - rc.y);
+                                const mouthW = Math.hypot(dxw, dyw) || 1e-6;
+                                const dxo = (up.x - lo.x), dyo = (up.y - lo.y);
+                                const mouthO = Math.hypot(dxo, dyo);
+                                latestMouthOpenFromLandmarks = Math.min(0.5, Math.max(0, mouthO / mouthW));
+                            }
+                        }
+
                         const bss = res && res.faceBlendshapes;
                         if (bss && bss.length > 0 && bss[0].categories) {
                             for (const c of bss[0].categories) {
@@ -1771,7 +1787,8 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
                             }
                         }
                     } else {
-                        // detector not ready: keep last pose visible
+                        latestMouthOpenFromLandmarks = 0;
+                    // detector not ready: keep last pose visible
                     }
 
                     // Light follows pivot
@@ -1859,6 +1876,10 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
                 const blinkR = latestBlendshapeMap.get('eyeBlinkRight') ?? 0;
 
                 mouthOpen = Math.min(1, Math.max(0, jawOpen * mouthSens));
+                // If blendshapes are weak, augment using landmarks-based mouth open
+                const lmOpen = Math.min(1, Math.max(0, (latestMouthOpenFromLandmarks - 0.02) * 12.0 * mouthSens));
+                mouthOpen = Math.max(mouthOpen, lmOpen);
+
                 cameraBlinkL = Math.min(1, Math.max(0, blinkL * eyeSens));
                 cameraBlinkR = Math.min(1, Math.max(0, blinkR * eyeSens));
             }
