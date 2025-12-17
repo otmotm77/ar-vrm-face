@@ -578,6 +578,13 @@
         const mpOffscreenCanvas = document.createElement('canvas');
         const mpOffscreenCtx = mpOffscreenCanvas.getContext('2d', { willReadFrequently: false });
 
+        // Display (filtered) canvas for background video
+        const displayCanvas = document.createElement('canvas');
+        const displayCtx = displayCanvas.getContext('2d', { willReadFrequently: false });
+        let videoTexture = null; // THREE.CanvasTexture
+        let cameraFilterStr = 'none';
+
+
         let deviceGamma = 0;
         let deviceBeta = 0;
         let inputRotationDeg = 0;
@@ -856,17 +863,7 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
 
             renderer.setSize(window.innerWidth, window.innerHeight);
 
-            if (bgPlane) {
-                // Rebuild background plane geometry to fit new viewport
-                const depth = bgPlaneDepth || 500;
-                const viewportHeightAtDepth = 2 * depth * Math.tan(THREE.MathUtils.degToRad(0.5 * camera.fov));
-                const viewportWidthAtDepth = viewportHeightAtDepth * camera.aspect;
-
-                bgPlane.geometry.dispose();
-                const geom = new THREE.PlaneGeometry(viewportWidthAtDepth, viewportHeightAtDepth);
-                geom.translate(0, 0, -depth);
-                bgPlane.geometry = geom;
-            }
+            updateBgPlaneSizeLetterbox();
         });
 
         startBtn.addEventListener('click', async () => {
@@ -901,6 +898,39 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
             const sx = mirrorEnabled ? -1 : 1;
             renderer.domElement.style.transform = `scaleX(${sx})`;
             renderer.domElement.style.transformOrigin = 'center center';
+        }
+
+        function getViewportSizeAtDepth(depth) {
+            if (!camera) return { width: 1, height: 1 };
+            const viewportHeightAtDepth = 2 * depth * Math.tan(THREE.MathUtils.degToRad(0.5 * camera.fov));
+            const viewportWidthAtDepth = viewportHeightAtDepth * camera.aspect;
+            return { width: viewportWidthAtDepth, height: viewportHeightAtDepth };
+        }
+
+        function updateBgPlaneSizeLetterbox() {
+            // Keep video aspect ratio (no stretch). Show black bars (letterbox/pillarbox) as needed.
+            if (!bgPlane || !camera || !videoEl) return;
+
+            const depth = bgPlaneDepth || 500;
+            const vw = videoEl.videoWidth || 0;
+            const vh = videoEl.videoHeight || 0;
+            if (vw <= 0 || vh <= 0) return;
+
+            const vp = getViewportSizeAtDepth(depth);
+            const videoAspect = vw / vh;
+            const vpAspect = vp.width / vp.height;
+
+            let planeW, planeH;
+            if (videoAspect > vpAspect) {
+                planeW = vp.width;
+                planeH = vp.width / videoAspect;
+            } else {
+                planeH = vp.height;
+                planeW = vp.height * videoAspect;
+            }
+
+            bgPlane.position.set(0, 0, -depth);
+            bgPlane.scale.set(planeW, planeH, 1);
         }
 
         function saveSettings() {
@@ -1067,21 +1097,57 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
         }
 
         function updateCameraFilter() {
-            const video = document.querySelector('#ar-container video');
-            if(video) {
-                let b = parseFloat(camBrightSlider.value);
-                let s = parseFloat(camSatSlider.value);
-                let c = parseFloat(camContSlider.value);
-                let bl = parseFloat(camBlurSlider.value);
-                const sp = parseFloat(camSepiaSlider.value);
+            // Build a filter string that will be applied when drawing the camera frame
+            // into displayCanvas (background texture). This way VRM overlay is not affected.
+            let b = parseFloat(camBrightSlider.value);
+            let s = parseFloat(camSatSlider.value);
+            let c = parseFloat(camContSlider.value);
+            let bl = parseFloat(camBlurSlider.value);
+            const sp = parseFloat(camSepiaSlider.value);
 
-                const skin = parseFloat(skinSmoothSlider.value);
-                if (skin > 0) {
-                    b += skin * 0.3;
-                    s += skin * 0.2;
-                    bl += skin * 0.008; 
-                    c -= skin * 0.15;
-                }
+            const skin = parseFloat(skinSmoothSlider.value);
+            if (skin > 0) {
+                b += skin * 0.3;
+                s += skin * 0.2;
+                bl += skin * 0.008;
+                c -= skin * 0.15;
+            }
+
+            // CanvasRenderingContext2D.filter supports these (Chrome/Safari modern)
+            cameraFilterStr = `brightness(${b}%) saturate(${s}%) contrast(${c}%) blur(${bl}px) sepia(${sp}%)`;
+        }
+
+        function ensureDisplayCanvasSize() {
+            if (!videoEl || !displayCanvas) return;
+            const vw = videoEl.videoWidth || 0;
+            const vh = videoEl.videoHeight || 0;
+            if (vw <= 0 || vh <= 0) return;
+
+            if (displayCanvas.width !== vw || displayCanvas.height !== vh) {
+                displayCanvas.width = vw;
+                displayCanvas.height = vh;
+                // When video size changes (e.g., camera switch), update letterbox plane
+                updateBgPlaneSizeLetterbox();
+            }
+        }
+
+        function drawVideoToDisplayCanvas() {
+            if (!videoEl || !displayCtx) return;
+            if (videoEl.readyState < 2) return;
+            ensureDisplayCanvasSize();
+
+            const vw = displayCanvas.width;
+            const vh = displayCanvas.height;
+            if (vw <= 0 || vh <= 0) return;
+
+            displayCtx.save();
+            displayCtx.filter = cameraFilterStr || 'none';
+            displayCtx.drawImage(videoEl, 0, 0, vw, vh);
+            displayCtx.restore();
+
+            if (videoTexture) videoTexture.needsUpdate = true;
+        }
+
 
                 video.style.filter = `brightness(${b}%) saturate(${s}%) contrast(${c}%) blur(${bl}px) sepia(${sp}%)`;
             }
@@ -1365,11 +1431,24 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
                     return new THREE.Mesh(geom, material);
                 }
 
-                const videoTexture = new THREE.VideoTexture(videoEl);
+                // Build filtered background texture using displayCanvas
+                updateCameraFilter(); // ensure cameraFilterStr is up to date
+                ensureDisplayCanvasSize();
+                drawVideoToDisplayCanvas();
+
+                videoTexture = new THREE.CanvasTexture(displayCanvas);
                 videoTexture.colorSpace = THREE.SRGBColorSpace;
-                bgPlane = createCameraPlaneMesh(inputFramesDepth, new THREE.MeshBasicMaterial({ map: videoTexture }));
+                videoTexture.minFilter = THREE.LinearFilter;
+                videoTexture.magFilter = THREE.LinearFilter;
+                videoTexture.generateMipmaps = false;
+
+                bgPlane = new THREE.Mesh(
+                    new THREE.PlaneGeometry(1, 1),
+                    new THREE.MeshBasicMaterial({ map: videoTexture })
+                );
                 bgPlane.renderOrder = -1000;
                 scene.add(bgPlane);
+                updateBgPlaneSizeLetterbox();
 
                 hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444);
                 hemiLight.position.set(0, 1, 0);
@@ -1441,8 +1520,15 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
                 const rotComp = new THREE.Matrix4();
                 const baseScale = 40;
 
+                const tmpPos = new THREE.Vector3();
+                const tmpQuat = new THREE.Quaternion();
+                const tmpScaleVec = new THREE.Vector3();
+
                 renderer.setAnimationLoop(() => {
                     const delta = clock.getDelta();
+
+                    // Update filtered camera background
+                    drawVideoToDisplayCanvas();
 
                     // Determine device tilt -> choose a rotation for the *input* frame
                     // (Screen rotation is locked; we rotate analysis input only)
@@ -1481,6 +1567,13 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
 
                             // Pose matrix (undo input rotation so overlay aligns to screen)
                             worldMatrix.fromArray(tms[0].data);
+
+                            // Remove any scale baked into the matrix (prevents VRM size jump on rotation)
+                            worldMatrix.decompose(tmpPos, tmpQuat, tmpScaleVec);
+                            tmpScaleVec.set(1, 1, 1);
+                            worldMatrix.compose(tmpPos, tmpQuat, tmpScaleVec);
+
+                            // Apply our own uniform scale
                             worldMatrix.scale(new THREE.Vector3(baseScale, baseScale, baseScale));
 
                             if (inputRotationDeg !== 0) {
