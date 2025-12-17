@@ -1339,12 +1339,6 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
                 breathEmitter.position.set(0, -0.12, 0.18);
             }
         }
-            const size = new THREE.Vector3();
-            box.getSize(size);
-
-            // mouth-ish: slightly below center, slightly forward
-            breathEmitter.position.set(0, -size.y * 0.18, size.z * 0.22);
-        }
 
         function clearBreathParticles() {
             if (!breathParticles) return;
