@@ -579,7 +579,7 @@
     <script type="module">
         
 // ===== App Version (single source of truth) =====
-const APP_VERSION = "v5.12.2";
+const APP_VERSION = "v5.12.3";
 const APP_VERSION_NOTE = "breath-center+diffuse";
 function setAppVersionLabel() {
   const el = document.getElementById("app-version");
@@ -593,7 +593,7 @@ window.addEventListener('DOMContentLoaded', setAppVersionLabel);
 
 import * as THREE from 'three';
         import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-        import { VRMLoaderPlugin, VRMUtils, VRMSchema } from '@pixiv/three-vrm';
+        import { VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm';
         // MediaPipe Tasks Vision (ESM via jsDelivr +esm)
         const vision = await import("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/+esm");
         const { FaceLandmarker, FilesetResolver } = vision;
@@ -1303,9 +1303,9 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
                 } catch (_) { return null; }
             };
 
-            const head = getBone(VRMSchema?.HumanoidBoneName?.Head ?? 'head');
-            const neck = getBone(VRMSchema?.HumanoidBoneName?.Neck ?? 'neck');
-            const jaw  = getBone(VRMSchema?.HumanoidBoneName?.Jaw  ?? 'jaw');
+            const head = getBone('head');
+            const neck = getBone('neck');
+            const jaw  = getBone('jaw');
 
             // Estimate a "head unit" in world space to scale offsets robustly
             let unit = 0.12;
