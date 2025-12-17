@@ -450,6 +450,22 @@
             </div>
 
 
+            <div class="slider-container" id="breath-offset-container" style="opacity:0.9;">
+                <span class="slider-label">吐息位置X（微調整）</span>
+                <input type="range" id="breath-offx-slider" min="-1.0" max="1.0" step="0.01" value="0.00">
+                <span id="breath-offx-slider-val" class="val-display">0.00</span>
+            </div>
+            <div class="slider-container" id="breath-offset-container-y" style="opacity:0.9;">
+                <span class="slider-label">吐息位置Y（微調整）</span>
+                <input type="range" id="breath-offy-slider" min="-1.0" max="1.0" step="0.01" value="0.00">
+                <span id="breath-offy-slider-val" class="val-display">0.00</span>
+            </div>
+            <div class="slider-container" id="breath-offset-container-z" style="opacity:0.9;">
+                <span class="slider-label">吐息位置Z（微調整）</span>
+                <input type="range" id="breath-offz-slider" min="-1.0" max="1.0" step="0.01" value="0.00">
+                <span id="breath-offz-slider-val" class="val-display">0.00</span>
+            </div>
+
             <div class="toggle-container">
                 <label class="toggle-label">
                     <input type="checkbox" id="breath-debug-toggle" class="toggle-checkbox">
@@ -579,8 +595,8 @@
     <script type="module">
         
 // ===== App Version (single source of truth) =====
-const APP_VERSION = "v5.12.3";
-const APP_VERSION_NOTE = "breath-center+diffuse";
+const APP_VERSION = "v5.12.4";
+const APP_VERSION_NOTE = "breath-emitter-yfix+offset";
 function setAppVersionLabel() {
   const el = document.getElementById("app-version");
   if (!el) return;
@@ -645,6 +661,9 @@ import * as THREE from 'three';
         // --- Breath (white mist) effect ---
         let isBreathEnabled = false;
         let breathStrength = 1.0;
+        let breathOffX = 0.0; // multiplier of unit
+        let breathOffY = 0.0;
+        let breathOffZ = 0.0;
         let breathDebugEnabled = false;
         let breathDebugEl = null;
 
@@ -803,6 +822,13 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
         const breathStrengthSliderVal = document.getElementById('breath-strength-slider-val');
         const breathStrengthContainer = document.getElementById('breath-strength-container');
 
+        const breathOffXSlider = document.getElementById('breath-offx-slider');
+        const breathOffYSlider = document.getElementById('breath-offy-slider');
+        const breathOffZSlider = document.getElementById('breath-offz-slider');
+        const breathOffXVal = document.getElementById('breath-offx-slider-val');
+        const breathOffYVal = document.getElementById('breath-offy-slider-val');
+        const breathOffZVal = document.getElementById('breath-offz-slider-val');
+
         const breathDebugToggle = document.getElementById('breath-debug-toggle');
         breathDebugEl = document.getElementById('breath-debug');
 
@@ -813,11 +839,25 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
             breathStrengthSliderVal.textContent = breathStrength.toFixed(1);
             breathStrengthContainer.style.opacity = isBreathEnabled ? '1.0' : '0.6';
 
+            // Offset multipliers (relative to VRM "unit" length)
+            breathOffX = (breathOffXSlider ? (parseFloat(breathOffXSlider.value) || 0) : 0);
+            breathOffY = (breathOffYSlider ? (parseFloat(breathOffYSlider.value) || 0) : 0);
+            breathOffZ = (breathOffZSlider ? (parseFloat(breathOffZSlider.value) || 0) : 0);
+            if (breathOffXVal) breathOffXVal.textContent = breathOffX.toFixed(2);
+            if (breathOffYVal) breathOffYVal.textContent = breathOffY.toFixed(2);
+            if (breathOffZVal) breathOffZVal.textContent = breathOffZ.toFixed(2);
+
+            // Recompute mouth emitter position so changes reflect immediately
+            if (currentVrm) updateBreathEmitterFromVRM(currentVrm);
+
             breathDebugEnabled = !!(breathDebugToggle && breathDebugToggle.checked);
             if (breathDebugEl) breathDebugEl.style.display = breathDebugEnabled ? 'block' : 'none';
         }
         breathToggle.addEventListener('change', updateBreathUI);
         breathStrengthSlider.addEventListener('input', updateBreathUI);
+        if (breathOffXSlider) breathOffXSlider.addEventListener('input', updateBreathUI);
+        if (breathOffYSlider) breathOffYSlider.addEventListener('input', updateBreathUI);
+        if (breathOffZSlider) breathOffZSlider.addEventListener('input', updateBreathUI);
         if (breathDebugToggle) breathDebugToggle.addEventListener('change', updateBreathUI);
         updateBreathUI();
 
@@ -1320,6 +1360,9 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
                 }
             } catch (_) {}
 
+            // store unit for debug
+            breathEmitter.userData.unit = unit;
+
             // Prefer attaching to Jaw if present; else Head; else fallback to adjustmentGroup
             const attach = jaw || head;
             if (attach) {
@@ -1331,8 +1374,14 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
                     breathEmitter.position.set(0, unit * 0.10, unit * 0.22);
                 } else {
                     // From head pivot: down towards mouth + forward
-                    breathEmitter.position.set(0, -unit * 0.55, unit * 0.85);
+                    breathEmitter.position.set(0, -unit * 0.25, unit * 0.60);
                 }
+
+                // Apply user offsets (relative to unit)
+                breathEmitter.position.x += breathOffX * unit;
+                breathEmitter.position.y += breathOffY * unit;
+                breathEmitter.position.z += breathOffZ * unit;
+                breathEmitter.updateMatrixWorld(true);
             } else {
                 // fallback: roughly mouth-ish in adjustmentGroup local space
                 adjustmentGroup.add(breathEmitter);
@@ -1503,6 +1552,8 @@ function updateBreathEffect(delta) {
                         `mouthXY(px): ${lastMouthScreenX.toFixed(1)},${lastMouthScreenY.toFixed(1)}
 ` +
                         `canvas(css): ${w.toFixed(0)}x${h.toFixed(0)} (pr:${(window.devicePixelRatio||1).toFixed(2)})
+` +
+                        `unit:${((breathEmitter&&breathEmitter.userData&&breathEmitter.userData.unit)||0).toFixed(3)} off:${breathOffX.toFixed(2)},${breathOffY.toFixed(2)},${breathOffZ.toFixed(2)}
 ` +
                         `particles: ${breathParticles2D.length}
 ` +
