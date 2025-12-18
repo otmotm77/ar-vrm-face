@@ -656,8 +656,8 @@
     <script type="module">
         
 // ===== App Version (single source of truth) =====
-const APP_VERSION = "v5.12.15";
-const APP_VERSION_NOTE = "blush head-local fix";
+const APP_VERSION = "v5.12.16";
+const APP_VERSION_NOTE = "breath shiftX TDZ fix";
 function setAppVersionLabel() {
   const el = document.getElementById("app-version");
   if (!el) return;
@@ -1953,6 +1953,7 @@ const ox = blushOffX * unit;
         }
 
 function updateBreathEffect(delta) {
+            let shiftX = 0, shiftY = 0;
             // 2D overlay "breath" effect drawn on breathOverlayCanvas.
             // Designed to be visible regardless of 3D depth/scale differences.
 
@@ -2093,7 +2094,7 @@ function updateBreathEffect(delta) {
             }
 
             // Convert VRM UI adjustments (pivot -> adjustment) into a screen-space delta
-            let shiftX = 0, shiftY = 0;
+            shiftX = 0; shiftY = 0;
             if (pivotGroup && adjustmentGroup && camera) {
                 breathTmpV2.setFromMatrixPosition(pivotGroup.matrixWorld).project(camera);
                 breathTmpV.setFromMatrixPosition(adjustmentGroup.matrixWorld).project(camera);
