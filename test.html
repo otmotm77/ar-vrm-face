@@ -687,7 +687,7 @@
     <script type="module">
         
 // ===== App Version (single source of truth) =====
-const APP_VERSION = "v5.12.22";
+const APP_VERSION = "v5.12.23";
 const APP_VERSION_NOTE = "breath shiftX TDZ fix";
 function setAppVersionLabel() {
   const el = document.getElementById("app-version");
@@ -988,7 +988,6 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
 
         // Compute the on-screen draw rect for a video frame inside a given canvas using "contain" (letterbox/pillarbox).
         // Returns rect in CSS pixel space of that canvas.
- for a video frame inside a given canvas using "contain" (letterbox/pillarbox).
         // Returns rect in CSS pixel space of that canvas.
         function computeContainRect(canvasW, canvasH, videoW, videoH) {
             const ca = canvasW / canvasH;
