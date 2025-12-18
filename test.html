@@ -475,6 +475,15 @@
                     <input type="range" id="blush-spread-slider" min="0.50" max="1.80" step="0.01" value="1.00">
                     <span id="blush-spread-slider-val" class="val-display">1.00</span>
                 </div>
+
+                <div class="toggle-container" style="opacity:0.9; margin-top:6px;">
+                    <label class="toggle-label">
+                        <input type="checkbox" id="blush-debug-toggle" class="toggle-checkbox">
+                        紅潮デバッグ（表示）
+                    </label>
+                </div>
+                <div id="blush-debug" style="display:none; font-family: monospace; font-size: 12px; line-height: 1.35; background: rgba(0,0,0,0.55); color: #fff; padding:6px; border-radius:8px; margin-bottom:10px; white-space: pre-wrap;"></div>
+
 </div>
 
 
@@ -639,8 +648,8 @@
     <script type="module">
         
 // ===== App Version (single source of truth) =====
-const APP_VERSION = "v5.12.12";
-const APP_VERSION_NOTE = "blush-headscale-fix";
+const APP_VERSION = "v5.12.13";
+const APP_VERSION_NOTE = "blush-debug";
 function setAppVersionLabel() {
   const el = document.getElementById("app-version");
   if (!el) return;
@@ -722,6 +731,11 @@ let blushTex = null;
 const blushTmpV = new THREE.Vector3();
 const blushTmpV2 = new THREE.Vector3();
 let blushUnit = 0.06;
+        let blushDebugEnabled = false;
+        let blushDebugEl = null;
+        const blushDbgTmp = new THREE.Vector3();
+        const blushDbgTmp2 = new THREE.Vector3();
+
 
 let latestCheekLVideoX = 0.35; // normalized in ORIGINAL video frame (0..1)
         let latestCheekLVideoY = 0.55;
@@ -910,6 +924,10 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
         const blushOffZSliderVal = document.getElementById('blush-offz-slider-val');
         const blushSizeSliderVal = document.getElementById('blush-size-slider-val');
         const blushSpreadSliderVal = document.getElementById('blush-spread-slider-val');
+
+        const blushDebugToggle = document.getElementById('blush-debug-toggle');
+        blushDebugEl = document.getElementById('blush-debug');
+
         const breathToggle = document.getElementById('breath-toggle');
         const breathStrengthSlider = document.getElementById('breath-strength-slider');
         const breathStrengthSliderVal = document.getElementById('breath-strength-slider-val');
@@ -962,6 +980,16 @@ function updateBlushUI(skipSave = false) {
 
             if (currentVrm && typeof updateBlushAnchorsFromVRM === 'function') updateBlushAnchorsFromVRM(currentVrm);
 
+
+            // Blush debug visibility (not persisted)
+            if (blushDebugToggle) {
+                blushDebugEnabled = !!blushDebugToggle.checked;
+                if (blushDebugEl) blushDebugEl.style.display = blushDebugEnabled ? 'block' : 'none';
+            } else {
+                blushDebugEnabled = false;
+                if (blushDebugEl) blushDebugEl.style.display = 'none';
+            }
+
             if (!skipSave) saveSettings();
         }
 
@@ -1012,6 +1040,7 @@ function updateBreathUI(skipSave = false) {
         if (blushOffZSlider) blushOffZSlider.addEventListener('input', () => updateBlushUI(false));
         if (blushSizeSlider) blushSizeSlider.addEventListener('input', () => updateBlushUI(false));
         if (blushSpreadSlider) blushSpreadSlider.addEventListener('input', () => updateBlushUI(false));
+        if (blushDebugToggle) blushDebugToggle.addEventListener('change', () => { blushDebugEnabled = !!blushDebugToggle.checked; if (blushDebugEl) blushDebugEl.style.display = blushDebugEnabled ? 'block' : 'none'; });
 
 breathToggle.addEventListener('change', () => updateBreathUI(false));
 breathStrengthSlider.addEventListener('input', () => updateBreathUI(false));
@@ -2069,6 +2098,74 @@ function updateBreathEffect(delta) {
 
         }
 
+
+        function updateBlushDebug() {
+            if (!blushDebugEnabled || !blushDebugEl) return;
+
+            const hasVrm = !!currentVrm;
+            const hasScene = !!scene && !!camera && !!renderer;
+            const hasMeshes = !!blushMeshL && !!blushMeshR;
+
+            let headName = "(none)";
+            let headScale = 0;
+            let invHeadScale = 0;
+            let parentL = "(none)", parentR = "(none)";
+            let scrL = null, scrR = null;
+
+            const w = renderer?.domElement?.clientWidth || 0;
+            const h = renderer?.domElement?.clientHeight || 0;
+
+            const projectObj = (obj) => {
+                if (!obj || !camera || !renderer) return null;
+                obj.getWorldPosition(blushDbgTmp);
+                blushDbgTmp2.copy(blushDbgTmp).project(camera);
+                const sx = (blushDbgTmp2.x * 0.5 + 0.5) * w;
+                const sy = (-blushDbgTmp2.y * 0.5 + 0.5) * h;
+                const inView = (blushDbgTmp2.z >= -1 && blushDbgTmp2.z <= 1) && sx >= -50 && sx <= w+50 && sy >= -50 && sy <= h+50;
+                return { world: blushDbgTmp.clone(), ndc: blushDbgTmp2.clone(), sx, sy, inView };
+            };
+
+            try {
+                if (currentVrm) {
+                    const getBoneNode = (name) => {
+                        try { return currentVrm.humanoid?.getRawBoneNode?.(name) || null; } catch (_) { return null; }
+                    };
+                    const head = getBoneNode('head') || adjustmentGroup || currentVrm.scene;
+                    headName = head?.name || "head";
+                    parentL = blushMeshL?.parent?.name || "(no parent)";
+                    parentR = blushMeshR?.parent?.name || "(no parent)";
+                    if (head && head.getWorldScale) {
+                        const ws = head.getWorldScale(new THREE.Vector3());
+                        headScale = ws.x || 0;
+                        invHeadScale = headScale ? (1.0 / headScale) : 0;
+                    }
+                }
+            } catch (_) {}
+
+            scrL = projectObj(blushMeshL);
+            scrR = projectObj(blushMeshR);
+
+            const lines = [];
+            lines.push(`[BlushDebug] enabled=${isBlushEnabled} strength=${blushStrength.toFixed(2)}`);
+            lines.push(`vrm=${hasVrm} meshes=${hasMeshes} scene=${hasScene}`);
+            lines.push(`head=${headName} headScale=${headScale.toFixed(4)} inv=${invHeadScale.toFixed(8)}`);
+            lines.push(`parents: L=${parentL} R=${parentR}`);
+            if (blushMatL) lines.push(`matL: op=${(blushMatL.opacity??0).toFixed(2)} depthTest=${!!blushMatL.depthTest} polyOff=${!!blushMatL.polygonOffset}`);
+            if (blushMatR) lines.push(`matR: op=${(blushMatR.opacity??0).toFixed(2)} depthTest=${!!blushMatR.depthTest} polyOff=${!!blushMatR.polygonOffset}`);
+            lines.push(`params: off=(${blushOffX.toFixed(2)},${blushOffY.toFixed(2)},${blushOffZ.toFixed(2)}) size=${blushSize.toFixed(2)} spread=${blushSpread.toFixed(2)} unit=${blushUnit.toFixed(4)}`);
+            lines.push(`viewport: ${w}x${h}`);
+
+            const fmt = (p, tag) => {
+                if (!p) return `${tag}: (no data)`;
+                return `${tag}: screen=(${p.sx.toFixed(1)},${p.sy.toFixed(1)}) inView=${p.inView} ndc=(${p.ndc.x.toFixed(2)},${p.ndc.y.toFixed(2)},${p.ndc.z.toFixed(2)}) world=(${p.world.x.toFixed(3)},${p.world.y.toFixed(3)},${p.world.z.toFixed(3)})`;
+            };
+            lines.push(fmt(scrL, "L"));
+            lines.push(fmt(scrR, "R"));
+
+            blushDebugEl.textContent = lines.join("\n");
+        }
+
+
         function ensureDisplayCanvasSize() {
             if (!videoEl || !displayCanvas) return;
             const vw = videoEl.videoWidth || 0;
@@ -2666,6 +2763,7 @@ function updateBreathEffect(delta) {
                     }
 
                     updateBreathEffect(delta);
+                    updateBlushDebug();
                     renderer.render(scene, camera);
                 });
 
