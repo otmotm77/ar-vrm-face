@@ -449,7 +449,33 @@
                     <input type="range" id="blush-strength-slider" min="0.0" max="1.0" step="0.01" value="0.70">
                     <span id="blush-strength-slider-val" class="val-display">0.70</span>
                 </div>
-            </div>
+            
+                <div class="slider-container" id="blush-offx-container" style="opacity:0.85;">
+                    <span class="slider-label">紅潮位置X</span>
+                    <input type="range" id="blush-offx-slider" min="-1.0" max="1.0" step="0.01" value="0.00">
+                    <span id="blush-offx-slider-val" class="val-display">0.00</span>
+                </div>
+                <div class="slider-container" id="blush-offy-container" style="opacity:0.85;">
+                    <span class="slider-label">紅潮位置Y</span>
+                    <input type="range" id="blush-offy-slider" min="-1.0" max="1.0" step="0.01" value="0.00">
+                    <span id="blush-offy-slider-val" class="val-display">0.00</span>
+                </div>
+                <div class="slider-container" id="blush-offz-container" style="opacity:0.85;">
+                    <span class="slider-label">紅潮位置Z</span>
+                    <input type="range" id="blush-offz-slider" min="-1.0" max="1.0" step="0.01" value="0.00">
+                    <span id="blush-offz-slider-val" class="val-display">0.00</span>
+                </div>
+                <div class="slider-container" id="blush-size-container" style="opacity:0.85;">
+                    <span class="slider-label">紅潮サイズ</span>
+                    <input type="range" id="blush-size-slider" min="0.50" max="2.50" step="0.01" value="1.00">
+                    <span id="blush-size-slider-val" class="val-display">1.00</span>
+                </div>
+                <div class="slider-container" id="blush-spread-container" style="opacity:0.85;">
+                    <span class="slider-label">紅潮幅</span>
+                    <input type="range" id="blush-spread-slider" min="0.50" max="1.80" step="0.01" value="1.00">
+                    <span id="blush-spread-slider-val" class="val-display">1.00</span>
+                </div>
+</div>
 
 
             <div class="slider-container">
@@ -613,8 +639,8 @@
     <script type="module">
         
 // ===== App Version (single source of truth) =====
-const APP_VERSION = "v5.12.6";
-const APP_VERSION_NOTE = "blush position fix";
+const APP_VERSION = "v5.12.7";
+const APP_VERSION_NOTE = "blush follow+offset";
 function setAppVersionLabel() {
   const el = document.getElementById("app-version");
   if (!el) return;
@@ -681,6 +707,18 @@ import * as THREE from 'three';
         let isBlushEnabled = false;
         let blushStrength = 0.70;
         let blushStripePattern = null;
+        let blushOffX = 0.00;   // common shift (unit multipliers)
+        let blushOffY = 0.00;
+        let blushOffZ = 0.00;
+        let blushSize = 1.00;  // size multiplier
+        let blushSpread = 1.00; // distance multiplier (cheek width)
+
+        // 3D anchors (projected to 2D overlay) to follow VRM movement/orientation
+        let blushAnchorL = null;
+        let blushAnchorR = null;
+        const blushTmpV = new THREE.Vector3();
+        const blushTmpV2 = new THREE.Vector3();
+        const blushTmpQ = new THREE.Quaternion();
         let latestCheekLVideoX = 0.35; // normalized in ORIGINAL video frame (0..1)
         let latestCheekLVideoY = 0.55;
         let latestCheekRVideoX = 0.65;
@@ -856,6 +894,18 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
         const blushStrengthSlider = document.getElementById('blush-strength-slider');
         const blushStrengthSliderVal = document.getElementById('blush-strength-slider-val');
 
+
+        const blushOffXSlider = document.getElementById('blush-offx-slider');
+        const blushOffYSlider = document.getElementById('blush-offy-slider');
+        const blushOffZSlider = document.getElementById('blush-offz-slider');
+        const blushSizeSlider = document.getElementById('blush-size-slider');
+        const blushSpreadSlider = document.getElementById('blush-spread-slider');
+
+        const blushOffXSliderVal = document.getElementById('blush-offx-slider-val');
+        const blushOffYSliderVal = document.getElementById('blush-offy-slider-val');
+        const blushOffZSliderVal = document.getElementById('blush-offz-slider-val');
+        const blushSizeSliderVal = document.getElementById('blush-size-slider-val');
+        const blushSpreadSliderVal = document.getElementById('blush-spread-slider-val');
         const breathToggle = document.getElementById('breath-toggle');
         const breathStrengthSlider = document.getElementById('breath-strength-slider');
         const breathStrengthSliderVal = document.getElementById('breath-strength-slider-val');
@@ -874,19 +924,43 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
 
 
         
-        function updateBlushUI(skipSave = false) {
+        
+function updateBlushUI(skipSave = false) {
             if (!blushToggle || !blushStrengthSlider) return;
 
             isBlushEnabled = !!blushToggle.checked;
             if (blushControls) blushControls.style.display = isBlushEnabled ? 'block' : 'none';
 
+            const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+
             blushStrength = parseFloat(blushStrengthSlider.value);
             if (!Number.isFinite(blushStrength)) blushStrength = 0.70;
-            blushStrength = Math.max(0.0, Math.min(1.0, blushStrength));
+            blushStrength = clamp(blushStrength, 0.0, 1.0);
             if (blushStrengthSliderVal) blushStrengthSliderVal.textContent = blushStrength.toFixed(2);
+
+            blushOffX = blushOffXSlider ? (parseFloat(blushOffXSlider.value) || 0) : 0;
+            blushOffY = blushOffYSlider ? (parseFloat(blushOffYSlider.value) || 0) : 0;
+            blushOffZ = blushOffZSlider ? (parseFloat(blushOffZSlider.value) || 0) : 0;
+            blushOffX = clamp(blushOffX, -1.0, 1.0);
+            blushOffY = clamp(blushOffY, -1.0, 1.0);
+            blushOffZ = clamp(blushOffZ, -1.0, 1.0);
+
+            blushSize = blushSizeSlider ? (parseFloat(blushSizeSlider.value) || 1.0) : 1.0;
+            blushSpread = blushSpreadSlider ? (parseFloat(blushSpreadSlider.value) || 1.0) : 1.0;
+            blushSize = clamp(blushSize, 0.5, 2.5);
+            blushSpread = clamp(blushSpread, 0.5, 1.8);
+
+            if (blushOffXSliderVal) blushOffXSliderVal.textContent = blushOffX.toFixed(2);
+            if (blushOffYSliderVal) blushOffYSliderVal.textContent = blushOffY.toFixed(2);
+            if (blushOffZSliderVal) blushOffZSliderVal.textContent = blushOffZ.toFixed(2);
+            if (blushSizeSliderVal) blushSizeSliderVal.textContent = blushSize.toFixed(2);
+            if (blushSpreadSliderVal) blushSpreadSliderVal.textContent = blushSpread.toFixed(2);
+
+            if (currentVrm && typeof updateBlushAnchorsFromVRM === 'function') updateBlushAnchorsFromVRM(currentVrm);
 
             if (!skipSave) saveSettings();
         }
+
 
 function updateBreathUI(skipSave = false) {
             isBreathEnabled = !!breathToggle.checked;
@@ -928,7 +1002,12 @@ function updateBreathUI(skipSave = false) {
         }
 
         if (blushToggle) blushToggle.addEventListener('change', () => updateBlushUI(false));
-if (blushStrengthSlider) blushStrengthSlider.addEventListener('input', () => updateBlushUI(false));
+        if (blushStrengthSlider) blushStrengthSlider.addEventListener('input', () => updateBlushUI(false));
+        if (blushOffXSlider) blushOffXSlider.addEventListener('input', () => updateBlushUI(false));
+        if (blushOffYSlider) blushOffYSlider.addEventListener('input', () => updateBlushUI(false));
+        if (blushOffZSlider) blushOffZSlider.addEventListener('input', () => updateBlushUI(false));
+        if (blushSizeSlider) blushSizeSlider.addEventListener('input', () => updateBlushUI(false));
+        if (blushSpreadSlider) blushSpreadSlider.addEventListener('input', () => updateBlushUI(false));
 
 breathToggle.addEventListener('change', () => updateBreathUI(false));
 breathStrengthSlider.addEventListener('input', () => updateBreathUI(false));
@@ -1241,8 +1320,14 @@ const occlusionToggle = document.getElementById('occlusion-toggle');
                 breathOffZ: (typeof breathOffZSlider !== 'undefined' && breathOffZSlider) ? breathOffZSlider.value : '0.0',
                 // Blush (per-VRM)
                 blushEnabled: (typeof blushToggle !== 'undefined' && blushToggle) ? !!blushToggle.checked : false,
-                blushStrength: (typeof blushStrengthSlider !== 'undefined' && blushStrengthSlider) ? blushStrengthSlider.value : '0.70'
+                blushStrength: (typeof blushStrengthSlider !== 'undefined' && blushStrengthSlider) ? blushStrengthSlider.value : '0.70',
+                blushOffX: (typeof blushOffXSlider !== 'undefined' && blushOffXSlider) ? blushOffXSlider.value : '0.00',
+                blushOffY: (typeof blushOffYSlider !== 'undefined' && blushOffYSlider) ? blushOffYSlider.value : '0.00',
+                blushOffZ: (typeof blushOffZSlider !== 'undefined' && blushOffZSlider) ? blushOffZSlider.value : '0.00',
+                blushSize: (typeof blushSizeSlider !== 'undefined' && blushSizeSlider) ? blushSizeSlider.value : '1.00',
+                blushSpread: (typeof blushSpreadSlider !== 'undefined' && blushSpreadSlider) ? blushSpreadSlider.value : '1.00'
             };
+
 
             try {
                 localStorage.setItem("vrm_settings_" + currentFileName, JSON.stringify(settings));
@@ -1311,6 +1396,12 @@ const occlusionToggle = document.getElementById('occlusion-toggle');
                         blushToggle.checked = !!s.blushEnabled;
                     }
                     if (Object.prototype.hasOwnProperty.call(s, 'blushStrength') && blushStrengthSlider) blushStrengthSlider.value = s.blushStrength;
+
+                    if (Object.prototype.hasOwnProperty.call(s, 'blushOffX') && blushOffXSlider) blushOffXSlider.value = s.blushOffX;
+                    if (Object.prototype.hasOwnProperty.call(s, 'blushOffY') && blushOffYSlider) blushOffYSlider.value = s.blushOffY;
+                    if (Object.prototype.hasOwnProperty.call(s, 'blushOffZ') && blushOffZSlider) blushOffZSlider.value = s.blushOffZ;
+                    if (Object.prototype.hasOwnProperty.call(s, 'blushSize') && blushSizeSlider) blushSizeSlider.value = s.blushSize;
+                    if (Object.prototype.hasOwnProperty.call(s, 'blushSpread') && blushSpreadSlider) blushSpreadSlider.value = s.blushSpread;
                     if (typeof updateBlushUI === 'function') updateBlushUI(true);
 
                     if (typeof updateBreathUI === 'function') updateBreathUI(true);
@@ -1425,6 +1516,77 @@ const occlusionToggle = document.getElementById('occlusion-toggle');
             tex.generateMipmaps = false;
             return tex;
         }
+
+        function updateBlushAnchorsFromVRM(vrm) {
+            if (!vrm) return;
+
+            if (!blushAnchorL) {
+                blushAnchorL = new THREE.Object3D();
+                blushAnchorL.name = 'blushAnchorL';
+            }
+            if (!blushAnchorR) {
+                blushAnchorR = new THREE.Object3D();
+                blushAnchorR.name = 'blushAnchorR';
+            }
+
+            // detach from previous parents
+            if (blushAnchorL.parent) blushAnchorL.parent.remove(blushAnchorL);
+            if (blushAnchorR.parent) blushAnchorR.parent.remove(blushAnchorR);
+
+            const humanoid = vrm.humanoid;
+            const getBone = (name) => {
+                try {
+                    return humanoid?.getNormalizedBoneNode?.(name)
+                        || humanoid?.getRawBoneNode?.(name)
+                        || humanoid?.getBoneNode?.(name)
+                        || null;
+                } catch (_) { return null; }
+            };
+
+            const head = getBone('head');
+            const neck = getBone('neck');
+
+            // estimate "unit" (rough head size) from head-neck distance
+            let unit = 0.08;
+            try {
+                if (head && neck) {
+                    const ph = new THREE.Vector3();
+                    const pn = new THREE.Vector3();
+                    head.getWorldPosition(ph);
+                    neck.getWorldPosition(pn);
+                    const d = ph.distanceTo(pn);
+                    if (Number.isFinite(d) && d > 0.001) unit = d;
+                }
+            } catch (_) {}
+
+            // store unit for debug / tuning
+            blushAnchorL.userData.unit = unit;
+            blushAnchorR.userData.unit = unit;
+
+            // attach to head if available; else to adjustmentGroup
+            const attach = head || adjustmentGroup || vrm.scene;
+            if (attach) {
+                attach.add(blushAnchorL);
+                attach.add(blushAnchorR);
+            }
+
+            // Base positions in head-local space (tuned for typical VRM head scale)
+            const baseX = 0.065 * unit * blushSpread;
+            const baseY = -0.015 * unit;
+            const baseZ = 0.085 * unit;
+
+            // Common shifts (user sliders)
+            const sx = blushOffX * unit;
+            const sy = blushOffY * unit;
+            const sz = blushOffZ * unit;
+
+            blushAnchorL.position.set(-baseX + sx, baseY + sy, baseZ + sz);
+            blushAnchorR.position.set( baseX + sx, baseY + sy, baseZ + sz);
+
+            blushAnchorL.updateMatrixWorld(true);
+            blushAnchorR.updateMatrixWorld(true);
+        }
+
 
         function updateBreathEmitterFromVRM(vrm) {
             if (!breathEmitter || !vrm) return;
@@ -1612,74 +1774,88 @@ function updateBreathEffect(delta) {
             const offYpx = breathOffY * unitPx;
 
             // --- Blush rendering (cheeks) ---
-            // Convert cheek landmarks (video-normalized) into screen pixels (letterboxed).
-            if (rect2 && latestCheekVideoValid) {
-                const cLX = rect2.x + latestCheekLVideoX * rect2.w + shiftX;
-                const cLY = rect2.y + latestCheekLVideoY * rect2.h + shiftY;
-                const cRX = rect2.x + latestCheekRVideoX * rect2.w + shiftX;
-                const cRY = rect2.y + latestCheekRVideoY * rect2.h + shiftY;
+            // Project VRM-attached cheek anchors to the overlay canvas.
+            if (isBlushEnabled && blushAnchorL && blushAnchorR && breathOverlayCtx) {
+                // Project to NDC
+                blushAnchorL.getWorldPosition(blushTmpV);
+                blushAnchorR.getWorldPosition(blushTmpV2);
 
-                if (Number.isFinite(cLX) && Number.isFinite(cLY) && Number.isFinite(cRX) && Number.isFinite(cRY)) {
-                    lastCheekScreenLX = cLX; lastCheekScreenLY = cLY;
-                    lastCheekScreenRX = cRX; lastCheekScreenRY = cRY;
-                    lastCheekScreenValid = true;
-                }
-            }
+                blushTmpV.project(camera);
+                blushTmpV2.project(camera);
 
-            if (isBlushEnabled && lastCheekScreenValid) {
-                // Size based on face width (distance between cheeks)
-                const faceW = Math.hypot(lastCheekScreenRX - lastCheekScreenLX, lastCheekScreenRY - lastCheekScreenLY) || (rect2 ? rect2.w * 0.6 : Math.min(w, h));
-                const r = Math.max(18, faceW * 0.12);
+                const validL = Number.isFinite(blushTmpV.x) && Number.isFinite(blushTmpV.y) && Number.isFinite(blushTmpV.z) && blushTmpV.z > -1.2 && blushTmpV.z < 1.2;
+                const validR = Number.isFinite(blushTmpV2.x) && Number.isFinite(blushTmpV2.y) && Number.isFinite(blushTmpV2.z) && blushTmpV2.z > -1.2 && blushTmpV2.z < 1.2;
 
-                // Create stripe pattern once
-                if (!blushStripePattern) {
-                    const pc = document.createElement('canvas');
-                    pc.width = 32; pc.height = 32;
-                    const pctx = pc.getContext('2d');
-                    pctx.clearRect(0, 0, pc.width, pc.height);
-                    pctx.strokeStyle = 'rgba(255, 140, 185, 0.55)';
-                    pctx.lineWidth = 3;
-                    for (let i = -32; i <= 64; i += 10) {
-                        pctx.beginPath();
-                        pctx.moveTo(i, 32);
-                        pctx.lineTo(i + 32, 0);
-                        pctx.stroke();
+                if (validL && validR) {
+                    const cLX = (blushTmpV.x * 0.5 + 0.5) * w;
+                    const cLY = (-blushTmpV.y * 0.5 + 0.5) * h;
+                    const cRX = (blushTmpV2.x * 0.5 + 0.5) * w;
+                    const cRY = (-blushTmpV2.y * 0.5 + 0.5) * h;
+
+                    if (Number.isFinite(cLX) && Number.isFinite(cLY) && Number.isFinite(cRX) && Number.isFinite(cRY)) {
+                        lastCheekScreenLX = cLX; lastCheekScreenLY = cLY;
+                        lastCheekScreenRX = cRX; lastCheekScreenRY = cRY;
+                        lastCheekScreenValid = true;
                     }
-                    blushStripePattern = breathOverlayCtx.createPattern(pc, 'repeat');
                 }
 
-                const drawSpot = (cx, cy) => {
-                    // Soft pink base
-                    breathOverlayCtx.save();
-                    breathOverlayCtx.translate(cx, cy);
-                    breathOverlayCtx.filter = 'blur(0.9px)';
-                    const a0 = 0.30 * blushStrength;
-                    const grad = breathOverlayCtx.createRadialGradient(0, 0, r * 0.10, 0, 0, r);
-                    grad.addColorStop(0, `rgba(255, 160, 200, ${a0})`);
-                    grad.addColorStop(1, 'rgba(255, 160, 200, 0)');
-                    breathOverlayCtx.fillStyle = grad;
-                    breathOverlayCtx.beginPath();
-                    breathOverlayCtx.arc(0, 0, r, 0, Math.PI * 2);
-                    breathOverlayCtx.fill();
-                    breathOverlayCtx.restore();
+                if (lastCheekScreenValid) {
+                    const faceW = Math.hypot(lastCheekScreenRX - lastCheekScreenLX, lastCheekScreenRY - lastCheekScreenLY) || Math.min(w, h);
+                    const r = Math.max(18, faceW * 0.14 * blushSize);
+                    const roll = Math.atan2(lastCheekScreenRY - lastCheekScreenLY, lastCheekScreenRX - lastCheekScreenLX);
 
-                    // Diagonal stripes overlay (pink)
-                    breathOverlayCtx.save();
-                    breathOverlayCtx.translate(cx, cy);
-                    breathOverlayCtx.globalAlpha = 0.28 * blushStrength;
-                    breathOverlayCtx.beginPath();
-                    breathOverlayCtx.arc(0, 0, r * 0.82, 0, Math.PI * 2);
-                    breathOverlayCtx.clip();
-                    breathOverlayCtx.rotate(-Math.PI / 6);
-                    breathOverlayCtx.fillStyle = blushStripePattern;
-                    breathOverlayCtx.fillRect(-r * 2, -r * 2, r * 4, r * 4);
-                    breathOverlayCtx.restore();
-                };
+                    // Create stripe pattern once
+                    if (!blushStripePattern) {
+                        const pc = document.createElement('canvas');
+                        pc.width = 64; pc.height = 64;
+                        const pctx = pc.getContext('2d');
+                        pctx.clearRect(0, 0, 64, 64);
+                        pctx.strokeStyle = 'rgba(255, 120, 170, 0.55)';
+                        pctx.lineWidth = 6;
+                        for (let i = -64; i <= 128; i += 16) {
+                            pctx.beginPath();
+                            pctx.moveTo(i, 0);
+                            pctx.lineTo(i + 64, 64);
+                            pctx.stroke();
+                        }
+                        blushStripePattern = breathOverlayCtx.createPattern(pc, 'repeat');
+                    }
 
-                // Slightly offset toward cheek center
-                const yLift = -r * 0.02;
-                drawSpot(lastCheekScreenLX, lastCheekScreenLY - yLift);
-                drawSpot(lastCheekScreenRX, lastCheekScreenRY - yLift);
+                    const drawCheek = (cx, cy) => {
+                        // Soft base (pink)
+                        breathOverlayCtx.save();
+                        breathOverlayCtx.translate(cx, cy);
+                        breathOverlayCtx.rotate(roll);
+                        breathOverlayCtx.scale(1.15, 0.95);
+                        breathOverlayCtx.filter = 'blur(1.0px)';
+                        const a0 = 0.32 * blushStrength;
+                        const grad = breathOverlayCtx.createRadialGradient(0, 0, r * 0.12, 0, 0, r);
+                        grad.addColorStop(0, `rgba(255, 160, 200, ${a0})`);
+                        grad.addColorStop(1, 'rgba(255, 160, 200, 0)');
+                        breathOverlayCtx.fillStyle = grad;
+                        breathOverlayCtx.beginPath();
+                        breathOverlayCtx.arc(0, 0, r, 0, Math.PI * 2);
+                        breathOverlayCtx.fill();
+                        breathOverlayCtx.restore();
+
+                        // Stripes overlay (pink diagonal)
+                        breathOverlayCtx.save();
+                        breathOverlayCtx.translate(cx, cy);
+                        breathOverlayCtx.rotate(roll);
+                        breathOverlayCtx.globalAlpha = 0.26 * blushStrength;
+                        breathOverlayCtx.beginPath();
+                        breathOverlayCtx.arc(0, 0, r * 0.82, 0, Math.PI * 2);
+                        breathOverlayCtx.clip();
+                        // Slight diagonal within the cheek, relative to head roll
+                        breathOverlayCtx.rotate(-Math.PI / 6);
+                        breathOverlayCtx.fillStyle = blushStripePattern;
+                        breathOverlayCtx.fillRect(-r * 2, -r * 2, r * 4, r * 4);
+                        breathOverlayCtx.restore();
+                    };
+
+                    drawCheek(lastCheekScreenLX, lastCheekScreenLY);
+                    drawCheek(lastCheekScreenRX, lastCheekScreenRY);
+                }
             }
 
             // Breath rendering uses screen blend & blur for soft mist
@@ -2601,6 +2777,7 @@ function updateBreathEffect(delta) {
 
                             adjustmentGroup.add(vrm.scene);
                         updateBreathEmitterFromVRM(vrm);
+                        updateBlushAnchorsFromVRM(vrm);
                         }
 
                         loadSettings(currentFileName);
