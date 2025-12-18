@@ -687,7 +687,7 @@
     <script type="module">
         
 // ===== App Version (single source of truth) =====
-const APP_VERSION = "v5.12.20";
+const APP_VERSION = "v5.12.21";
 const APP_VERSION_NOTE = "breath shiftX TDZ fix";
 function setAppVersionLabel() {
   const el = document.getElementById("app-version");
@@ -883,24 +883,49 @@ let latestCheekLVideoX = 0.35; // normalized in ORIGINAL video frame (0..1)
 	        nextBlinkTime = getRandomBlinkTime();
 let lightRelativePos = new THREE.Vector3(1, 1, 1);
         // --- Device tilt (for rotation-locked capture) ---
-        function computeInputRotationDeg(beta, gamma) {
+        function computeInputRotationDeg(beta, gamma, videoW, videoH) {
             const b = (typeof beta === 'number') ? beta : 0;
             const g = (typeof gamma === 'number') ? gamma : 0;
 
-            // Only apply 90deg correction when the PAGE is in portrait.
-            // If the browser/UI is already landscape, we treat that as the intended orientation.
+            // Upside-down portrait (rare, but keep)
+            if (Math.abs(b) > 135) return 180;
+
             const pageIsPortrait = window.innerHeight >= window.innerWidth;
-            if (!pageIsPortrait) {
-                // In landscape, ignore sideways correction to avoid double-rotating.
-                if (Math.abs(b) > 135) return 180; // upside-down
+
+            const vw = (typeof videoW === 'number') ? videoW : 0;
+            const vh = (typeof videoH === 'number') ? videoH : 0;
+
+            // Try to infer whether the camera frames are portrait/landscape.
+            // This is robust even when the *screen orientation is locked* and the user rotates the device.
+            if (vw > 0 && vh > 0) {
+                const videoIsPortrait = vh > vw;
+
+                // If the video frame orientation differs from the current page orientation,
+                // rotate the *analysis input* by 90deg so the face appears upright to the model.
+                if (pageIsPortrait !== videoIsPortrait) {
+                    // Prefer screen orientation angle when available (Android/Chrome).
+                    let ang = 0;
+                    const so = (screen.orientation && typeof screen.orientation.angle === 'number') ? screen.orientation.angle : null;
+                    const wo = (typeof window.orientation === 'number') ? window.orientation : null;
+                    if (so !== null) ang = so;
+                    else if (wo !== null) ang = wo;
+
+                    ang = ((ang % 360) + 360) % 360;
+
+                    if (ang === 90) return -90;
+                    if (ang === 270) return 90;
+
+                    // Fallback: use gamma sign (works well when screen is locked portrait)
+                    return g > 0 ? -90 : 90;
+                }
+
+                // Otherwise, no 90deg correction needed.
                 return 0;
             }
 
+            // Fallback when video dimensions are not ready:
             // Sideways (landscape) while screen is locked portrait
-            if (Math.abs(g) > 45) return g > 0 ? -90 : 90; // invert to match camera frame direction
-
-            // Upside-down portrait
-            if (Math.abs(b) > 135) return 180;
+            if (Math.abs(g) > 45) return g > 0 ? -90 : 90;
 
             return 0;
         }
@@ -2904,7 +2929,7 @@ function updateBreathEffect(delta) {
 
                     // Determine device tilt -> choose a rotation for the *input* frame
                     // (Screen rotation is locked; we rotate analysis input only)
-                    inputRotationDeg = computeInputRotationDeg(deviceBeta, deviceGamma);
+                    inputRotationDeg = computeInputRotationDeg(deviceBeta, deviceGamma, videoEl.videoWidth, videoEl.videoHeight);
 
                     // Draw rotated frame to offscreen canvas when needed
                     let mpInput = videoEl;
