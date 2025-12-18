@@ -446,13 +446,13 @@
             <div id="blush-controls" style="display:none;">
                 <div class="slider-container" id="blush-strength-container" style="opacity:0.85;">
                     <span class="slider-label">紅潮の強さ</span>
-                    <input type="range" id="blush-strength-slider" min="0.0" max="1.0" step="0.01" value="0.70">
+                    <input type="range" id="blush-strength-slider" min="0.0" max="2.0" step="0.01" value="0.70">
                     <span id="blush-strength-slider-val" class="val-display">0.70</span>
                 </div>
             
                 <div class="slider-container" id="blush-offx-container" style="opacity:0.85;">
                     <span class="slider-label">紅潮位置X</span>
-                    <input type="range" id="blush-offx-slider" min="-1.0" max="1.0" step="0.01" value="0.00">
+                    <input type="range" id="blush-offx-slider" min="-2.0" max="2.0" step="0.01" value="0.00">
                     <span id="blush-offx-slider-val" class="val-display">0.00</span>
                 </div>
                 <div class="slider-container" id="blush-offy-container" style="opacity:0.85;">
@@ -467,17 +467,21 @@
                 </div>
                 <div class="slider-container" id="blush-size-container" style="opacity:0.85;">
                     <span class="slider-label">紅潮サイズ</span>
-                    <input type="range" id="blush-size-slider" min="0.50" max="2.50" step="0.01" value="1.00">
+                    <input type="range" id="blush-size-slider" min="0.50" max="5.00" step="0.01" value="1.00">
                     <span id="blush-size-slider-val" class="val-display">1.00</span>
                 </div>
                 <div class="slider-container" id="blush-spread-container" style="opacity:0.85;">
                     <span class="slider-label">紅潮幅</span>
-                    <input type="range" id="blush-spread-slider" min="0.50" max="1.80" step="0.01" value="1.00">
+                    <input type="range" id="blush-spread-slider" min="0.50" max="3.60" step="0.01" value="1.00">
                     <span id="blush-spread-slider-val" class="val-display">1.00</span>
+                
+                <div class="slider-container" id="blush-color-container" style="opacity:0.85;">
+                    <span class="slider-label">紅潮の色</span>
+                    <input type="color" id="blush-color-picker" value="#ff5fa0" style="height:30px; width:52px; padding:0; border:0; background:transparent;">
+                    <span id="blush-color-picker-val" class="val-display">#ff5fa0</span>
                 </div>
 
-
-                <div class="toggle-container" style="opacity:0.9; margin-top:4px; margin-bottom:4px;">
+            <div class="toggle-container" style="opacity:0.9; margin-top:4px; margin-bottom:4px;">
                     <label class="toggle-label">
                         <input type="checkbox" id="blush-front-toggle" class="toggle-checkbox" checked>
                         紅潮を最前面に表示
@@ -656,7 +660,7 @@
     <script type="module">
         
 // ===== App Version (single source of truth) =====
-const APP_VERSION = "v5.12.17";
+const APP_VERSION = "v5.12.18";
 const APP_VERSION_NOTE = "breath shiftX TDZ fix";
 function setAppVersionLabel() {
   const el = document.getElementById("app-version");
@@ -732,6 +736,8 @@ import * as THREE from 'three';
         let blushSize = 1.00;  // size multiplier
         let blushSpread = 1.00; // distance multiplier (cheek width)
         let blushFront = true; // render blush on top (toggleable)
+        let blushColor = '#ff5fa0'; // blush color (hex)
+        let blushTexColor = null; // internal cache for blush texture color
         const USE_BLUSH_2D_OVERLAY = true; // robust: sticks to tracked face/video space
 
 
@@ -980,6 +986,9 @@ const blushOffXSliderVal = document.getElementById('blush-offx-slider-val');
         const blushSizeSliderVal = document.getElementById('blush-size-slider-val');
         const blushSpreadSliderVal = document.getElementById('blush-spread-slider-val');
 
+        const blushColorPicker = document.getElementById('blush-color-picker');
+        const blushColorPickerVal = document.getElementById('blush-color-picker-val');
+
         const blushDebugToggle = document.getElementById('blush-debug-toggle');
         blushDebugEl = document.getElementById('blush-debug');
 
@@ -1012,26 +1021,39 @@ function updateBlushUI(skipSave = false) {
 
             blushStrength = parseFloat(blushStrengthSlider.value);
             if (!Number.isFinite(blushStrength)) blushStrength = 0.70;
-            blushStrength = clamp(blushStrength, 0.0, 1.0);
+            blushStrength = clamp(blushStrength, 0.0, 2.0);
             if (blushStrengthSliderVal) blushStrengthSliderVal.textContent = blushStrength.toFixed(2);
 
             blushOffX = blushOffXSlider ? (parseFloat(blushOffXSlider.value) || 0) : 0;
             blushOffY = blushOffYSlider ? (parseFloat(blushOffYSlider.value) || 0) : 0;
             blushOffZ = blushOffZSlider ? (parseFloat(blushOffZSlider.value) || 0) : 0;
-            blushOffX = clamp(blushOffX, -1.0, 1.0);
-            blushOffY = clamp(blushOffY, -1.0, 1.0);
+            blushOffX = clamp(blushOffX, -2.0, 2.0);
+            blushOffY = clamp(blushOffY, -2.0, 2.0);
             blushOffZ = clamp(blushOffZ, -1.0, 1.0);
 
             blushSize = blushSizeSlider ? (parseFloat(blushSizeSlider.value) || 1.0) : 1.0;
             blushSpread = blushSpreadSlider ? (parseFloat(blushSpreadSlider.value) || 1.0) : 1.0;
-            blushSize = clamp(blushSize, 0.5, 2.5);
-            blushSpread = clamp(blushSpread, 0.5, 1.8);
+            blushSize = clamp(blushSize, 0.5, 5.0);
+            blushSpread = clamp(blushSpread, 0.5, 3.6);
 
             if (blushOffXSliderVal) blushOffXSliderVal.textContent = blushOffX.toFixed(2);
             if (blushOffYSliderVal) blushOffYSliderVal.textContent = blushOffY.toFixed(2);
             if (blushOffZSliderVal) blushOffZSliderVal.textContent = blushOffZ.toFixed(2);
             if (blushSizeSliderVal) blushSizeSliderVal.textContent = blushSize.toFixed(2);
             if (blushSpreadSliderVal) blushSpreadSliderVal.textContent = blushSpread.toFixed(2);
+            // Blush color (persisted per VRM)
+            if (typeof blushColorPicker !== 'undefined' && blushColorPicker) {
+                const v = (blushColorPicker.value || '').trim();
+                if (/^#[0-9a-fA-F]{6}$/.test(v)) blushColor = v.toLowerCase();
+                if (blushColorPickerVal) blushColorPickerVal.textContent = blushColor;
+                // Force rebuild texture/pattern when color changes
+                if (blushTexColor !== blushColor) {
+                    blushTexColor = null;
+                    try { if (blushTex) { blushTex.dispose(); } } catch(_) {}
+                    blushTex = null;
+                }
+            }
+
 
             if (currentVrm && typeof updateBlushAnchorsFromVRM === 'function') updateBlushAnchorsFromVRM(currentVrm);
 
@@ -1435,6 +1457,7 @@ const occlusionToggle = document.getElementById('occlusion-toggle');
                 blushSize: (typeof blushSizeSlider !== 'undefined' && blushSizeSlider) ? blushSizeSlider.value : '1.00',
                 blushSpread: (typeof blushSpreadSlider !== 'undefined' && blushSpreadSlider) ? blushSpreadSlider.value : '1.00',
                 blushFront: (typeof blushFrontToggle !== 'undefined' && blushFrontToggle) ? !!blushFrontToggle.checked : true,
+                blushColor: (typeof blushColorPicker !== 'undefined' && blushColorPicker) ? blushColorPicker.value : '#ff5fa0',
             };
 
 
@@ -1501,17 +1524,16 @@ const occlusionToggle = document.getElementById('occlusion-toggle');
                     if (Object.prototype.hasOwnProperty.call(s, 'breathOffZ') && breathOffZSlider) breathOffZSlider.value = s.breathOffZ;
                     
                     // Blush (per-VRM)
-                    if (Object.prototype.hasOwnProperty.call(s, 'blushEnabled') && blushToggle) {
-                        blushToggle.checked = !!s.blushEnabled;
-                    }
+                    if (Object.prototype.hasOwnProperty.call(s, 'blushEnabled') && blushToggle) blushToggle.checked = !!s.blushEnabled;
                     if (Object.prototype.hasOwnProperty.call(s, 'blushStrength') && blushStrengthSlider) blushStrengthSlider.value = s.blushStrength;
-
                     if (Object.prototype.hasOwnProperty.call(s, 'blushOffX') && blushOffXSlider) blushOffXSlider.value = s.blushOffX;
                     if (Object.prototype.hasOwnProperty.call(s, 'blushOffY') && blushOffYSlider) blushOffYSlider.value = s.blushOffY;
                     if (Object.prototype.hasOwnProperty.call(s, 'blushOffZ') && blushOffZSlider) blushOffZSlider.value = s.blushOffZ;
                     if (Object.prototype.hasOwnProperty.call(s, 'blushSize') && blushSizeSlider) blushSizeSlider.value = s.blushSize;
                     if (Object.prototype.hasOwnProperty.call(s, 'blushSpread') && blushSpreadSlider) blushSpreadSlider.value = s.blushSpread;
-                    if (Object.prototype.hasOwnProperty.call(s, 'blushFront') && typeof blushFrontToggle !== 'undefined' && blushFrontToggle) blushFrontToggle.checked = !!s.blushFront;
+                    if (Object.prototype.hasOwnProperty.call(s, 'blushFront') && blushFrontToggle) blushFrontToggle.checked = !!s.blushFront;
+                    if (Object.prototype.hasOwnProperty.call(s, 'blushColor') && typeof blushColorPicker !== 'undefined' && blushColorPicker) blushColorPicker.value = s.blushColor;
+
                     if (typeof updateBlushUI === 'function') updateBlushUI(true);
 
                     if (typeof updateBreathUI === 'function') updateBreathUI(true);
@@ -1653,18 +1675,38 @@ const occlusionToggle = document.getElementById('occlusion-toggle');
 
     // Build texture once
     const ensureTexture = () => {
-        if (blushTex) return blushTex;
+        if (blushTex && blushTexColor === blushColor) return blushTex;
+
+        blushTexColor = blushColor || '#ff5fa0';
 
         const c = document.createElement('canvas');
         c.width = 256; c.height = 256;
         const ctx = c.getContext('2d');
         ctx.clearRect(0, 0, 256, 256);
 
-        // Soft pink base (radial)
+        
+        // --- color helpers for customizable blush ---
+        const hexToRgb = (hex) => {
+            const m = /^#?([0-9a-fA-F]{6})$/.exec(hex || '');
+            if (!m) return {r:255,g:95,b:160};
+            const n = parseInt(m[1], 16);
+            return { r:(n>>16)&255, g:(n>>8)&255, b:n&255 };
+        };
+        const mix = (a, b, t) => ({
+            r: Math.round(a.r + (b.r - a.r) * t),
+            g: Math.round(a.g + (b.g - a.g) * t),
+            b: Math.round(a.b + (b.b - a.b) * t),
+        });
+        const base = hexToRgb(blushTexColor || blushColor || '#ff5fa0');
+        const white = {r:255,g:255,b:255};
+        const soft0 = mix(base, white, 0.55);
+        const soft1 = mix(base, white, 0.75);
+
+// Soft pink base (radial)
         const g = ctx.createRadialGradient(128, 128, 16, 128, 128, 120);
-        g.addColorStop(0.0, 'rgba(255, 155, 195, 0.55)');
-        g.addColorStop(0.55, 'rgba(255, 155, 195, 0.22)');
-        g.addColorStop(1.0, 'rgba(255, 155, 195, 0.0)');
+        g.addColorStop(0.0, `rgba(${soft0.r}, ${soft0.g}, ${soft0.b}, 0.55)`);
+        g.addColorStop(0.55, `rgba(${soft1.r}, ${soft1.g}, ${soft1.b}, 0.22)`);
+        g.addColorStop(1.0, `rgba(${soft1.r}, ${soft1.g}, ${soft1.b}, 0.0)`);
         ctx.fillStyle = g;
         ctx.beginPath();
         ctx.ellipse(128, 128, 120, 96, 0, 0, Math.PI * 2);
@@ -1672,7 +1714,7 @@ const occlusionToggle = document.getElementById('occlusion-toggle');
 
         // Pink hatch stripes
         ctx.globalAlpha = 0.65;
-        ctx.strokeStyle = 'rgba(255, 95, 160, 0.95)';
+        ctx.strokeStyle = `rgba(${base.r}, ${base.g}, ${base.b}, 0.95)`;
         ctx.lineWidth = 10;
         for (let i = -256; i <= 512; i += 28) {
             ctx.beginPath();
