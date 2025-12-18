@@ -363,8 +363,6 @@
 
     <div id="ui-container" style="display:none;">
         <div class="icon-buttons">
-            <button id="toggle-camera-btn" class="icon-btn" title="カメラ切替">📷</button>
-            <button id="toggle-mirror-btn" class="icon-btn" title="ミラー表示切替">🪞</button>
             <button id="toggle-light-btn" class="icon-btn" title="照明・画質設定">💡</button>
             <button id="toggle-menu-btn" class="icon-btn" title="モデル・トラッキング設定">⚙️</button>
             <button id="toggle-fullscreen-btn" class="icon-btn" title="全画面表示切替">⛶</button>
@@ -411,6 +409,7 @@
             </div>
             
             <!-- 6DOF調整スライダー -->
+            <div id="occlusion-sliders" style="display:none;">
             <div class="slider-container">
                 <span class="slider-label">X Position</span>
                 <input type="range" id="occ-pos-x" min="-0.5" max="0.5" step="0.001" value="0.0">
@@ -443,7 +442,9 @@
                 <span id="occ-size-y-val" class="val-display">1.0</span>
             </div>
 
-            <h2>表情設定</h2>
+            
+            </div>
+<h2>表情設定</h2>
             <div class="slider-container">
                 <label class="toggle-label">
                     <input type="checkbox" id="autoblink-toggle" class="toggle-checkbox" checked>
@@ -464,7 +465,7 @@
             <div class="slider-container">
                 <label class="toggle-label">
                     <input type="checkbox" id="blush-toggle" class="toggle-checkbox">
-                    頬紅潮エフェクト（ふんわりピンク＋斜線）
+                    頬紅潮エフェクト
                 </label>
             </div>
             <div id="blush-controls" style="display:none;">
@@ -567,6 +568,20 @@
             </div>
 
             <h2>トラッキング</h2>
+
+            <div class="slider-container">
+                <label class="toggle-label">
+                    <input type="checkbox" id="tracking-facing-toggle" class="toggle-checkbox">
+                    アウトカメラ（背面）
+                </label>
+            </div>
+            <div class="slider-container">
+                <label class="toggle-label">
+                    <input type="checkbox" id="tracking-mirror-toggle" class="toggle-checkbox">
+                    ミラー表示
+                </label>
+            </div>
+
             <div class="slider-container">
                 <span class="slider-label">滑らかさ</span>
                 <input type="range" id="mincf-slider" min="0.0001" max="0.01" step="0.0001" value="0.0005">
@@ -687,8 +702,8 @@
     <script type="module">
         
 // ===== App Version (single source of truth) =====
-const APP_VERSION = "v5.12.24";
-const APP_VERSION_NOTE = "breath shiftX TDZ fix";
+const APP_VERSION = "v5.12.25";
+const APP_VERSION_NOTE = "rotation+ui tweaks+debug";
 function setAppVersionLabel() {
   const el = document.getElementById("app-version");
   if (!el) return;
@@ -836,6 +851,8 @@ let latestCheekLVideoX = 0.35; // normalized in ORIGINAL video frame (0..1)
         // 2D overlay breath particles (more robust than 3D sprites across devices)
         let breathOverlayCanvas = null;
         let breathOverlayCtx = null;
+        let blush2DDebug = null; // debug snapshot for 2D blush mapping/rotation
+
         let breathParticles2D = [];
         let lastMouthScreenX = 0;
         let lastMouthScreenY = 0;
@@ -1231,6 +1248,7 @@ breathStrengthSlider.addEventListener('input', () => updateBreathUI(false));
         if (typeof updateBlushUI === 'function') updateBlushUI(true);
         updateBreathUI(true);
 const occlusionToggle = document.getElementById('occlusion-toggle');
+        const occlusionSliders = document.getElementById('occlusion-sliders');
         const occlusionDebugToggle = document.getElementById('occlusion-debug-toggle');
         
         // 6点パラメータ用スライダー
@@ -1328,12 +1346,14 @@ const occlusionToggle = document.getElementById('occlusion-toggle');
 
         autoBlinkToggle.addEventListener('change', (e) => { isAutoBlink = e.target.checked; saveSettings(); });
         occlusionToggle.addEventListener('change', (e) => { updateOccluder(); saveSettings(); });
-        occlusionDebugToggle.addEventListener('change', (e) => { 
-            updateOccluder(); 
-            if(lightHelper) lightHelper.visible = e.target.checked;
+        occlusionDebugToggle.addEventListener('change', (e) => {
+            updateOccluder();
+            if (lightHelper) lightHelper.visible = e.target.checked;
+            if (occlusionSliders) occlusionSliders.style.display = e.target.checked ? 'block' : 'none';
         });
-        
-        forceShadowToggle.addEventListener('change', () => {
+        if (occlusionSliders) occlusionSliders.style.display = occlusionDebugToggle && occlusionDebugToggle.checked ? 'block' : 'none';
+
+forceShadowToggle.addEventListener('change', () => {
             shadowDetails.style.display = forceShadowToggle.checked ? 'block' : 'none';
             if(currentVrm) updateMaterialSettings(currentVrm);
             saveSettings();
@@ -1377,35 +1397,91 @@ const occlusionToggle = document.getElementById('occlusion-toggle');
                 if (document.exitFullscreen) document.exitFullscreen();
             }
         });
+        // ===== Tracking UI: Camera (in/out) + Mirror toggles (moved into main menu > Tracking) =====
+        const facingToggle = document.getElementById('tracking-facing-toggle');
+        const mirrorToggle = document.getElementById('tracking-mirror-toggle');
 
-        // ミラー表示切り替えボタンのイベント
-        document.getElementById('toggle-mirror-btn').addEventListener('click', () => {
-            mirrorEnabled = !mirrorEnabled;
+        const syncTrackingTogglesFromState = () => {
+            if (facingToggle) facingToggle.checked = (currentFacingMode === 'environment');
+            if (mirrorToggle) mirrorToggle.checked = !!mirrorEnabled;
+        };
+
+        const applyMirrorFromToggle = () => {
+            if (!mirrorToggle) return;
+            mirrorEnabled = !!mirrorToggle.checked;
             mirrorUserOverride = true;
             applyMirrorToRenderer();
             showToast(mirrorEnabled ? 'ミラー表示: ON' : 'ミラー表示: OFF');
-        });
+        };
 
-// カメラ切り替えボタンのイベント
-        document.getElementById('toggle-camera-btn').addEventListener('click', async () => {
+        const switchCameraFacing = async (wantFacing) => {
             if (!videoEl) return;
-            currentFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
+            if (wantFacing !== 'user' && wantFacing !== 'environment') return;
+            if (currentFacingMode === wantFacing && stream) return;
+
+            currentFacingMode = wantFacing;
             showToast(currentFacingMode === 'user' ? "インカメラに切り替えます" : "アウトカメラに切り替えます");
+
+            // Default mirror behavior when not explicitly overridden
             if (!mirrorUserOverride) {
                 mirrorEnabled = (currentFacingMode === 'user');
+                if (mirrorToggle) mirrorToggle.checked = mirrorEnabled;
             }
             applyMirrorToRenderer();
 
             try {
                 if (stream) {
                     stream.getTracks().forEach(t => t.stop());
-                    stream = null;
                 }
                 stream = await navigator.mediaDevices.getUserMedia({
-                    audio: false,
-                    video: { facingMode: currentFacingMode, width: { ideal: 1280 }, height: { ideal: 720 } }
+                    video: {
+                        facingMode: { ideal: currentFacingMode },
+                        width: { ideal: currentCamWidth || 1280 },
+                        height: { ideal: currentCamHeight || 720 },
+                        frameRate: { ideal: currentCamFps || 30 }
+                    },
+                    audio: false
                 });
                 videoEl.srcObject = stream;
+                await videoEl.play();
+                lastVideoRect = null;
+                syncTrackingTogglesFromState();
+            } catch (err) {
+                console.error('Camera switch failed:', err);
+                showToast('カメラ切替に失敗しました');
+            }
+        };
+
+        if (mirrorToggle) {
+            mirrorToggle.addEventListener('change', applyMirrorFromToggle);
+        }
+        if (facingToggle) {
+            facingToggle.addEventListener('change', async () => {
+                const want = facingToggle.checked ? 'environment' : 'user';
+                await switchCameraFacing(want);
+            });
+        }
+
+        // Backward compatibility: if old icon buttons exist (older HTML), wire them too.
+        const oldMirrorBtn = document.getElementById('toggle-mirror-btn');
+        if (oldMirrorBtn) oldMirrorBtn.addEventListener('click', () => {
+            mirrorEnabled = !mirrorEnabled;
+            mirrorUserOverride = true;
+            if (mirrorToggle) mirrorToggle.checked = mirrorEnabled;
+            applyMirrorToRenderer();
+            showToast(mirrorEnabled ? 'ミラー表示: ON' : 'ミラー表示: OFF');
+        });
+
+        const oldCameraBtn = document.getElementById('toggle-camera-btn');
+        if (oldCameraBtn) oldCameraBtn.addEventListener('click', async () => {
+            const want = (currentFacingMode === 'user') ? 'environment' : 'user';
+            if (facingToggle) facingToggle.checked = (want === 'environment');
+            await switchCameraFacing(want);
+        });
+
+        // Sync once on load
+        syncTrackingTogglesFromState();
+videoEl.srcObject = stream;
                 await videoEl.play();
             } catch (e) {
                 console.error(e);
@@ -2156,7 +2232,7 @@ function updateBreathEffect(delta) {
                             const vv = mpLandmarkNormToVideoNorm(p.x, p.y, vwB, vhB, inputRotationDeg, mpW, mpH);
                             const xx = rectB.x + vv.x * rectB.w;
                             const yy = rectB.y + vv.y * rectB.h;
-                            return { x: xx, y: yy };
+                            return { x: xx, y: yy, vx: vv.x, vy: vv.y, mpW, mpH, rot: inputRotationDeg, vw: vwB, vh: vhB, rect: {x: rectB.x, y: rectB.y, w: rectB.w, h: rectB.h} };
                         };
 
                         const le = mapXY(pLEye), re = mapXY(pREye);
@@ -2192,6 +2268,23 @@ function updateBreathEffect(delta) {
 
                         // Roll angle from eyes
                         const roll = Math.atan2((re.y - le.y), (re.x - le.x));
+
+                        if (blushDebugEnabled) {
+                            blush2DDebug = {
+                                inputRotationDeg,
+                                deviceBeta, deviceGamma,
+                                pageIsPortrait: (window.innerHeight >= window.innerWidth),
+                                videoW: vwB, videoH: vhB,
+                                mpW: (mpOffscreenCanvas.width || vwB),
+                                mpH: (mpOffscreenCanvas.height || vhB),
+                                le, re,
+                                L, R,
+                                rollRad: roll,
+                                rollDeg: (roll * 180 / Math.PI),
+                                shiftX, shiftY
+                            };
+                        }
+
 
                         // Size
                         const r = faceW * 0.20 * Math.max(0.5, Math.min(2.5, blushSize));
@@ -2505,6 +2598,17 @@ function updateBreathEffect(delta) {
             if (blushMatR) lines.push(`matR: op=${(blushMatR.opacity??0).toFixed(2)} depthTest=${!!blushMatR.depthTest} polyOff=${!!blushMatR.polygonOffset}`);
             lines.push(`params: off=(${blushOffX.toFixed(2)},${blushOffY.toFixed(2)},${blushOffZ.toFixed(2)}) size=${blushSize.toFixed(2)} spread=${blushSpread.toFixed(2)} unit=${blushUnit.toFixed(4)}`);
             lines.push(`viewport: ${w}x${h}`);
+
+            // 2D blush mapping debug (used in current implementation)
+            if (blush2DDebug) {
+                lines.push(`inputRot=${blush2DDebug.inputRotationDeg}deg beta=${(blush2DDebug.deviceBeta||0).toFixed(1)} gamma=${(blush2DDebug.deviceGamma||0).toFixed(1)}`);
+                lines.push(`pagePortrait=${!!blush2DDebug.pageIsPortrait} video=${blush2DDebug.videoW}x${blush2DDebug.videoH} mp=${blush2DDebug.mpW}x${blush2DDebug.mpH}`);
+                lines.push(`roll=${(blush2DDebug.rollDeg||0).toFixed(1)}deg shift=(${(blush2DDebug.shiftX||0).toFixed(1)},${(blush2DDebug.shiftY||0).toFixed(1)})`);
+                lines.push(`Lscr=(${blush2DDebug.L.x.toFixed(1)},${blush2DDebug.L.y.toFixed(1)}) Rscr=(${blush2DDebug.R.x.toFixed(1)},${blush2DDebug.R.y.toFixed(1)})`);
+            } else {
+                lines.push(`2D: (no data)`);
+            }
+
 
             const fmt = (p, tag) => {
                 if (!p) return `${tag}: (no data)`;
