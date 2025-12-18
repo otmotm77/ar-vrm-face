@@ -457,7 +457,7 @@
                 </div>
                 <div class="slider-container" id="blush-offy-container" style="opacity:0.85;">
                     <span class="slider-label">紅潮位置Y</span>
-                    <input type="range" id="blush-offy-slider" min="-1.0" max="1.0" step="0.01" value="0.00">
+                    <input type="range" id="blush-offy-slider" min="-2.0" max="2.0" step="0.01" value="0.00">
                     <span id="blush-offy-slider-val" class="val-display">0.00</span>
                 </div>
                 <div class="slider-container" id="blush-offz-container" style="opacity:0.85;">
@@ -656,7 +656,7 @@
     <script type="module">
         
 // ===== App Version (single source of truth) =====
-const APP_VERSION = "v5.12.16";
+const APP_VERSION = "v5.12.17";
 const APP_VERSION_NOTE = "breath shiftX TDZ fix";
 function setAppVersionLabel() {
   const el = document.getElementById("app-version");
@@ -853,6 +853,15 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
         function computeInputRotationDeg(beta, gamma) {
             const b = (typeof beta === 'number') ? beta : 0;
             const g = (typeof gamma === 'number') ? gamma : 0;
+
+            // Only apply 90deg correction when the PAGE is in portrait.
+            // If the browser/UI is already landscape, we treat that as the intended orientation.
+            const pageIsPortrait = window.innerHeight >= window.innerWidth;
+            if (!pageIsPortrait) {
+                // In landscape, ignore sideways correction to avoid double-rotating.
+                if (Math.abs(b) > 135) return 180; // upside-down
+                return 0;
+            }
 
             // Sideways (landscape) while screen is locked portrait
             if (Math.abs(g) > 45) return g > 0 ? -90 : 90; // invert to match camera frame direction
@@ -1284,15 +1293,24 @@ const occlusionToggle = document.getElementById('occlusion-toggle');
             }
         });
 
+        function handleViewportResize() {
+            if (renderer && camera) {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+                updateBgPlaneSizeLetterbox();
+            }
+            // 2D overlay canvas used by breath/blush must match viewport, especially on orientation change.
+            try { resizeBreathOverlayCanvas(); } catch (_) {}
+        }
+
         window.addEventListener('resize', () => {
-            if (!renderer || !camera) return;
+            handleViewportResize();
+        });
 
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-
-            renderer.setSize(window.innerWidth, window.innerHeight);
-
-            updateBgPlaneSizeLetterbox();
+        window.addEventListener('orientationchange', () => {
+            // Some browsers fire resize late; defer to get correct innerWidth/innerHeight.
+            setTimeout(() => handleViewportResize(), 150);
         });
 
         startBtn.addEventListener('click', async () => {
