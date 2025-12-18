@@ -334,7 +334,7 @@
         <p>カメラへのアクセスを許可してください</p>
         <button id="start-btn">カメラを開始</button>
         <div id="status-msg"></div>
-        <div id="app-version">v5.12.0 (Version on Start Screen)</div>
+        <div id="app-version"></div>
     </div>
 
     <div id="ui-container" style="display:none;">
@@ -435,6 +435,46 @@
                 <span class="slider-label">口の感度</span>
                 <input type="range" id="mouth-sens-slider" min="0.5" max="5.0" step="0.1" value="1.5">
                 <span id="mouth-sens-slider-val" class="val-display">1.5</span>
+            </div>
+
+            <div class="slider-container">
+                <label class="toggle-label">
+                    <input type="checkbox" id="breath-toggle" class="toggle-checkbox">
+                    吐息エフェクト（口を開けた時）
+                </label>
+            </div>
+            <div id="breath-controls" style="display:none;">
+            <div class="slider-container" id="breath-strength-container" style="opacity:0.6;">
+                <span class="slider-label">吐息の強さ</span>
+                <input type="range" id="breath-strength-slider" min="0.0" max="1.0" step="0.01" value="1.0">
+                <span id="breath-strength-slider-val" class="val-display">1.00</span>
+            </div>
+
+
+            <div class="slider-container" id="breath-offset-container" style="opacity:0.9;">
+                <span class="slider-label">吐息位置X</span>
+                <input type="range" id="breath-offx-slider" min="-1.0" max="1.0" step="0.01" value="0.00">
+                <span id="breath-offx-slider-val" class="val-display">0.00</span>
+            </div>
+            <div class="slider-container" id="breath-offset-container-y" style="opacity:0.9;">
+                <span class="slider-label">吐息位置Y</span>
+                <input type="range" id="breath-offy-slider" min="-1.0" max="1.0" step="0.01" value="0.00">
+                <span id="breath-offy-slider-val" class="val-display">0.00</span>
+            </div>
+            <div class="slider-container" id="breath-offset-container-z" style="opacity:0.9;">
+                <span class="slider-label">吐息位置Z</span>
+                <input type="range" id="breath-offz-slider" min="-1.0" max="1.0" step="0.01" value="0.00">
+                <span id="breath-offz-slider-val" class="val-display">0.00</span>
+            </div>
+
+            <div class="toggle-container" style="display:none;">
+                <label class="toggle-label">
+                    <input type="checkbox" id="breath-debug-toggle" class="toggle-checkbox">
+                    吐息デバッグ（値表示）
+                </label>
+            </div>
+            <div id="breath-debug" style="display:none; font-family: monospace; font-size: 11px; color:#333; background: rgba(255,255,255,0.65); padding:6px; border-radius:8px; margin-bottom:10px; white-space: pre-wrap;"></div>
+
             </div>
 
             <h2>トラッキング</h2>
@@ -556,7 +596,21 @@
     <div id="loading">Initialize AR...</div>
 
     <script type="module">
-        import * as THREE from 'three';
+        
+// ===== App Version (single source of truth) =====
+const APP_VERSION = "v5.12.4";
+const APP_VERSION_NOTE = "breath-save+ui";
+function setAppVersionLabel() {
+  const el = document.getElementById("app-version");
+  if (!el) return;
+  el.textContent = `${APP_VERSION} (${APP_VERSION_NOTE})`;
+}
+// ===============================================
+
+setAppVersionLabel();
+window.addEventListener('DOMContentLoaded', setAppVersionLabel);
+
+import * as THREE from 'three';
         import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
         import { VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm';
         // MediaPipe Tasks Vision (ESM via jsDelivr +esm)
@@ -573,6 +627,11 @@
 
         let faceLandmarker = null;
         let latestBlendshapeMap = new Map();
+        let latestMouthOpenFromLandmarks = 0; // from faceLandmarks (robust mouth-open)
+        let latestMouthCenterVideoX = 0.5; // normalized in ORIGINAL video frame (0..1)
+        let latestMouthCenterVideoY = 0.6;
+        let latestMouthCenterVideoValid = false;
+
         let isFaceVisible = false;
 
         const mpOffscreenCanvas = document.createElement('canvas');
@@ -601,6 +660,35 @@
         let mirrorUserOverride = false; // 手動切替したら自動追従しない
 
         const holdLastPoseOnLost = true; // 顔認識が外れても最後の姿勢・表情を保持
+
+        // --- Breath (white mist) effect ---
+        let isBreathEnabled = false;
+        let breathStrength = 1.0;
+        let breathOffX = 0.0; // multiplier of unit
+        let breathOffY = 0.0;
+        let breathOffZ = 0.0;
+        let breathDebugEnabled = false;
+        let breathDebugEl = null;
+
+        // 2D overlay breath particles (more robust than 3D sprites across devices)
+        let breathOverlayCanvas = null;
+        let breathOverlayCtx = null;
+        let breathParticles2D = [];
+        let lastMouthScreenX = 0;
+        let lastMouthScreenY = 0;
+        let lastMouthScreenValid = false;
+        let lastFaceVisibleNow = false;
+        const breathTmpV = new THREE.Vector3(); // reuse for projection
+        const breathTmpV2 = new THREE.Vector3(); // pivot projection
+
+        let breathEmitter = null;          // attached to adjustmentGroup (mouth position proxy)
+        let breathParticles = null;        // world-space particles group
+        let breathTexture = null;          // shared texture
+        let breathEmitAcc = 0;
+        let lastMouthOpenForEffects = 0;
+        const BREATH_THRESHOLD = 0.08;
+        const BREATH_MAX_PARTICLES = 90;
+
 
         let dirLight = null;
         let hemiLight = null;
@@ -645,6 +733,61 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
             return 0;
         }
 
+
+        // Convert a landmark point (normalized) from the MediaPipe input frame (which may be rotated)
+        // back into the ORIGINAL video frame normalized coordinates.
+        // This matches how we draw the rotated frame into mpOffscreenCanvas:
+        // translate(center) -> rotate(inputRotationDeg) -> drawImage(video centered).
+        function mpLandmarkNormToVideoNorm(xNorm, yNorm, videoW, videoH, rotDeg, mpW, mpH) {
+            if (!Number.isFinite(xNorm) || !Number.isFinite(yNorm) || videoW <= 0 || videoH <= 0) {
+                return { x: 0.5, y: 0.5, ok: false };
+            }
+            // If no rotation, MediaPipe input == video frame.
+            if (!rotDeg || rotDeg === 0) return { x: xNorm, y: yNorm, ok: true };
+
+            const px = xNorm * mpW;
+            const py = yNorm * mpH;
+
+            const cxR = mpW * 0.5;
+            const cyR = mpH * 0.5;
+            const dx = px - cxR;
+            const dy = py - cyR;
+
+            const rad = THREE.MathUtils.degToRad(-rotDeg); // inverse rotation
+            const cos = Math.cos(rad);
+            const sin = Math.sin(rad);
+
+            const rx = dx * cos - dy * sin;
+            const ry = dx * sin + dy * cos;
+
+            const outX = rx + videoW * 0.5;
+            const outY = ry + videoH * 0.5;
+
+            return { x: outX / videoW, y: outY / videoH, ok: true };
+        }
+
+        // Compute the on-screen draw rect for a video frame inside a given canvas using "contain" (letterbox/pillarbox).
+        // Returns rect in CSS pixel space of that canvas.
+        function computeContainRect(canvasW, canvasH, videoW, videoH) {
+            const ca = canvasW / canvasH;
+            const va = videoW / videoH;
+            let dw, dh, dx, dy;
+            if (va > ca) {
+                // fit width
+                dw = canvasW;
+                dh = canvasW / va;
+                dx = 0;
+                dy = (canvasH - dh) * 0.5;
+            } else {
+                // fit height
+                dh = canvasH;
+                dw = canvasH * va;
+                dy = 0;
+                dx = (canvasW - dw) * 0.5;
+            }
+            return { x: dx, y: dy, w: dw, h: dh };
+        }
+
         function onDeviceOrientation(e) {
             if (typeof e.gamma === 'number') deviceGamma = e.gamma;
             if (typeof e.beta === 'number') deviceBeta = e.beta;
@@ -677,8 +820,71 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
         const mouthSensSlider = document.getElementById('mouth-sens-slider');
         const eyeSensSlider = document.getElementById('eye-sens-slider');
         const autoBlinkToggle = document.getElementById('autoblink-toggle');
-        
-        const occlusionToggle = document.getElementById('occlusion-toggle');
+
+        const breathToggle = document.getElementById('breath-toggle');
+        const breathStrengthSlider = document.getElementById('breath-strength-slider');
+        const breathStrengthSliderVal = document.getElementById('breath-strength-slider-val');
+        const breathStrengthContainer = document.getElementById('breath-strength-container');
+        const breathControls = document.getElementById('breath-controls');
+
+        const breathOffXSlider = document.getElementById('breath-offx-slider');
+        const breathOffYSlider = document.getElementById('breath-offy-slider');
+        const breathOffZSlider = document.getElementById('breath-offz-slider');
+        const breathOffXVal = document.getElementById('breath-offx-slider-val');
+        const breathOffYVal = document.getElementById('breath-offy-slider-val');
+        const breathOffZVal = document.getElementById('breath-offz-slider-val');
+
+        const breathDebugToggle = document.getElementById('breath-debug-toggle');
+        breathDebugEl = document.getElementById('breath-debug');
+
+
+        function updateBreathUI(skipSave = false) {
+            isBreathEnabled = !!breathToggle.checked;
+
+            // Show breath-related sliders only when enabled
+            if (breathControls) breathControls.style.display = isBreathEnabled ? 'block' : 'none';
+
+            // Disable inputs when off
+            if (breathStrengthSlider) breathStrengthSlider.disabled = !isBreathEnabled;
+            if (breathOffXSlider) breathOffXSlider.disabled = !isBreathEnabled;
+            if (breathOffYSlider) breathOffYSlider.disabled = !isBreathEnabled;
+            if (breathOffZSlider) breathOffZSlider.disabled = !isBreathEnabled;
+
+            // Keep breath debug hidden by default
+            breathDebugEnabled = false;
+            if (breathDebugToggle) breathDebugToggle.checked = false;
+            if (breathDebugEl) breathDebugEl.style.display = 'none';
+
+            breathStrength = parseFloat(breathStrengthSlider.value);
+            if (!Number.isFinite(breathStrength)) breathStrength = 1.0;
+            // Clamp just in case
+            breathStrength = Math.max(0.0, Math.min(1.0, breathStrength));
+            breathStrengthSliderVal.textContent = breathStrength.toFixed(2);
+            breathStrengthContainer.style.opacity = isBreathEnabled ? '1.0' : '0.6';
+
+            // Offset multipliers (relative to VRM "unit" length)
+            breathOffX = (breathOffXSlider ? (parseFloat(breathOffXSlider.value) || 0) : 0);
+            breathOffY = (breathOffYSlider ? (parseFloat(breathOffYSlider.value) || 0) : 0);
+            breathOffZ = (breathOffZSlider ? (parseFloat(breathOffZSlider.value) || 0) : 0);
+            if (breathOffXVal) breathOffXVal.textContent = breathOffX.toFixed(2);
+            if (breathOffYVal) breathOffYVal.textContent = breathOffY.toFixed(2);
+            if (breathOffZVal) breathOffZVal.textContent = breathOffZ.toFixed(2);
+
+            // Recompute mouth emitter position so changes reflect immediately (if VRM-side emitter is used)
+            if (currentVrm && typeof updateBreathEmitterFromVRM === 'function') updateBreathEmitterFromVRM(currentVrm);
+
+            // Persist with the currently loaded VRM (same mechanism as other options)
+            if (!skipSave && typeof saveSettings === 'function') saveSettings();
+        }
+
+        breathToggle.addEventListener('change', () => updateBreathUI(false));
+breathStrengthSlider.addEventListener('input', () => updateBreathUI(false));
+        if (breathOffXSlider) breathOffXSlider.addEventListener('input', () => updateBreathUI(false));
+        if (breathOffYSlider) breathOffYSlider.addEventListener('input', () => updateBreathUI(false));
+        if (breathOffZSlider) breathOffZSlider.addEventListener('input', () => updateBreathUI(false));
+        if (breathDebugToggle) breathDebugToggle.addEventListener('change', () => updateBreathUI(false));
+        updateBreathUI(true);
+const occlusionToggle = document.getElementById('occlusion-toggle');
         const occlusionDebugToggle = document.getElementById('occlusion-debug-toggle');
         
         // 6点パラメータ用スライダー
@@ -898,6 +1104,10 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
             const sx = mirrorEnabled ? -1 : 1;
             renderer.domElement.style.transform = `scaleX(${sx})`;
             renderer.domElement.style.transformOrigin = 'center center';
+            if (breathOverlayCanvas) {
+                breathOverlayCanvas.style.transform = `scaleX(${sx})`;
+                breathOverlayCanvas.style.transformOrigin = 'center center';
+            }
         }
 
         function getViewportSizeAtDepth(depth) {
@@ -968,8 +1178,15 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
                 camSat: camSatSlider.value,
                 camCont: camContSlider.value,
                 camBlur: camBlurSlider.value,
-                camSepia: camSepiaSlider.value
+                camSepia: camSepiaSlider.value,
+                // Breath (per-VRM)
+                breathEnabled: (typeof breathToggle !== 'undefined') ? !!breathToggle.checked : false,
+                breathStrength: (typeof breathStrengthSlider !== 'undefined' && breathStrengthSlider) ? breathStrengthSlider.value : '1.0',
+                breathOffX: (typeof breathOffXSlider !== 'undefined' && breathOffXSlider) ? breathOffXSlider.value : '0.0',
+                breathOffY: (typeof breathOffYSlider !== 'undefined' && breathOffYSlider) ? breathOffYSlider.value : '0.0',
+                breathOffZ: (typeof breathOffZSlider !== 'undefined' && breathOffZSlider) ? breathOffZSlider.value : '0.0'
             };
+
             try {
                 localStorage.setItem("vrm_settings_" + currentFileName, JSON.stringify(settings));
             } catch(e) {
@@ -1023,7 +1240,16 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
                     if(s.camBlur) camBlurSlider.value = s.camBlur;
                     if(s.camSepia) camSepiaSlider.value = s.camSepia;
 
-                    // 値の表示を更新
+                    // Breath (per-VRM)
+                    if (Object.prototype.hasOwnProperty.call(s, 'breathEnabled') && typeof breathToggle !== 'undefined') {
+                        breathToggle.checked = !!s.breathEnabled;
+                    }
+                    if (s.breathStrength && breathStrengthSlider) breathStrengthSlider.value = s.breathStrength;
+                    if (Object.prototype.hasOwnProperty.call(s, 'breathOffX') && breathOffXSlider) breathOffXSlider.value = s.breathOffX;
+                    if (Object.prototype.hasOwnProperty.call(s, 'breathOffY') && breathOffYSlider) breathOffYSlider.value = s.breathOffY;
+                    if (Object.prototype.hasOwnProperty.call(s, 'breathOffZ') && breathOffZSlider) breathOffZSlider.value = s.breathOffZ;
+                    if (typeof updateBreathUI === 'function') updateBreathUI(true);
+// 値の表示を更新
                     allSliders.forEach(el => updateSliderDisplay(el));
 
                     updateLight(); 
@@ -1115,6 +1341,366 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
 
             // CanvasRenderingContext2D.filter supports these (Chrome/Safari modern)
             cameraFilterStr = `brightness(${b}%) saturate(${s}%) contrast(${c}%) blur(${bl}px) sepia(${sp}%)`;
+        }
+
+        function createBreathTexture() {
+            const c = document.createElement('canvas');
+            c.width = 128; c.height = 128;
+            const ctx = c.getContext('2d');
+            const g = ctx.createRadialGradient(64, 64, 4, 64, 64, 64);
+            g.addColorStop(0.0, 'rgba(255,255,255,0.60)');
+            g.addColorStop(0.40, 'rgba(255,255,255,0.28)');
+            g.addColorStop(1.0, 'rgba(255,255,255,0.0)');
+            ctx.fillStyle = g;
+            ctx.fillRect(0, 0, 128, 128);
+            const tex = new THREE.CanvasTexture(c);
+            tex.colorSpace = THREE.SRGBColorSpace;
+            tex.minFilter = THREE.LinearFilter;
+            tex.magFilter = THREE.LinearFilter;
+            tex.generateMipmaps = false;
+            return tex;
+        }
+
+        function updateBreathEmitterFromVRM(vrm) {
+            if (!breathEmitter || !vrm) return;
+
+            // detach from previous parent
+            if (breathEmitter.parent) {
+                breathEmitter.parent.remove(breathEmitter);
+            }
+
+            // Helpers to get humanoid bones (normalized preferred)
+            const humanoid = vrm.humanoid;
+            const getBone = (name) => {
+                try {
+                    return humanoid?.getNormalizedBoneNode?.(name)
+                        || humanoid?.getRawBoneNode?.(name)
+                        || humanoid?.getBoneNode?.(name)
+                        || null;
+                } catch (_) { return null; }
+            };
+
+            const head = getBone('head');
+            const neck = getBone('neck');
+            const jaw  = getBone('jaw');
+
+            // Estimate a "head unit" in world space to scale offsets robustly
+            let unit = 0.12;
+            try {
+                if (head && neck) {
+                    const ph = new THREE.Vector3();
+                    const pn = new THREE.Vector3();
+                    head.getWorldPosition(ph);
+                    neck.getWorldPosition(pn);
+                    const d = ph.distanceTo(pn);
+                    if (Number.isFinite(d) && d > 0.001) unit = d;
+                }
+            } catch (_) {}
+
+            // store unit for debug
+            breathEmitter.userData.unit = unit;
+
+            // Prefer attaching to Jaw if present; else Head; else fallback to adjustmentGroup
+            const attach = jaw || head;
+            if (attach) {
+                attach.add(breathEmitter);
+
+                // Offsets in attach-local space
+                if (jaw) {
+                    // Slightly forward and a bit up from jaw pivot
+                    breathEmitter.position.set(0, unit * 0.10, unit * 0.22);
+                } else {
+                    // From head pivot: down towards mouth + forward
+                    breathEmitter.position.set(0, -unit * 0.25, unit * 0.60);
+                }
+
+                // Apply user offsets (relative to unit)
+                breathEmitter.position.x += breathOffX * unit;
+                breathEmitter.position.y += breathOffY * unit;
+                breathEmitter.position.z += breathOffZ * unit;
+                breathEmitter.updateMatrixWorld(true);
+            } else {
+                // fallback: roughly mouth-ish in adjustmentGroup local space
+                adjustmentGroup.add(breathEmitter);
+                breathEmitter.position.set(0, -0.12, 0.18);
+            }
+        }
+
+        function clearBreathParticles() {
+            if (!breathParticles) return;
+            for (const s of [...breathParticles.children]) {
+                if (s.material) s.material.dispose();
+                breathParticles.remove(s);
+            }
+            breathEmitAcc = 0;
+        }
+
+        function spawnBreathParticle() {
+            if (!breathParticles || !breathEmitter || !breathTexture) return;
+            if (breathParticles.children.length >= BREATH_MAX_PARTICLES) return;
+
+            const mat = new THREE.SpriteMaterial({
+                map: breathTexture,
+                transparent: true,
+                opacity: 0.0,
+                depthWrite: false,
+                depthTest: false
+            });
+            const sp = new THREE.Sprite(mat);
+            sp.renderOrder = 50;
+
+            const p = new THREE.Vector3();
+            const q = new THREE.Quaternion();
+            breathEmitter.getWorldPosition(p);
+            breathEmitter.getWorldQuaternion(q);
+            sp.position.copy(p);
+
+            // out of face (~local -Z) with randomness
+            const dir = new THREE.Vector3(0, 0, 1).applyQuaternion(q).normalize();
+            dir.x += (Math.random() - 0.5) * 0.25;
+            dir.y += (Math.random() - 0.5) * 0.15;
+            dir.z += (Math.random() - 0.5) * 0.25;
+            dir.normalize();
+
+            const speed = (35 + Math.random() * 25) * (0.6 + breathStrength * 0.4);
+            const vel = dir.multiplyScalar(speed);
+            vel.y += 10 + Math.random() * 8;
+
+            const life = 0.7 + Math.random() * 0.6;
+            const s0 = 10 * (0.7 + Math.random() * 0.6);
+            const s1 = s0 * (2.2 + Math.random() * 1.2);
+
+            sp.userData = { age: 0, life, vel, s0, s1 };
+            sp.scale.setScalar(s0);
+
+            breathParticles.add(sp);
+        }
+
+                
+        function resizeBreathOverlayCanvas() {
+            if (!breathOverlayCanvas) return;
+            const pr = Math.min(window.devicePixelRatio || 1, 2);
+            const w = Math.max(1, Math.floor(window.innerWidth * pr));
+            const h = Math.max(1, Math.floor(window.innerHeight * pr));
+            if (breathOverlayCanvas.width !== w || breathOverlayCanvas.height !== h) {
+                breathOverlayCanvas.width = w;
+                breathOverlayCanvas.height = h;
+            }
+            // Keep CSS sizing to cover the viewport
+            breathOverlayCanvas.style.width = '100%';
+            breathOverlayCanvas.style.height = '100%';
+        }
+
+function updateBreathEffect(delta) {
+            // 2D overlay "breath" effect drawn on breathOverlayCanvas.
+            // Designed to be visible regardless of 3D depth/scale differences.
+
+            if (!breathOverlayCanvas || !breathOverlayCtx || !breathTexture) return;
+
+            // Keep overlay canvas in sync with displayCanvas (same pixel space as video)
+            const pr = window.devicePixelRatio || 1;
+            const w = breathOverlayCanvas.width / pr;
+            const h = breathOverlayCanvas.height / pr;
+            if (w <= 0 || h <= 0) return;
+
+            breathOverlayCtx.setTransform(pr, 0, 0, pr, 0, 0);
+            breathOverlayCtx.clearRect(0, 0, w, h);
+            breathOverlayCtx.globalCompositeOperation = 'screen';
+            breathOverlayCtx.filter = 'blur(1.6px)';
+// Update mouth screen position from faceLandmarks (2D) + VRM adjustment shift (follows height slider).
+            const vw2 = videoEl ? (videoEl.videoWidth || 0) : 0;
+            const vh2 = videoEl ? (videoEl.videoHeight || 0) : 0;
+
+            let baseMouthX = lastMouthScreenX;
+            let baseMouthY = lastMouthScreenY;
+            let baseValid = false;
+            let rect2 = null;
+
+            if (latestMouthCenterVideoValid && vw2 > 0 && vh2 > 0) {
+                rect2 = computeContainRect(w, h, vw2, vh2);
+                baseMouthX = rect2.x + latestMouthCenterVideoX * rect2.w;
+                baseMouthY = rect2.y + latestMouthCenterVideoY * rect2.h;
+                baseValid = Number.isFinite(baseMouthX) && Number.isFinite(baseMouthY);
+            }
+
+            // Convert VRM UI adjustments (pivot -> adjustment) into a screen-space delta
+            let shiftX = 0, shiftY = 0;
+            if (pivotGroup && adjustmentGroup && camera) {
+                breathTmpV2.setFromMatrixPosition(pivotGroup.matrixWorld).project(camera);
+                breathTmpV.setFromMatrixPosition(adjustmentGroup.matrixWorld).project(camera);
+                const ok = Number.isFinite(breathTmpV2.x) && Number.isFinite(breathTmpV2.y) && Number.isFinite(breathTmpV2.z)
+                        && Number.isFinite(breathTmpV.x)  && Number.isFinite(breathTmpV.y)  && Number.isFinite(breathTmpV.z);
+                if (ok) {
+                    const px0 = (breathTmpV2.x * 0.5 + 0.5) * w;
+                    const py0 = (-breathTmpV2.y * 0.5 + 0.5) * h;
+                    const px1 = (breathTmpV.x * 0.5 + 0.5) * w;
+                    const py1 = (-breathTmpV.y * 0.5 + 0.5) * h;
+                    shiftX = px1 - px0;
+                    shiftY = py1 - py0;
+                }
+            }
+
+            // Extra offsets (sliders) in "unit" relative to displayed video width
+            const unitPx = rect2 ? (rect2.w * 0.25) : (Math.min(w, h) * 0.25);
+            const offXpx = breathOffX * unitPx;
+            const offYpx = breathOffY * unitPx;
+
+            if (baseValid) {
+                lastMouthScreenX = baseMouthX + shiftX + offXpx;
+                lastMouthScreenY = baseMouthY + shiftY + offYpx;
+                lastMouthScreenValid = Number.isFinite(lastMouthScreenX) && Number.isFinite(lastMouthScreenY);
+            } else {
+                // keep previous if configured to hold last pose
+                lastMouthScreenValid = !!(holdLastPoseOnLost && lastMouthScreenValid);
+            }
+
+// Update + draw existing particles
+            const keep = [];
+            for (const p of breathParticles2D) {
+                p.age += delta;
+                const t = p.age / p.life;
+                if (t >= 1) continue;
+
+                p.x += p.vx * delta;
+                p.y += p.vy * delta;
+
+                // Turbulence (diffusion)
+                const turb = 18 * (0.7 + 0.3 * breathStrength);
+                p.vx += (Math.random() - 0.5) * turb * delta;
+                p.vy += (Math.random() - 0.5) * turb * delta;
+
+                // Gentle drift & damping
+                p.vx *= Math.pow(0.95, delta * 60);
+                p.vy *= Math.pow(0.96, delta * 60);
+
+                const size = p.s0 + (p.s1 - p.s0) * t;
+                const fadeIn = Math.min(1, t / 0.15);
+                const fadeOut = 1 - t;
+                const a = p.a0 * fadeIn * fadeOut;
+
+                breathOverlayCtx.globalAlpha = a;
+                // breathTexture.image is the backing canvas (from makeBreathTexture)
+                breathOverlayCtx.drawImage(
+                    breathTexture.image,
+                    p.x - size / 2,
+                    p.y - size / 2,
+                    size,
+                    size
+                );
+
+                keep.push(p);
+            }
+            breathOverlayCtx.globalAlpha = 1.0;
+            breathParticles2D = keep;
+
+
+            // Emit new particles only when:
+            // - option enabled
+            // - mouth position is known
+            // - face is currently visible (prevents "ghost breathing" when tracking is lost)
+            if (!isBreathEnabled || !lastMouthScreenValid || !lastFaceVisibleNow) {
+                if (breathDebugEnabled && breathDebugEl) {
+                    breathDebugEl.textContent =
+                        `mouth(smoothed): ${lastMouthOpenForEffects.toFixed(3)}
+` +
+                        `mouth(landmark): ${latestMouthOpenFromLandmarks.toFixed(3)}
+` +
+                        `faceVisible: ${lastFaceVisibleNow}
+` +
+                        `mouthXY(px): ${lastMouthScreenX.toFixed(1)},${lastMouthScreenY.toFixed(1)}
+` +
+                        `canvas(css): ${w.toFixed(0)}x${h.toFixed(0)} (pr:${(window.devicePixelRatio||1).toFixed(2)})
+` +
+                        `unit:${((breathEmitter&&breathEmitter.userData&&breathEmitter.userData.unit)||0).toFixed(3)} off:${breathOffX.toFixed(2)},${breathOffY.toFixed(2)},${breathOffZ.toFixed(2)}
+` +
+                        `particles: ${breathParticles2D.length}
+` +
+                        `emit: off`;
+                }
+                return;
+            }
+
+            const m = Math.max(0, lastMouthOpenForEffects - BREATH_THRESHOLD);
+            if (m <= 0) {
+                if (breathDebugEnabled && breathDebugEl) {
+                    breathDebugEl.textContent =
+                        `mouth(smoothed): ${lastMouthOpenForEffects.toFixed(3)}
+` +
+                        `mouth(landmark): ${latestMouthOpenFromLandmarks.toFixed(3)}
+` +
+                        `faceVisible: ${lastFaceVisibleNow}
+` +
+                        `mouthXY(px): ${lastMouthScreenX.toFixed(1)},${lastMouthScreenY.toFixed(1)}
+` +
+                        `canvas(css): ${w.toFixed(0)}x${h.toFixed(0)} (pr:${(window.devicePixelRatio||1).toFixed(2)})
+` +
+                        `particles: ${breathParticles2D.length}
+` +
+                        `emit: off (below threshold ${BREATH_THRESHOLD})`;
+                }
+                return;
+            }
+
+            const nowSec = performance.now() * 0.001;
+            // 'Haa haa' panting feel: gentle puffs rather than one strong blow
+            const pantFreq = 1.45; // Hz
+            let pulse = 0.5 + 0.5 * Math.sin(nowSec * Math.PI * 2 * pantFreq);
+            pulse = Math.pow(pulse, 3.0); // sharper puffs
+            const rate = 16 * m * breathStrength * (0.18 + 1.55 * pulse); // particles/sec
+            breathEmitAcc += rate * delta;
+
+            const maxAdd = 10; // cap per frame
+            let added = 0;
+            while (breathEmitAcc >= 1.0 && added < maxAdd) {
+                breathEmitAcc -= 1.0;
+                added++;
+
+                const life = 1.15 + Math.random() * 1.55;
+                const s0 = (18 + Math.random() * 14) * (0.8 + breathStrength * 0.25);
+                const s1 = s0 * (2.6 + Math.random() * 1.3);
+
+                // Breath: diffuse around mouth with gentle turbulence (screen coords: +y is down)
+                const ang = Math.random() * Math.PI * 2;
+                const spd = (10 + Math.random() * 26) * (0.65 + 0.35 * breathStrength);
+                let vx = Math.cos(ang) * spd;
+                let vy = Math.sin(ang) * spd;
+                // slight upward bias (negative y)
+                vy -= (6 + Math.random() * 14) * (0.6 + 0.4 * breathStrength);
+
+                breathParticles2D.push({
+                    x: lastMouthScreenX + (Math.random() - 0.5) * 18,
+                    y: lastMouthScreenY + (Math.random() - 0.5) * 12,
+                    vx, vy,
+                    age: 0,
+                    life,
+                    s0, s1,
+                    a0: 0.55
+                });
+
+                if (breathParticles2D.length > 140) breathParticles2D.shift();
+            }
+
+            if (breathDebugEnabled && breathDebugEl) {
+                breathDebugEl.textContent =
+                    `mouth(smoothed): ${lastMouthOpenForEffects.toFixed(3)}
+` +
+                    `mouth(landmark): ${latestMouthOpenFromLandmarks.toFixed(3)}
+` +
+                    `faceVisible: ${lastFaceVisibleNow}
+` +
+                    `mouthXY(px): ${lastMouthScreenX.toFixed(1)},${lastMouthScreenY.toFixed(1)}
+` +
+                    `canvas(css): ${w.toFixed(0)}x${h.toFixed(0)} (pr:${(window.devicePixelRatio||1).toFixed(2)})
+` +
+                    `particles: ${breathParticles2D.length}
+` +
+                    `emitRate: ${rate.toFixed(1)}/s`;
+            }
+            // Reset draw state
+            breathOverlayCtx.globalAlpha = 1.0;
+            breathOverlayCtx.filter = 'none';
+            breathOverlayCtx.globalCompositeOperation = 'source-over';
+
         }
 
         function ensureDisplayCanvasSize() {
@@ -1335,6 +1921,11 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
                 adjustmentGroup = null;
                 pivotGroup = null;
 
+                breathEmitter = null;
+                if (breathParticles) { clearBreathParticles(); breathParticles = null; }
+                // keep breathTexture cached across restarts
+
+
                 if (arContainer) arContainer.innerHTML = '';
             } catch (e) {
                 console.log("Cleanup warning:", e);
@@ -1410,6 +2001,21 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
 
                 if (arContainer) arContainer.appendChild(renderer.domElement);
 
+                // Breath overlay canvas (2D particles). Placed above WebGL canvas.
+                breathOverlayCanvas = document.createElement('canvas');
+                breathOverlayCanvas.id = 'breath-overlay';
+                breathOverlayCanvas.style.position = 'absolute';
+                breathOverlayCanvas.style.top = '0';
+                breathOverlayCanvas.style.left = '0';
+                breathOverlayCanvas.style.width = '100%';
+                breathOverlayCanvas.style.height = '100%';
+                breathOverlayCanvas.style.pointerEvents = 'none';
+                breathOverlayCanvas.style.zIndex = '100';
+                breathOverlayCanvas.style.transformOrigin = '50% 50%';
+                arContainer.appendChild(breathOverlayCanvas);
+                resizeBreathOverlayCanvas();
+                breathOverlayCtx = breathOverlayCanvas.getContext('2d');
+
                 applyMirrorToRenderer();
 
                 // Video background plane
@@ -1471,6 +2077,21 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
                 adjustmentGroup = new THREE.Group();
                 pivotGroup.add(adjustmentGroup);
                 updateTransform();
+
+                // --- Breath effect setup ---
+                if (!breathParticles) {
+                    breathParticles = new THREE.Group();
+                    breathParticles.renderOrder = 50;
+                    scene.add(breathParticles);
+                } else {
+                    clearBreathParticles();
+                }
+                if (!breathTexture) breathTexture = createBreathTexture();
+
+                breathEmitter = new THREE.Object3D();
+                breathEmitter.position.set(0, -0.12, 0.18); // fallback
+                adjustmentGroup.add(breathEmitter);
+
 
                 // --- Occluder (mask) ---
                 occluderGroup = new THREE.Group();
@@ -1584,6 +2205,37 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
                             // (do nothing)
                         }
 
+                        
+                        // Mouth open estimate from faceLandmarks (fallback if blendshapes are weak/unsupported)
+                        const lms = res && res.faceLandmarks && res.faceLandmarks[0];
+                        if (lms) {
+                            const up = lms[13], lo = lms[14], lc = lms[78], rc = lms[308];
+                            if (up && lo && lc && rc) {
+                                const dxw = (lc.x - rc.x), dyw = (lc.y - rc.y);
+                                const mouthW = Math.hypot(dxw, dyw) || 1e-6;
+                                const dxo = (up.x - lo.x), dyo = (up.y - lo.y);
+                                const mouthO = Math.hypot(dxo, dyo);
+                                latestMouthOpenFromLandmarks = Math.min(0.5, Math.max(0, mouthO / mouthW));
+                            
+                                // Mouth center (normalized) in MediaPipe input space
+                                // Use corners for X (more stable) and inner lips for Y.
+                                const mx = (lc.x + rc.x) * 0.5;
+                                const my = (up.y + lo.y) * 0.5;
+
+                                // Convert to ORIGINAL video space (undo analysis rotation)
+                                const vw0 = videoEl.videoWidth || 0;
+                                const vh0 = videoEl.videoHeight || 0;
+                                const mpW0 = (inputRotationDeg !== 0) ? (mpOffscreenCanvas.width || 0) : vw0;
+                                const mpH0 = (inputRotationDeg !== 0) ? (mpOffscreenCanvas.height || 0) : vh0;
+                                const vv = mpLandmarkNormToVideoNorm(mx, my, vw0, vh0, inputRotationDeg, mpW0, mpH0);
+                                if (vv.ok) {
+                                    latestMouthCenterVideoX = Math.min(1, Math.max(0, vv.x));
+                                    latestMouthCenterVideoY = Math.min(1, Math.max(0, vv.y));
+                                    latestMouthCenterVideoValid = true;
+                                }
+}
+                        }
+
                         const bss = res && res.faceBlendshapes;
                         if (bss && bss.length > 0 && bss[0].categories) {
                             for (const c of bss[0].categories) {
@@ -1591,8 +2243,11 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
                             }
                         }
                     } else {
-                        // detector not ready: keep last pose visible
+                        latestMouthOpenFromLandmarks = 0;
+                    // detector not ready: keep last pose visible
                     }
+
+                    lastFaceVisibleNow = isFaceVisible;
 
                     // Light follows pivot
                     if (pivotGroup && dirLight && pivotGroup.visible) {
@@ -1614,6 +2269,7 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
                         }
                     }
 
+                    updateBreathEffect(delta);
                     renderer.render(scene, camera);
                 });
 
@@ -1678,12 +2334,18 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
                 const blinkR = latestBlendshapeMap.get('eyeBlinkRight') ?? 0;
 
                 mouthOpen = Math.min(1, Math.max(0, jawOpen * mouthSens));
+                // If blendshapes are weak, augment using landmarks-based mouth open
+                const lmOpen = Math.min(1, Math.max(0, (latestMouthOpenFromLandmarks - 0.02) * 12.0 * mouthSens));
+                mouthOpen = Math.max(mouthOpen, lmOpen);
+
                 cameraBlinkL = Math.min(1, Math.max(0, blinkL * eyeSens));
                 cameraBlinkR = Math.min(1, Math.max(0, blinkR * eyeSens));
             }
 
             // --- Smooth ---
             smoothedMouthRatio += (mouthOpen - smoothedMouthRatio) * 15.0 * delta;
+            lastMouthOpenForEffects = smoothedMouthRatio;
+
             smoothedEyeL += (cameraBlinkL - smoothedEyeL) * 20.0 * delta;
             smoothedEyeR += (cameraBlinkR - smoothedEyeR) * 20.0 * delta;
 
@@ -1767,6 +2429,7 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
                             updateMaterialSettings(vrm);
 
                             adjustmentGroup.add(vrm.scene);
+                        updateBreathEmitterFromVRM(vrm);
                         }
 
                         loadSettings(currentFileName);
