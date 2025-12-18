@@ -613,8 +613,8 @@
     <script type="module">
         
 // ===== App Version (single source of truth) =====
-const APP_VERSION = "v5.12.5";
-const APP_VERSION_NOTE = "blush cheeks";
+const APP_VERSION = "v5.12.6";
+const APP_VERSION_NOTE = "blush position fix";
 function setAppVersionLabel() {
   const el = document.getElementById("app-version");
   if (!el) return;
@@ -1676,8 +1676,8 @@ function updateBreathEffect(delta) {
                     breathOverlayCtx.restore();
                 };
 
-                // Slightly offset upward toward cheekbones
-                const yLift = r * 0.05;
+                // Slightly offset toward cheek center
+                const yLift = -r * 0.02;
                 drawSpot(lastCheekScreenLX, lastCheekScreenLY - yLift);
                 drawSpot(lastCheekScreenRX, lastCheekScreenRY - yLift);
             }
@@ -2377,11 +2377,23 @@ function updateBreathEffect(delta) {
                                     latestMouthCenterVideoValid = true;
 
                                     // Cheek centers for blush (faceLandmarks indices)
-                                    // 234: left cheek, 454: right cheek (MediaPipe FaceMesh)
-                                    const clm = lms[234], crm = lms[454];
-                                    if (clm && crm) {
-                                        const vcl = mpLandmarkNormToVideoNorm(clm.x, clm.y, vw0, vh0, inputRotationDeg, mpW0, mpH0);
-                                        const vcr = mpLandmarkNormToVideoNorm(crm.x, crm.y, vw0, vh0, inputRotationDeg, mpW0, mpH0);
+                                    // Use a blended center (cheek + eye outer + mouth corner) for more stable placement across VRMs
+                                    // Left: cheek(234), eyeOuter(33), mouthCorner(61)
+                                    // Right: cheek(454), eyeOuter(263), mouthCorner(291)
+                                    const lCheek = lms[234], rCheek = lms[454];
+                                    const lEyeO = lms[33],  rEyeO = lms[263];
+                                    const lMouth = lms[61], rMouth = lms[291];
+
+                                    if (lCheek && rCheek && lEyeO && rEyeO && lMouth && rMouth) {
+                                        // Weighted blend to pull the spot slightly down/in from the raw cheek landmark
+                                        const lx = (lCheek.x * 0.55 + lEyeO.x * 0.15 + lMouth.x * 0.30);
+                                        const ly = (lCheek.y * 0.45 + lEyeO.y * 0.10 + lMouth.y * 0.45);
+                                        const rx = (rCheek.x * 0.55 + rEyeO.x * 0.15 + rMouth.x * 0.30);
+                                        const ry = (rCheek.y * 0.45 + rEyeO.y * 0.10 + rMouth.y * 0.45);
+
+                                        const vcl = mpLandmarkNormToVideoNorm(lx, ly, vw0, vh0, inputRotationDeg, mpW0, mpH0);
+                                        const vcr = mpLandmarkNormToVideoNorm(rx, ry, vw0, vh0, inputRotationDeg, mpW0, mpH0);
+
                                         if (vcl.ok && vcr.ok) {
                                             latestCheekLVideoX = Math.min(1, Math.max(0, vcl.x));
                                             latestCheekLVideoY = Math.min(1, Math.max(0, vcl.y));
