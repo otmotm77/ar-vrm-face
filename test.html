@@ -702,7 +702,7 @@
     <script type="module">
         
 // ===== App Version (single source of truth) =====
-const APP_VERSION = "v5.12.25";
+const APP_VERSION = "v5.12.26";
 const APP_VERSION_NOTE = "rotation+ui tweaks+debug";
 function setAppVersionLabel() {
   const el = document.getElementById("app-version");
@@ -753,6 +753,9 @@ import * as THREE from 'three';
         let deviceGamma = 0;
         let deviceBeta = 0;
         let inputRotationDeg = 0;
+        let lastBaseInputRotDeg = 0;
+        let autoInputRotationDeg = 0;
+        let eyeAngleDeg = 0;
 
         let currentVrm = null;
         let pivotGroup;       
@@ -2265,6 +2268,9 @@ function updateBreathEffect(delta) {
                         if (blushDebugEnabled) {
                             blush2DDebug = {
                                 inputRotationDeg,
+                                baseRotDeg: lastBaseInputRotDeg,
+                                autoRotDeg: autoInputRotationDeg,
+                                eyeAngleDeg,
                                 deviceBeta, deviceGamma,
                                 pageIsPortrait: (window.innerHeight >= window.innerWidth),
                                 videoW: vwB, videoH: vhB,
@@ -2594,7 +2600,7 @@ function updateBreathEffect(delta) {
 
             // 2D blush mapping debug (used in current implementation)
             if (blush2DDebug) {
-                lines.push(`inputRot=${blush2DDebug.inputRotationDeg}deg beta=${(blush2DDebug.deviceBeta||0).toFixed(1)} gamma=${(blush2DDebug.deviceGamma||0).toFixed(1)}`);
+                lines.push(`inputRot=${blush2DDebug.inputRotationDeg}deg baseRot=${blush2DDebug.baseRotDeg} autoRot=${blush2DDebug.autoRotDeg} eyeAng=${(blush2DDebug.eyeAngleDeg||0).toFixed(1)}deg beta=${(blush2DDebug.deviceBeta||0).toFixed(1)} gamma=${(blush2DDebug.deviceGamma||0).toFixed(1)}`);
                 lines.push(`pagePortrait=${!!blush2DDebug.pageIsPortrait} video=${blush2DDebug.videoW}x${blush2DDebug.videoH} mp=${blush2DDebug.mpW}x${blush2DDebug.mpH}`);
                 lines.push(`roll=${(blush2DDebug.rollDeg||0).toFixed(1)}deg shift=(${(blush2DDebug.shiftX||0).toFixed(1)},${(blush2DDebug.shiftY||0).toFixed(1)})`);
                 lines.push(`Lscr=(${blush2DDebug.L.x.toFixed(1)},${blush2DDebug.L.y.toFixed(1)}) Rscr=(${blush2DDebug.R.x.toFixed(1)},${blush2DDebug.R.y.toFixed(1)})`);
@@ -3060,7 +3066,9 @@ function updateBreathEffect(delta) {
 
                     // Determine device tilt -> choose a rotation for the *input* frame
                     // (Screen rotation is locked; we rotate analysis input only)
-                    inputRotationDeg = computeInputRotationDeg(deviceBeta, deviceGamma, videoEl.videoWidth, videoEl.videoHeight);
+                    const baseRotDeg = computeInputRotationDeg(deviceBeta, deviceGamma, videoEl.videoWidth, videoEl.videoHeight);
+                    lastBaseInputRotDeg = baseRotDeg;
+                    inputRotationDeg = (baseRotDeg !== 0) ? baseRotDeg : autoInputRotationDeg;
 
                     // Draw rotated frame to offscreen canvas when needed
                     let mpInput = videoEl;
@@ -3090,7 +3098,37 @@ function updateBreathEffect(delta) {
                     if (faceLandmarker && videoEl.readyState >= 2) {
                         const res = faceLandmarker.detectForVideo(mpInput, performance.now());
                         latestFaceLandmarks0 = (res && res.faceLandmarks && res.faceLandmarks[0]) ? res.faceLandmarks[0] : null;
-                        const tms = res && res.facialTransformationMatrixes;
+                        
+                        // Auto-rotation fallback (when screen orientation is locked and videoW/H alone can't detect rotation):
+                        // Use eye-line angle in MediaPipe's normalized coordinates to detect if the frame is effectively rotated ~90deg.
+                        try {
+                            if (latestFaceLandmarks0 && latestFaceLandmarks0.length > 263) {
+                                const le = latestFaceLandmarks0[33];   // left eye outer
+                                const rePt = latestFaceLandmarks0[263]; // right eye outer
+                                if (le && rePt && Number.isFinite(le.x) && Number.isFinite(le.y) && Number.isFinite(rePt.x) && Number.isFinite(rePt.y)) {
+                                    const ang = Math.atan2((rePt.y - le.y), (rePt.x - le.x)) * 180 / Math.PI;
+                                    eyeAngleDeg = ang;
+                                    // Only engage auto-rot when the base heuristic says "0" (otherwise we'd fight it)
+                                    if (lastBaseInputRotDeg === 0) {
+                                        const a = Math.abs(ang);
+                                        let cand = 0;
+                                        if (a > 60 && a < 120) cand = (ang > 0) ? -90 : 90;
+                                        else if (a >= 150) cand = 180;
+                                        else cand = 0;
+                                        // Hysteresis: once engaged, keep until angle is clearly near-horizontal
+                                        if (cand !== 0) {
+                                            autoInputRotationDeg = cand;
+                                        } else if (a < 25) {
+                                            autoInputRotationDeg = 0;
+                                        }
+                                    } else {
+                                        // When base heuristic is confident, don't override it.
+                                        autoInputRotationDeg = 0;
+                                    }
+                                }
+                            }
+                        } catch (_) {}
+const tms = res && res.facialTransformationMatrixes;
                         if (tms && tms.length > 0) {
                             isFaceVisible = true;
 
