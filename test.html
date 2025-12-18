@@ -687,7 +687,7 @@
     <script type="module">
         
 // ===== App Version (single source of truth) =====
-const APP_VERSION = "v5.12.23";
+const APP_VERSION = "v5.12.24";
 const APP_VERSION_NOTE = "breath shiftX TDZ fix";
 function setAppVersionLabel() {
   const el = document.getElementById("app-version");
@@ -2147,7 +2147,17 @@ function updateBreathEffect(delta) {
                     const pRCheek = pt(425) || pt(280) || pt(454);
 
                     if (pLEye && pREye && pLMouth && pRMouth) {
-                        const mapXY = (p) => ({ x: rectB.x + p.x * rectB.w, y: rectB.y + p.y * rectB.h });
+                        const mapXY = (p) => {
+                            // FaceLandmarker landmarks are normalized in the MediaPipe *input* canvas.
+                            // When we rotate the video into mpOffscreenCanvas (inputRotationDeg), we must
+                            // map them back into ORIGINAL video-frame normalized coords before drawing overlays.
+                            const mpW = mpOffscreenCanvas.width || vwB;
+                            const mpH = mpOffscreenCanvas.height || vhB;
+                            const vv = mpLandmarkNormToVideoNorm(p.x, p.y, vwB, vhB, inputRotationDeg, mpW, mpH);
+                            const xx = rectB.x + vv.x * rectB.w;
+                            const yy = rectB.y + vv.y * rectB.h;
+                            return { x: xx, y: yy };
+                        };
 
                         const le = mapXY(pLEye), re = mapXY(pREye);
                         const lm0 = mapXY(pLMouth), rm0 = mapXY(pRMouth);
