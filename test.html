@@ -639,8 +639,8 @@
     <script type="module">
         
 // ===== App Version (single source of truth) =====
-const APP_VERSION = "v5.12.9";
-const APP_VERSION_NOTE = "blush-landmark-follow+pitchfix";
+const APP_VERSION = "v5.12.10";
+const APP_VERSION_NOTE = "blush-stick-to-vrm-cheeks";
 function setAppVersionLabel() {
   const el = document.getElementById("app-version");
   if (!el) return;
@@ -713,13 +713,17 @@ import * as THREE from 'three';
         let blushSize = 1.00;  // size multiplier
         let blushSpread = 1.00; // distance multiplier (cheek width)
 
-        // 3D anchors (projected to 2D overlay) to follow VRM movement/orientation
-        let blushAnchorL = null;
-        let blushAnchorR = null;
-        const blushTmpV = new THREE.Vector3();
-        const blushTmpV2 = new THREE.Vector3();
-        const blushTmpQ = new THREE.Quaternion();
-        let latestCheekLVideoX = 0.35; // normalized in ORIGINAL video frame (0..1)
+        // Cheek blush meshes (attached to VRM head; sticks to the model)
+let blushMeshL = null;
+let blushMeshR = null;
+let blushMatL = null;
+let blushMatR = null;
+let blushTex = null;
+const blushTmpV = new THREE.Vector3();
+const blushTmpV2 = new THREE.Vector3();
+let blushUnit = 0.06;
+
+let latestCheekLVideoX = 0.35; // normalized in ORIGINAL video frame (0..1)
         let latestCheekLVideoY = 0.55;
         let latestCheekRVideoX = 0.65;
         let latestCheekRVideoY = 0.55;
@@ -1518,91 +1522,179 @@ const occlusionToggle = document.getElementById('occlusion-toggle');
         }
 
         function updateBlushAnchorsFromVRM(vrm) {
-            if (!vrm) return;
+    // NOTE: Despite the historical name, this now updates 3D blush meshes that are
+    // attached to the VRM head so they stay perfectly "stuck" to the model.
+    if (!vrm) return;
 
-            if (!blushAnchorL) {
-                blushAnchorL = new THREE.Object3D();
-                blushAnchorL.name = 'blushAnchorL';
-            }
-            if (!blushAnchorR) {
-                blushAnchorR = new THREE.Object3D();
-                blushAnchorR.name = 'blushAnchorR';
-            }
+    const humanoid = vrm.humanoid;
+    const getBone = (name) => {
+        try {
+            return humanoid?.getNormalizedBoneNode?.(name)
+                || humanoid?.getRawBoneNode?.(name)
+                || humanoid?.getBoneNode?.(name)
+                || null;
+        } catch (_) { return null; }
+    };
 
-            // detach from previous parents
-            if (blushAnchorL.parent) blushAnchorL.parent.remove(blushAnchorL);
-            if (blushAnchorR.parent) blushAnchorR.parent.remove(blushAnchorR);
+    const head = getBone('head') || adjustmentGroup || vrm.scene;
 
-            const humanoid = vrm.humanoid;
-            const getBone = (name) => {
-                try {
-                    return humanoid?.getNormalizedBoneNode?.(name)
-                        || humanoid?.getRawBoneNode?.(name)
-                        || humanoid?.getBoneNode?.(name)
-                        || null;
-                } catch (_) { return null; }
-            };
+    // Build texture once
+    const ensureTexture = () => {
+        if (blushTex) return blushTex;
 
-            const head = getBone('head');
-            const neck = getBone('neck');
+        const c = document.createElement('canvas');
+        c.width = 256; c.height = 256;
+        const ctx = c.getContext('2d');
+        ctx.clearRect(0, 0, 256, 256);
 
-            // estimate "unit" (rough head size) for cheek placement.
-// Prefer eye distance (stable across many VRMs). Fallback to head-neck distance,
-// then to VRM bounding-box height.
-let unit = 0.075;
-try {
-    const leftEye = getBone('leftEye');
-    const rightEye = getBone('rightEye');
-    if (leftEye && rightEye) {
-        const pl = new THREE.Vector3();
-        const pr = new THREE.Vector3();
-        leftEye.getWorldPosition(pl);
-        rightEye.getWorldPosition(pr);
-        const d = pl.distanceTo(pr);
-        if (Number.isFinite(d) && d > 0.001) unit = d;
-    } else if (head && neck) {
-        const ph = new THREE.Vector3();
-        const pn = new THREE.Vector3();
-        head.getWorldPosition(ph);
-        neck.getWorldPosition(pn);
-        const d = ph.distanceTo(pn);
-        if (Number.isFinite(d) && d > 0.001) unit = d;
-    } else {
-        const box = new THREE.Box3().setFromObject(vrm.scene);
-        const sz = new THREE.Vector3();
-        box.getSize(sz);
-        if (Number.isFinite(sz.y) && sz.y > 0.01) unit = sz.y * 0.12;
-    }
-} catch (_) {}
+        // Soft pink base (radial)
+        const g = ctx.createRadialGradient(128, 128, 16, 128, 128, 120);
+        g.addColorStop(0.0, 'rgba(255, 155, 195, 0.55)');
+        g.addColorStop(0.55, 'rgba(255, 155, 195, 0.22)');
+        g.addColorStop(1.0, 'rgba(255, 155, 195, 0.0)');
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.ellipse(128, 128, 120, 96, 0, 0, Math.PI * 2);
+        ctx.fill();
 
-            // store unit for debug / tuning
-            blushAnchorL.userData.unit = unit;
-            blushAnchorR.userData.unit = unit;
-
-            // attach to head if available; else to adjustmentGroup
-            const attach = head || adjustmentGroup || vrm.scene;
-            if (attach) {
-                attach.add(blushAnchorL);
-                attach.add(blushAnchorR);
-            }
-
-            // Base positions in head-local space.
-// (unit is eye-distance-ish) -> cheeks are roughly ~0.7*unit from center.
-const baseX = 0.72 * unit * blushSpread;
-const baseY = -0.32 * unit;
-const baseZ = 0.55 * unit;
-
-            // Common shifts (user sliders)
-            const sx = blushOffX * unit;
-            const sy = blushOffY * unit;
-            const sz = blushOffZ * unit;
-
-            blushAnchorL.position.set(-baseX + sx, baseY + sy, baseZ + sz);
-            blushAnchorR.position.set( baseX + sx, baseY + sy, baseZ + sz);
-
-            blushAnchorL.updateMatrixWorld(true);
-            blushAnchorR.updateMatrixWorld(true);
+        // Pink hatch stripes
+        ctx.globalAlpha = 0.65;
+        ctx.strokeStyle = 'rgba(255, 95, 160, 0.95)';
+        ctx.lineWidth = 10;
+        for (let i = -256; i <= 512; i += 28) {
+            ctx.beginPath();
+            ctx.moveTo(i, 0);
+            ctx.lineTo(i - 256, 256);
+            ctx.stroke();
         }
+        ctx.globalAlpha = 1.0;
+
+        blushTex = new THREE.CanvasTexture(c);
+        // three r160+ uses colorSpace; older uses encoding. Guard both.
+        try { blushTex.colorSpace = THREE.SRGBColorSpace; } catch (_) {}
+        try { blushTex.encoding = THREE.sRGBEncoding; } catch (_) {}
+        blushTex.needsUpdate = true;
+        return blushTex;
+    };
+
+    const ensureMeshes = () => {
+        const tex = ensureTexture();
+
+        if (!blushMatL) {
+            blushMatL = new THREE.MeshBasicMaterial({
+                map: tex,
+                transparent: true,
+                opacity: 1.0,
+                depthTest: true,
+                depthWrite: false,
+                side: THREE.DoubleSide,
+                polygonOffset: true,
+                polygonOffsetFactor: -2,
+                polygonOffsetUnits: -2,
+            });
+        }
+        if (!blushMatR) {
+            blushMatR = blushMatL.clone();
+        }
+
+        if (!blushMeshL) {
+            blushMeshL = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), blushMatL);
+            blushMeshL.name = 'blushMeshL';
+            blushMeshL.renderOrder = 5;
+        }
+        if (!blushMeshR) {
+            blushMeshR = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), blushMatR);
+            blushMeshR.name = 'blushMeshR';
+            blushMeshR.renderOrder = 5;
+        }
+
+        // attach (re-attach) to head
+        if (head) {
+            if (blushMeshL.parent !== head) {
+                if (blushMeshL.parent) blushMeshL.parent.remove(blushMeshL);
+                head.add(blushMeshL);
+            }
+            if (blushMeshR.parent !== head) {
+                if (blushMeshR.parent) blushMeshR.parent.remove(blushMeshR);
+                head.add(blushMeshR);
+            }
+        }
+    };
+
+    const computeUnitAndEyeCenter = () => {
+        // Default fallback
+        let unit = 0.06;
+        let eyeCenter = new THREE.Vector3(0, 0.05, 0.02);
+        let halfEyeX = 0.03;
+
+        const leftEye = getBone('leftEye');
+        const rightEye = getBone('rightEye');
+
+        try {
+            if (head && leftEye && rightEye) {
+                const wL = leftEye.getWorldPosition(new THREE.Vector3());
+                const wR = rightEye.getWorldPosition(new THREE.Vector3());
+                // Convert to head-local
+                head.worldToLocal(wL);
+                head.worldToLocal(wR);
+                eyeCenter.copy(wL).add(wR).multiplyScalar(0.5);
+                unit = wL.distanceTo(wR);
+                halfEyeX = Math.abs(wR.x - wL.x) * 0.5;
+            } else {
+                // Fallback: VRM overall height
+                const box = new THREE.Box3().setFromObject(vrm.scene);
+                const sz = new THREE.Vector3();
+                box.getSize(sz);
+                if (Number.isFinite(sz.y) && sz.y > 0.01) {
+                    unit = sz.y * 0.05; // ~ eye distance
+                }
+            }
+        } catch (_) {}
+
+        // Clamp to sane range
+        unit = Math.max(0.02, Math.min(0.14, unit));
+        blushUnit = unit;
+        return { unit, eyeCenter, halfEyeX };
+    };
+
+    // Build/update
+    ensureMeshes();
+    if (!blushMeshL || !blushMeshR || !blushMatL || !blushMatR) return;
+
+    const { unit, eyeCenter, halfEyeX } = computeUnitAndEyeCenter();
+
+    // Base cheek offsets relative to eye line in head-local space
+    const spread = Math.max(0.5, Math.min(1.8, blushSpread));
+    const baseX = (halfEyeX * 1.55 + 0.01) * spread;
+    const baseY = eyeCenter.y - (0.55 * unit);
+    const baseZ = eyeCenter.z + (0.85 * unit);
+
+    const ox = blushOffX * unit;
+    const oy = blushOffY * unit;
+    const oz = blushOffZ * unit;
+
+    // Position & size
+    const s = (unit * 1.60) * Math.max(0.5, Math.min(2.5, blushSize));
+    blushMeshL.position.set(-baseX + ox, baseY + oy, baseZ + oz);
+    blushMeshR.position.set(+baseX + ox, baseY + oy, baseZ + oz);
+
+    blushMeshL.scale.set(s, s, s);
+    blushMeshR.scale.set(s, s, s);
+
+    // Slight mirror so hatch doesn't look identical
+    blushMeshL.rotation.set(0, 0, 0);
+    blushMeshR.rotation.set(0, Math.PI, 0);
+
+    // Visibility/strength
+    const a = Math.max(0, Math.min(1, blushStrength));
+    blushMatL.opacity = a;
+    blushMatR.opacity = a;
+
+    const vis = !!isBlushEnabled && a > 0.001;
+    blushMeshL.visible = vis;
+    blushMeshR.visible = vis;
+}
+
 
 
         function updateBreathEmitterFromVRM(vrm) {
@@ -1790,103 +1882,7 @@ function updateBreathEffect(delta) {
             const offXpx = breathOffX * unitPx;
             const offYpx = breathOffY * unitPx;
 
-            // --- Blush rendering (cheeks) ---
-            // Project VRM-attached cheek anchors to the overlay canvas.
-            if (isBlushEnabled && breathOverlayCtx && latestCheekVideoValid && vw2 > 0 && vh2 > 0) {
-                // Cheek centers are derived from MediaPipe landmarks (video-normalized) and mapped
-                // through the same letterbox rect used for the displayed camera feed.
-                const rectC = computeContainRect(w, h, vw2, vh2);
-
-                // Base cheek positions in screen px
-                let cLX = rectC.x + latestCheekLVideoX * rectC.w;
-                let cLY = rectC.y + latestCheekLVideoY * rectC.h;
-                let cRX = rectC.x + latestCheekRVideoX * rectC.w;
-                let cRY = rectC.y + latestCheekRVideoY * rectC.h;
-
-                // Follow VRM UI adjustments (pivot -> adjustment) similarly to breath
-                cLX += shiftX; cLY += shiftY;
-                cRX += shiftX; cRY += shiftY;
-
-                // Apply spread (move cheeks closer/farther around midpoint)
-                const midX = (cLX + cRX) * 0.5;
-                const midY = (cLY + cRY) * 0.5;
-                const halfVX = (cRX - cLX) * 0.5;
-                const halfVY = (cRY - cLY) * 0.5;
-                const spread = Math.max(0.05, blushSpread);
-
-                cLX = midX - halfVX * spread;
-                cLY = midY - halfVY * spread;
-                cRX = midX + halfVX * spread;
-                cRY = midY + halfVY * spread;
-
-                // Scale offsets in px relative to face width (distance between cheeks)
-                const faceW = Math.hypot(cRX - cLX, cRY - cLY) || Math.min(w, h);
-                const unitPx = faceW * 0.18; // 1.0 => ~18% of cheek distance
-                const offXpx = blushOffX * unitPx;
-                const offYpx = blushOffY * unitPx;
-
-                cLX += offXpx; cLY += offYpx;
-                cRX += offXpx; cRY += offYpx;
-
-                // Persist for potential smoothing/other uses
-                lastCheekScreenLX = cLX; lastCheekScreenLY = cLY;
-                lastCheekScreenRX = cRX; lastCheekScreenRY = cRY;
-                lastCheekScreenValid = Number.isFinite(cLX) && Number.isFinite(cLY) && Number.isFinite(cRX) && Number.isFinite(cRY);
-
-                if (lastCheekScreenValid) {
-                    const r = Math.max(16, faceW * 0.14 * blushSize * Math.max(0.25, (1 + blushOffZ * 0.25)));
-                    const roll = Math.atan2(cRY - cLY, cRX - cLX);
-
-                    // Create stripe pattern once
-                    if (!blushStripePattern) {
-                        const pc = document.createElement('canvas');
-                        pc.width = 64; pc.height = 64;
-                        const pctx = pc.getContext('2d');
-                        pctx.clearRect(0, 0, 64, 64);
-                        pctx.strokeStyle = 'rgba(255, 120, 170, 0.55)';
-                        pctx.lineWidth = 6;
-                        for (let i = -64; i <= 128; i += 16) {
-                            pctx.beginPath();
-                            pctx.moveTo(i, 0);
-                            pctx.lineTo(i + 64, 64);
-                            pctx.stroke();
-                        }
-                        blushStripePattern = breathOverlayCtx.createPattern(pc, 'repeat');
-                    }
-
-                    // Helper: draw one cheek
-                    const drawCheek = (x, y, flipStripe = false) => {
-                        breathOverlayCtx.save();
-                        breathOverlayCtx.translate(x, y);
-                        breathOverlayCtx.rotate(flipStripe ? (roll + Math.PI) : roll);
-
-                        // Soft pink base
-                        const g = breathOverlayCtx.createRadialGradient(0, 0, r * 0.15, 0, 0, r);
-                        const a = Math.max(0, Math.min(1, blushStrength));
-                        g.addColorStop(0.0, `rgba(255, 160, 200, ${0.35 * a})`);
-                        g.addColorStop(0.6, `rgba(255, 140, 190, ${0.18 * a})`);
-                        g.addColorStop(1.0, `rgba(255, 140, 190, 0)`);
-                        breathOverlayCtx.fillStyle = g;
-                        breathOverlayCtx.beginPath();
-                        breathOverlayCtx.ellipse(0, 0, r * 1.15, r * 0.85, 0, 0, Math.PI * 2);
-                        breathOverlayCtx.fill();
-
-                        // Stripes (pink hatch)
-                        breathOverlayCtx.globalAlpha = 0.55 * a;
-                        breathOverlayCtx.fillStyle = blushStripePattern;
-                        breathOverlayCtx.beginPath();
-                        breathOverlayCtx.ellipse(0, 0, r * 0.95, r * 0.70, 0, 0, Math.PI * 2);
-                        breathOverlayCtx.fill();
-
-                        breathOverlayCtx.restore();
-                    };
-
-                    // Draw both cheeks (slight mirrored stripe angle)
-                    drawCheek(cLX, cLY, false);
-                    drawCheek(cRX, cRY, true);
-                }
-            }
-// Breath rendering uses screen blend & blur for soft mist
+            // Breath rendering uses screen blend & blur for soft mist
             breathOverlayCtx.globalCompositeOperation = 'screen';
             breathOverlayCtx.filter = 'blur(1.6px)';
 
