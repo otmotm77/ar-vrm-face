@@ -689,6 +689,8 @@ import * as THREE from 'three';
         let latestMouthCenterVideoX = 0.5; // normalized in ORIGINAL video frame (0..1)
         let latestMouthCenterVideoY = 0.6;
         let latestMouthCenterVideoValid = false;
+        let latestFaceLandmarks0 = null; // MediaPipe faceLandmarks[0] for 2D overlays (blush/breath)
+
 
         let isFaceVisible = false;
 
@@ -730,6 +732,8 @@ import * as THREE from 'three';
         let blushSize = 1.00;  // size multiplier
         let blushSpread = 1.00; // distance multiplier (cheek width)
         let blushFront = true; // render blush on top (toggleable)
+        const USE_BLUSH_2D_OVERLAY = true; // robust: sticks to tracked face/video space
+
 
         // Cheek blush meshes (attached to VRM head; sticks to the model)
 let blushMeshL = null;
@@ -1606,6 +1610,13 @@ const occlusionToggle = document.getElementById('occlusion-toggle');
         }
 
         function updateBlushAnchorsFromVRM(vrm) {
+    if (typeof USE_BLUSH_2D_OVERLAY !== 'undefined' && USE_BLUSH_2D_OVERLAY) {
+        // 2D overlay mode: don't create 3D cheek planes (they are sensitive to VRM bone scaling/head-only transforms).
+        if (blushMeshL) blushMeshL.visible = false;
+        if (blushMeshR) blushMeshR.visible = false;
+        return;
+    }
+
     // NOTE: Despite the historical name, this now updates 3D blush meshes that are
     // attached to the VRM head so they stay perfectly "stuck" to the model.
     if (!vrm) return;
@@ -1958,6 +1969,113 @@ function updateBreathEffect(delta) {
             // Draw blush first (normal blend), then breath (screen blend)
             breathOverlayCtx.globalCompositeOperation = 'source-over';
             breathOverlayCtx.filter = 'none';
+            // --- Cheek blush (2D overlay; sticks to tracked face) ---
+            if (USE_BLUSH_2D_OVERLAY && isBlushEnabled && blushStrength > 0.001 && latestFaceLandmarks0 && videoEl) {
+                const vwB = videoEl.videoWidth || 0;
+                const vhB = videoEl.videoHeight || 0;
+                if (vwB > 0 && vhB > 0) {
+                    const rectB = computeContainRect(w, h, vwB, vhB);
+
+                    const lm = latestFaceLandmarks0;
+                    const pt = (i) => (lm && lm[i]) ? lm[i] : null;
+
+                    // Use stable points (eye outer, mouth corners, cheek-ish) and blend them inward.
+                    const pLEye = pt(33);
+                    const pREye = pt(263);
+                    const pLMouth = pt(61);
+                    const pRMouth = pt(291);
+                    const pLCheek = pt(205) || pt(50) || pt(234);
+                    const pRCheek = pt(425) || pt(280) || pt(454);
+
+                    if (pLEye && pREye && pLMouth && pRMouth) {
+                        const mapXY = (p) => ({ x: rectB.x + p.x * rectB.w, y: rectB.y + p.y * rectB.h });
+
+                        const le = mapXY(pLEye), re = mapXY(pREye);
+                        const lm0 = mapXY(pLMouth), rm0 = mapXY(pRMouth);
+                        const lc = pLCheek ? mapXY(pLCheek) : null;
+                        const rc = pRCheek ? mapXY(pRCheek) : null;
+
+                        // Face scale in pixels
+                        const faceW = Math.max(10, Math.hypot(re.x - le.x, re.y - le.y));
+
+                        // Cheek centers (weighted blend)
+                        const mix2 = (a, b, t) => ({ x: a.x * (1 - t) + b.x * t, y: a.y * (1 - t) + b.y * t });
+                        let L = mix2(lm0, le, 0.55);
+                        let R = mix2(rm0, re, 0.55);
+                        if (lc) L = { x: L.x * 0.70 + lc.x * 0.30, y: L.y * 0.70 + lc.y * 0.30 };
+                        if (rc) R = { x: R.x * 0.70 + rc.x * 0.30, y: R.y * 0.70 + rc.y * 0.30 };
+
+                        // Apply VRM adjustment shift so blush follows your VRM height/position sliders.
+                        L.x += shiftX; L.y += shiftY;
+                        R.x += shiftX; R.y += shiftY;
+
+                        // Apply user offsets in pixel space
+                        const offPxX = blushOffX * faceW * 0.35;
+                        const offPxY = blushOffY * faceW * 0.35;
+                        L.x += offPxX; L.y += offPxY;
+                        R.x += offPxX; R.y += offPxY;
+
+                        // Spread nudges outward
+                        const spreadN = Math.max(0.5, Math.min(1.8, blushSpread));
+                        const spreadDx = (spreadN - 1.0) * faceW * 0.18;
+                        L.x -= spreadDx;
+                        R.x += spreadDx;
+
+                        // Roll angle from eyes
+                        const roll = Math.atan2((re.y - le.y), (re.x - le.x));
+
+                        // Size
+                        const r = faceW * 0.20 * Math.max(0.5, Math.min(2.5, blushSize));
+                        const rw = r * 1.25;
+                        const rh = r * 0.90;
+
+                        // Composite: if "front" then normal overlay; else multiply for under-skin feel
+                        breathOverlayCtx.save();
+                        breathOverlayCtx.globalAlpha = Math.max(0, Math.min(1, blushStrength));
+                        breathOverlayCtx.globalCompositeOperation = blushFront ? 'source-over' : 'multiply';
+
+                        const drawOne = (cx, cy, flip) => {
+                            breathOverlayCtx.save();
+                            breathOverlayCtx.translate(cx, cy);
+                            breathOverlayCtx.rotate(roll);
+
+                            // soft base
+                            const grad = breathOverlayCtx.createRadialGradient(0, 0, 0, 0, 0, rw);
+                            grad.addColorStop(0.0, 'rgba(255, 140, 190, 0.55)');
+                            grad.addColorStop(0.55, 'rgba(255, 140, 190, 0.22)');
+                            grad.addColorStop(1.0, 'rgba(255, 140, 190, 0.00)');
+                            breathOverlayCtx.fillStyle = grad;
+                            breathOverlayCtx.beginPath();
+                            breathOverlayCtx.ellipse(0, 0, rw, rh, 0, 0, Math.PI * 2);
+                            breathOverlayCtx.fill();
+
+                            // hatch stripes clipped to ellipse
+                            breathOverlayCtx.beginPath();
+                            breathOverlayCtx.ellipse(0, 0, rw, rh, 0, 0, Math.PI * 2);
+                            breathOverlayCtx.clip();
+
+                            breathOverlayCtx.rotate((Math.PI / 4) * (flip ? -1 : 1)); // diagonal
+                            breathOverlayCtx.strokeStyle = 'rgba(255, 80, 160, 0.45)';
+                            breathOverlayCtx.lineWidth = Math.max(1, r * 0.08);
+                            const step = Math.max(6, r * 0.22);
+                            for (let x = -rw * 2; x <= rw * 2; x += step) {
+                                breathOverlayCtx.beginPath();
+                                breathOverlayCtx.moveTo(x, -rh * 2);
+                                breathOverlayCtx.lineTo(x, rh * 2);
+                                breathOverlayCtx.stroke();
+                            }
+
+                            breathOverlayCtx.restore();
+                        };
+
+                        drawOne(L.x, L.y, false);
+                        drawOne(R.x, R.y, true);
+
+                        breathOverlayCtx.restore();
+                    }
+                }
+            }
+
 // Update mouth screen position from faceLandmarks (2D) + VRM adjustment shift (follows height slider).
             const vw2 = videoEl ? (videoEl.videoWidth || 0) : 0;
             const vh2 = videoEl ? (videoEl.videoHeight || 0) : 0;
@@ -2701,6 +2819,7 @@ function updateBreathEffect(delta) {
 
                     if (faceLandmarker && videoEl.readyState >= 2) {
                         const res = faceLandmarker.detectForVideo(mpInput, performance.now());
+                        latestFaceLandmarks0 = (res && res.faceLandmarks && res.faceLandmarks[0]) ? res.faceLandmarks[0] : null;
                         const tms = res && res.facialTransformationMatrixes;
                         if (tms && tms.length > 0) {
                             isFaceVisible = true;
