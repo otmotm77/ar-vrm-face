@@ -639,8 +639,8 @@
     <script type="module">
         
 // ===== App Version (single source of truth) =====
-const APP_VERSION = "v5.12.10";
-const APP_VERSION_NOTE = "blush-stick-to-vrm-cheeks";
+const APP_VERSION = "v5.12.11";
+const APP_VERSION_NOTE = "blush-z-autodetect+always-visible";
 function setAppVersionLabel() {
   const el = document.getElementById("app-version");
   if (!el) return;
@@ -1600,12 +1600,12 @@ const occlusionToggle = document.getElementById('occlusion-toggle');
         if (!blushMeshL) {
             blushMeshL = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), blushMatL);
             blushMeshL.name = 'blushMeshL';
-            blushMeshL.renderOrder = 5;
+            blushMeshL.renderOrder = 999;
         }
         if (!blushMeshR) {
             blushMeshR = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), blushMatR);
             blushMeshR.name = 'blushMeshR';
-            blushMeshR.renderOrder = 5;
+            blushMeshR.renderOrder = 999;
         }
 
         // attach (re-attach) to head
@@ -1667,7 +1667,16 @@ const occlusionToggle = document.getElementById('occlusion-toggle');
     const spread = Math.max(0.5, Math.min(1.8, blushSpread));
     const baseX = (halfEyeX * 1.55 + 0.01) * spread;
     const baseY = eyeCenter.y - (0.55 * unit);
-    const baseZ = eyeCenter.z + (0.85 * unit);
+    // Place blush slightly towards the camera side in head-local space (auto-detect Z sign)
+    let camLocalZ = -1;
+    try {
+        if (head && camera) {
+            const camLocal = head.worldToLocal(camera.position.clone());
+            camLocalZ = camLocal.z;
+        }
+    } catch (_) {}
+    const zSign = (camLocalZ >= 0) ? 1 : -1;
+    const baseZ = eyeCenter.z + (zSign * 0.90 * unit);
 
     const ox = blushOffX * unit;
     const oy = blushOffY * unit;
