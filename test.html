@@ -648,8 +648,8 @@
     <script type="module">
         
 // ===== App Version (single source of truth) =====
-const APP_VERSION = "v5.12.13";
-const APP_VERSION_NOTE = "blush-debug";
+const APP_VERSION = "v5.12.14";
+const APP_VERSION_NOTE = "blush head-local fix";
 function setAppVersionLabel() {
   const el = document.getElementById("app-version");
   if (!el) return;
@@ -1614,7 +1614,7 @@ const occlusionToggle = document.getElementById('occlusion-toggle');
                 map: tex,
                 transparent: true,
                 opacity: 1.0,
-                depthTest: true,
+                depthTest: false,
                 depthWrite: false,
                 side: THREE.DoubleSide,
                 polygonOffset: true,
@@ -1705,7 +1705,7 @@ const occlusionToggle = document.getElementById('occlusion-toggle');
         }
     } catch (_) {}
     const zSign = (camLocalZ >= 0) ? 1 : -1;
-    const baseZ = eyeCenter.z + (zSign * 0.90 * unit);
+    const baseZ = eyeCenter.z + (zSign * 1.25 * unit);
 
     const ox = blushOffX * unit;
     const oy = blushOffY * unit;
@@ -1718,24 +1718,18 @@ const occlusionToggle = document.getElementById('occlusion-toggle');
     // In this app we scale the VRM head bone massively (makeHeadOnly) to show "head only".
     // If we attach blush planes directly under the head bone, their local position/scale will be
     // multiplied by that scale and fly far away / become gigantic.
-    // So we compensate by dividing by the head's world scale.
-    let headScale = 1.0;
-    try {
-        if (head && head.getWorldScale) {
-            const ws = head.getWorldScale(new THREE.Vector3());
-            headScale = Math.max(1e-6, (ws.x || 1.0));
-        }
-    } catch (_) {}
-    const invHeadScale = 1.0 / headScale;
+    // NOTE: In head-only mode, the head bone may be scaled up a lot.
+    // We intentionally keep blush meshes in head-local space so they stick perfectly to the cheeks.
+    // (Counter-scaling by head world scale makes the effect tiny / invisible.)
 
-    blushMeshL.position.set((-baseX + ox) * invHeadScale, (baseY + oy) * invHeadScale, (baseZ + oz) * invHeadScale);
-    blushMeshR.position.set((+baseX + ox) * invHeadScale, (baseY + oy) * invHeadScale, (baseZ + oz) * invHeadScale);
+    blushMeshL.position.set((-baseX + ox), (baseY + oy), (baseZ + oz));
+    blushMeshR.position.set((+baseX + ox), (baseY + oy), (baseZ + oz));
 
-    const sLocal = s * invHeadScale;
+    const sLocal = s;
     blushMeshL.scale.set(sLocal, sLocal, sLocal);
     blushMeshR.scale.set(sLocal, sLocal, sLocal);
 
-    // Slight mirror so hatch doesn't look identical
+// Slight mirror so hatch doesn't look identical
     blushMeshL.rotation.set(0, 0, 0);
     blushMeshR.rotation.set(0, Math.PI, 0);
 
