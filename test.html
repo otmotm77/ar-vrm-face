@@ -496,8 +496,11 @@
                 </div>
                 <div class="slider-container" id="blush-spread-container" style="opacity:0.85;">
                     <span class="slider-label">紅潮幅</span>
-                    <input type="range" id="blush-spread-slider" min="0.50" max="3.60" step="0.01" value="1.00">
+                    <input type="range" id="blush-spread-slider" min="0.50" max="6.00" step="0.01" value="1.00">
                     <span id="blush-spread-slider-val" class="val-display">1.00</span>
+                </div>
+
+                
                 
                 <div class="slider-container" id="blush-color-container" style="opacity:0.85;">
                     <span class="slider-label">紅潮の色</span>
@@ -1074,7 +1077,7 @@ function updateBlushUI(skipSave = false) {
             blushSize = blushSizeSlider ? (parseFloat(blushSizeSlider.value) || 1.0) : 1.0;
             blushSpread = blushSpreadSlider ? (parseFloat(blushSpreadSlider.value) || 1.0) : 1.0;
             blushSize = clamp(blushSize, 0.5, 5.0);
-            blushSpread = clamp(blushSpread, 0.5, 3.6);
+            blushSpread = clamp(blushSpread, 0.5, 6.0);
 
             if (blushOffXSliderVal) blushOffXSliderVal.textContent = blushOffX.toFixed(2);
             if (blushOffYSliderVal) blushOffYSliderVal.textContent = blushOffY.toFixed(2);
@@ -1867,7 +1870,7 @@ if (!blushMeshL) {
     const { unit, eyeCenter, halfEyeX } = computeUnitAndEyeCenter();
 
     // Base cheek offsets relative to eye line in head-local space
-    const spread = Math.max(0.5, Math.min(1.8, blushSpread));
+    const spread = Math.max(0.5, Math.min(6.0, blushSpread));
     let baseX = (halfEyeX * 1.55 + 0.01) * spread;
     // Sanity clamp: some VRMs yield extreme halfEyeX due to normalization/scaling differences.
     const minX = unit * 0.65 * spread;
@@ -2123,7 +2126,7 @@ function updateBreathEffect(delta) {
                         R.x += offPxX; R.y += offPxY;
 
                         // Spread nudges outward
-                        const spreadN = Math.max(0.5, Math.min(1.8, blushSpread));
+                        const spreadN = Math.max(0.5, Math.min(6.0, blushSpread));
                         const spreadDx = (spreadN - 1.0) * faceW * 0.18;
                         L.x -= spreadDx;
                         R.x += spreadDx;
