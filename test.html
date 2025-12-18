@@ -639,8 +639,8 @@
     <script type="module">
         
 // ===== App Version (single source of truth) =====
-const APP_VERSION = "v5.12.11";
-const APP_VERSION_NOTE = "blush-z-autodetect+always-visible";
+const APP_VERSION = "v5.12.12";
+const APP_VERSION_NOTE = "blush-headscale-fix";
 function setAppVersionLabel() {
   const el = document.getElementById("app-version");
   if (!el) return;
@@ -1684,11 +1684,27 @@ const occlusionToggle = document.getElementById('occlusion-toggle');
 
     // Position & size
     const s = (unit * 1.60) * Math.max(0.5, Math.min(2.5, blushSize));
-    blushMeshL.position.set(-baseX + ox, baseY + oy, baseZ + oz);
-    blushMeshR.position.set(+baseX + ox, baseY + oy, baseZ + oz);
 
-    blushMeshL.scale.set(s, s, s);
-    blushMeshR.scale.set(s, s, s);
+    // IMPORTANT:
+    // In this app we scale the VRM head bone massively (makeHeadOnly) to show "head only".
+    // If we attach blush planes directly under the head bone, their local position/scale will be
+    // multiplied by that scale and fly far away / become gigantic.
+    // So we compensate by dividing by the head's world scale.
+    let headScale = 1.0;
+    try {
+        if (head && head.getWorldScale) {
+            const ws = head.getWorldScale(new THREE.Vector3());
+            headScale = Math.max(1e-6, (ws.x || 1.0));
+        }
+    } catch (_) {}
+    const invHeadScale = 1.0 / headScale;
+
+    blushMeshL.position.set((-baseX + ox) * invHeadScale, (baseY + oy) * invHeadScale, (baseZ + oz) * invHeadScale);
+    blushMeshR.position.set((+baseX + ox) * invHeadScale, (baseY + oy) * invHeadScale, (baseZ + oz) * invHeadScale);
+
+    const sLocal = s * invHeadScale;
+    blushMeshL.scale.set(sLocal, sLocal, sLocal);
+    blushMeshR.scale.set(sLocal, sLocal, sLocal);
 
     // Slight mirror so hatch doesn't look identical
     blushMeshL.rotation.set(0, 0, 0);
