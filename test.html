@@ -687,7 +687,7 @@
     <script type="module">
         
 // ===== App Version (single source of truth) =====
-const APP_VERSION = "v5.12.21";
+const APP_VERSION = "v5.12.22";
 const APP_VERSION_NOTE = "breath shiftX TDZ fix";
 function setAppVersionLabel() {
   const el = document.getElementById("app-version");
@@ -936,12 +936,35 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
         // This matches how we draw the rotated frame into mpOffscreenCanvas:
         // translate(center) -> rotate(inputRotationDeg) -> drawImage(video centered).
         function mpLandmarkNormToVideoNorm(xNorm, yNorm, videoW, videoH, rotDeg, mpW, mpH) {
+            // Convert MediaPipe landmark (normalized in MediaPipe input canvas) back to ORIGINAL video-frame normalized coords.
+            // IMPORTANT: When rotDeg is ±90, MediaPipe input canvas dimensions are swapped relative to the original video frame.
+            // Using pixel-space rotation with mixed dimensions causes drift/tilt. Use exact normalized mappings for 0/±90/180.
             if (!Number.isFinite(xNorm) || !Number.isFinite(yNorm) || videoW <= 0 || videoH <= 0) {
                 return { x: 0.5, y: 0.5, ok: false };
             }
-            // If no rotation, MediaPipe input == video frame.
-            if (!rotDeg || rotDeg === 0) return { x: xNorm, y: yNorm, ok: true };
+            // Normalize rot to one of {0, 90, -90, 180}
+            let r = rotDeg || 0;
+            r = ((r % 360) + 360) % 360;
+            if (r === 270) r = -90;
 
+            // No rotation: MediaPipe input == video frame.
+            if (r === 0) return { x: xNorm, y: yNorm, ok: true };
+
+            // Exact inverse mappings (rotDeg describes how ORIGINAL was rotated before feeding MediaPipe).
+            // rotDeg = +90 (CW): x' = 1 - y, y' = x  =>  x = y', y = 1 - x'
+            if (r === 90) {
+                return { x: yNorm, y: 1.0 - xNorm, ok: true };
+            }
+            // rotDeg = -90 (CCW): x' = y, y' = 1 - x  =>  x = 1 - y', y = x'
+            if (r === -90) {
+                return { x: 1.0 - yNorm, y: xNorm, ok: true };
+            }
+            // rotDeg = 180: x' = 1 - x, y' = 1 - y  =>  x = 1 - x', y = 1 - y'
+            if (r === 180) {
+                return { x: 1.0 - xNorm, y: 1.0 - yNorm, ok: true };
+            }
+
+            // Fallback (shouldn't happen): do approximate inverse rotate in pixel space assuming same dims.
             const px = xNorm * mpW;
             const py = yNorm * mpH;
 
@@ -957,13 +980,15 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
             const rx = dx * cos - dy * sin;
             const ry = dx * sin + dy * cos;
 
-            const outX = rx + videoW * 0.5;
-            const outY = ry + videoH * 0.5;
+            const outX = rx + mpW * 0.5;
+            const outY = ry + mpH * 0.5;
 
-            return { x: outX / videoW, y: outY / videoH, ok: true };
+            return { x: outX / mpW, y: outY / mpH, ok: true };
         }
 
         // Compute the on-screen draw rect for a video frame inside a given canvas using "contain" (letterbox/pillarbox).
+        // Returns rect in CSS pixel space of that canvas.
+ for a video frame inside a given canvas using "contain" (letterbox/pillarbox).
         // Returns rect in CSS pixel space of that canvas.
         function computeContainRect(canvasW, canvasH, videoW, videoH) {
             const ca = canvasW / canvasH;
