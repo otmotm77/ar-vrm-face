@@ -702,7 +702,7 @@
     <script type="module">
         
 // ===== App Version (single source of truth) =====
-const APP_VERSION = "v5.12.26";
+const APP_VERSION = "v5.12.27";
 const APP_VERSION_NOTE = "rotation+ui tweaks+debug";
 function setAppVersionLabel() {
   const el = document.getElementById("app-version");
@@ -3068,7 +3068,7 @@ function updateBreathEffect(delta) {
                     // (Screen rotation is locked; we rotate analysis input only)
                     const baseRotDeg = computeInputRotationDeg(deviceBeta, deviceGamma, videoEl.videoWidth, videoEl.videoHeight);
                     lastBaseInputRotDeg = baseRotDeg;
-                    inputRotationDeg = (baseRotDeg !== 0) ? baseRotDeg : autoInputRotationDeg;
+                    inputRotationDeg = baseRotDeg;
 
                     // Draw rotated frame to offscreen canvas when needed
                     let mpInput = videoEl;
