@@ -595,8 +595,8 @@
     <script type="module">
         
 // ===== App Version (single source of truth) =====
-const APP_VERSION = "v5.12.4";
-const APP_VERSION_NOTE = "breath-emitter-yfix+offset";
+const APP_VERSION = "v5.12.3";
+const APP_VERSION_NOTE = "breath-mouthXY-fix";
 function setAppVersionLabel() {
   const el = document.getElementById("app-version");
   if (!el) return;
@@ -676,6 +676,7 @@ import * as THREE from 'three';
         let lastMouthScreenValid = false;
         let lastFaceVisibleNow = false;
         const breathTmpV = new THREE.Vector3(); // reuse for projection
+        const breathTmpV2 = new THREE.Vector3(); // pivot projection
 
         let breathEmitter = null;          // attached to adjustmentGroup (mouth position proxy)
         let breathParticles = null;        // world-space particles group
@@ -1472,32 +1473,54 @@ function updateBreathEffect(delta) {
             
             breathOverlayCtx.globalCompositeOperation = 'source-over';
             breathOverlayCtx.filter = 'none';
-// Update mouth screen position from VRM mouth emitter (follows VRM transforms incl. height slider).
+// Update mouth screen position from faceLandmarks (2D) + VRM adjustment shift (follows height slider).
             const vw2 = videoEl ? (videoEl.videoWidth || 0) : 0;
             const vh2 = videoEl ? (videoEl.videoHeight || 0) : 0;
 
-            if (breathEmitter && camera) {
-                breathTmpV.setFromMatrixPosition(breathEmitter.matrixWorld);
-                breathTmpV.project(camera);
-                if (Number.isFinite(breathTmpV.x) && Number.isFinite(breathTmpV.y) && Number.isFinite(breathTmpV.z) && breathTmpV.z >= 0 && breathTmpV.z <= 1) {
-                    // Draw space is CSS pixels (we setTransform(pr,...)), so use w/h (not canvas.width)
-                    lastMouthScreenX = (breathTmpV.x * 0.5 + 0.5) * w;
-                    lastMouthScreenY = (-breathTmpV.y * 0.5 + 0.5) * h;
-                    lastMouthScreenValid = Number.isFinite(lastMouthScreenX) && Number.isFinite(lastMouthScreenY);
-                } else {
-                    lastMouthScreenValid = false;
-                }
-            } else if (latestMouthCenterVideoValid && vw2 > 0 && vh2 > 0) {
-                // Fallback: from 2D landmarks mapped into letterboxed video (NO extra mirroring; the overlay canvas is mirrored via CSS together with renderer)
-                const rect = computeContainRect(w, h, vw2, vh2);
-                lastMouthScreenX = rect.x + latestMouthCenterVideoX * rect.w;
-                lastMouthScreenY = rect.y + latestMouthCenterVideoY * rect.h;
-                lastMouthScreenValid = Number.isFinite(lastMouthScreenX) && Number.isFinite(lastMouthScreenY);
-            } else {
-                lastMouthScreenValid = false;
+            let baseMouthX = lastMouthScreenX;
+            let baseMouthY = lastMouthScreenY;
+            let baseValid = false;
+            let rect2 = null;
+
+            if (latestMouthCenterVideoValid && vw2 > 0 && vh2 > 0) {
+                rect2 = computeContainRect(w, h, vw2, vh2);
+                baseMouthX = rect2.x + latestMouthCenterVideoX * rect2.w;
+                baseMouthY = rect2.y + latestMouthCenterVideoY * rect2.h;
+                baseValid = Number.isFinite(baseMouthX) && Number.isFinite(baseMouthY);
             }
 
-            // Update + draw existing particles
+            // Convert VRM UI adjustments (pivot -> adjustment) into a screen-space delta
+            let shiftX = 0, shiftY = 0;
+            if (pivotGroup && adjustmentGroup && camera) {
+                breathTmpV2.setFromMatrixPosition(pivotGroup.matrixWorld).project(camera);
+                breathTmpV.setFromMatrixPosition(adjustmentGroup.matrixWorld).project(camera);
+                const ok = Number.isFinite(breathTmpV2.x) && Number.isFinite(breathTmpV2.y) && Number.isFinite(breathTmpV2.z)
+                        && Number.isFinite(breathTmpV.x)  && Number.isFinite(breathTmpV.y)  && Number.isFinite(breathTmpV.z);
+                if (ok) {
+                    const px0 = (breathTmpV2.x * 0.5 + 0.5) * w;
+                    const py0 = (-breathTmpV2.y * 0.5 + 0.5) * h;
+                    const px1 = (breathTmpV.x * 0.5 + 0.5) * w;
+                    const py1 = (-breathTmpV.y * 0.5 + 0.5) * h;
+                    shiftX = px1 - px0;
+                    shiftY = py1 - py0;
+                }
+            }
+
+            // Extra offsets (sliders) in "unit" relative to displayed video width
+            const unitPx = rect2 ? (rect2.w * 0.25) : (Math.min(w, h) * 0.25);
+            const offXpx = breathOffX * unitPx;
+            const offYpx = breathOffY * unitPx;
+
+            if (baseValid) {
+                lastMouthScreenX = baseMouthX + shiftX + offXpx;
+                lastMouthScreenY = baseMouthY + shiftY + offYpx;
+                lastMouthScreenValid = Number.isFinite(lastMouthScreenX) && Number.isFinite(lastMouthScreenY);
+            } else {
+                // keep previous if configured to hold last pose
+                lastMouthScreenValid = !!(holdLastPoseOnLost && lastMouthScreenValid);
+            }
+
+// Update + draw existing particles
             const keep = [];
             for (const p of breathParticles2D) {
                 p.age += delta;
