@@ -439,6 +439,21 @@
 
             <div class="slider-container">
                 <label class="toggle-label">
+                    <input type="checkbox" id="blush-toggle" class="toggle-checkbox">
+                    頬紅潮エフェクト（ふんわりピンク＋斜線）
+                </label>
+            </div>
+            <div id="blush-controls" style="display:none;">
+                <div class="slider-container" id="blush-strength-container" style="opacity:0.85;">
+                    <span class="slider-label">紅潮の強さ</span>
+                    <input type="range" id="blush-strength-slider" min="0.0" max="1.0" step="0.01" value="0.70">
+                    <span id="blush-strength-slider-val" class="val-display">0.70</span>
+                </div>
+            </div>
+
+
+            <div class="slider-container">
+                <label class="toggle-label">
                     <input type="checkbox" id="breath-toggle" class="toggle-checkbox">
                     吐息エフェクト（口を開けた時）
                 </label>
@@ -598,8 +613,8 @@
     <script type="module">
         
 // ===== App Version (single source of truth) =====
-const APP_VERSION = "v5.12.4";
-const APP_VERSION_NOTE = "breath-save+ui";
+const APP_VERSION = "v5.12.5";
+const APP_VERSION_NOTE = "blush cheeks";
 function setAppVersionLabel() {
   const el = document.getElementById("app-version");
   if (!el) return;
@@ -661,7 +676,22 @@ import * as THREE from 'three';
 
         const holdLastPoseOnLost = true; // 顔認識が外れても最後の姿勢・表情を保持
 
-        // --- Breath (white mist) effect ---
+        
+        // --- Blush (cheek flush) effect ---
+        let isBlushEnabled = false;
+        let blushStrength = 0.70;
+        let blushStripePattern = null;
+        let latestCheekLVideoX = 0.35; // normalized in ORIGINAL video frame (0..1)
+        let latestCheekLVideoY = 0.55;
+        let latestCheekRVideoX = 0.65;
+        let latestCheekRVideoY = 0.55;
+        let latestCheekVideoValid = false;
+
+        let lastCheekScreenLX = 0, lastCheekScreenLY = 0;
+        let lastCheekScreenRX = 0, lastCheekScreenRY = 0;
+        let lastCheekScreenValid = false;
+
+// --- Breath (white mist) effect ---
         let isBreathEnabled = false;
         let breathStrength = 1.0;
         let breathOffX = 0.0; // multiplier of unit
@@ -821,6 +851,11 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
         const eyeSensSlider = document.getElementById('eye-sens-slider');
         const autoBlinkToggle = document.getElementById('autoblink-toggle');
 
+        const blushToggle = document.getElementById('blush-toggle');
+        const blushControls = document.getElementById('blush-controls');
+        const blushStrengthSlider = document.getElementById('blush-strength-slider');
+        const blushStrengthSliderVal = document.getElementById('blush-strength-slider-val');
+
         const breathToggle = document.getElementById('breath-toggle');
         const breathStrengthSlider = document.getElementById('breath-strength-slider');
         const breathStrengthSliderVal = document.getElementById('breath-strength-slider-val');
@@ -838,7 +873,22 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
         breathDebugEl = document.getElementById('breath-debug');
 
 
-        function updateBreathUI(skipSave = false) {
+        
+        function updateBlushUI(skipSave = false) {
+            if (!blushToggle || !blushStrengthSlider) return;
+
+            isBlushEnabled = !!blushToggle.checked;
+            if (blushControls) blushControls.style.display = isBlushEnabled ? 'block' : 'none';
+
+            blushStrength = parseFloat(blushStrengthSlider.value);
+            if (!Number.isFinite(blushStrength)) blushStrength = 0.70;
+            blushStrength = Math.max(0.0, Math.min(1.0, blushStrength));
+            if (blushStrengthSliderVal) blushStrengthSliderVal.textContent = blushStrength.toFixed(2);
+
+            if (!skipSave) saveSettings();
+        }
+
+function updateBreathUI(skipSave = false) {
             isBreathEnabled = !!breathToggle.checked;
 
             // Show breath-related sliders only when enabled
@@ -877,12 +927,16 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
             if (!skipSave && typeof saveSettings === 'function') saveSettings();
         }
 
-        breathToggle.addEventListener('change', () => updateBreathUI(false));
+        if (blushToggle) blushToggle.addEventListener('change', () => updateBlushUI(false));
+if (blushStrengthSlider) blushStrengthSlider.addEventListener('input', () => updateBlushUI(false));
+
+breathToggle.addEventListener('change', () => updateBreathUI(false));
 breathStrengthSlider.addEventListener('input', () => updateBreathUI(false));
         if (breathOffXSlider) breathOffXSlider.addEventListener('input', () => updateBreathUI(false));
         if (breathOffYSlider) breathOffYSlider.addEventListener('input', () => updateBreathUI(false));
         if (breathOffZSlider) breathOffZSlider.addEventListener('input', () => updateBreathUI(false));
         if (breathDebugToggle) breathDebugToggle.addEventListener('change', () => updateBreathUI(false));
+        if (typeof updateBlushUI === 'function') updateBlushUI(true);
         updateBreathUI(true);
 const occlusionToggle = document.getElementById('occlusion-toggle');
         const occlusionDebugToggle = document.getElementById('occlusion-debug-toggle');
@@ -1184,7 +1238,10 @@ const occlusionToggle = document.getElementById('occlusion-toggle');
                 breathStrength: (typeof breathStrengthSlider !== 'undefined' && breathStrengthSlider) ? breathStrengthSlider.value : '1.0',
                 breathOffX: (typeof breathOffXSlider !== 'undefined' && breathOffXSlider) ? breathOffXSlider.value : '0.0',
                 breathOffY: (typeof breathOffYSlider !== 'undefined' && breathOffYSlider) ? breathOffYSlider.value : '0.0',
-                breathOffZ: (typeof breathOffZSlider !== 'undefined' && breathOffZSlider) ? breathOffZSlider.value : '0.0'
+                breathOffZ: (typeof breathOffZSlider !== 'undefined' && breathOffZSlider) ? breathOffZSlider.value : '0.0',
+                // Blush (per-VRM)
+                blushEnabled: (typeof blushToggle !== 'undefined' && blushToggle) ? !!blushToggle.checked : false,
+                blushStrength: (typeof blushStrengthSlider !== 'undefined' && blushStrengthSlider) ? blushStrengthSlider.value : '0.70'
             };
 
             try {
@@ -1248,6 +1305,14 @@ const occlusionToggle = document.getElementById('occlusion-toggle');
                     if (Object.prototype.hasOwnProperty.call(s, 'breathOffX') && breathOffXSlider) breathOffXSlider.value = s.breathOffX;
                     if (Object.prototype.hasOwnProperty.call(s, 'breathOffY') && breathOffYSlider) breathOffYSlider.value = s.breathOffY;
                     if (Object.prototype.hasOwnProperty.call(s, 'breathOffZ') && breathOffZSlider) breathOffZSlider.value = s.breathOffZ;
+                    
+                    // Blush (per-VRM)
+                    if (Object.prototype.hasOwnProperty.call(s, 'blushEnabled') && blushToggle) {
+                        blushToggle.checked = !!s.blushEnabled;
+                    }
+                    if (Object.prototype.hasOwnProperty.call(s, 'blushStrength') && blushStrengthSlider) blushStrengthSlider.value = s.blushStrength;
+                    if (typeof updateBlushUI === 'function') updateBlushUI(true);
+
                     if (typeof updateBreathUI === 'function') updateBreathUI(true);
 // 値の表示を更新
                     allSliders.forEach(el => updateSliderDisplay(el));
@@ -1505,8 +1570,9 @@ function updateBreathEffect(delta) {
 
             breathOverlayCtx.setTransform(pr, 0, 0, pr, 0, 0);
             breathOverlayCtx.clearRect(0, 0, w, h);
-            breathOverlayCtx.globalCompositeOperation = 'screen';
-            breathOverlayCtx.filter = 'blur(1.6px)';
+            // Draw blush first (normal blend), then breath (screen blend)
+            breathOverlayCtx.globalCompositeOperation = 'source-over';
+            breathOverlayCtx.filter = 'none';
 // Update mouth screen position from faceLandmarks (2D) + VRM adjustment shift (follows height slider).
             const vw2 = videoEl ? (videoEl.videoWidth || 0) : 0;
             const vh2 = videoEl ? (videoEl.videoHeight || 0) : 0;
@@ -1544,6 +1610,81 @@ function updateBreathEffect(delta) {
             const unitPx = rect2 ? (rect2.w * 0.25) : (Math.min(w, h) * 0.25);
             const offXpx = breathOffX * unitPx;
             const offYpx = breathOffY * unitPx;
+
+            // --- Blush rendering (cheeks) ---
+            // Convert cheek landmarks (video-normalized) into screen pixels (letterboxed).
+            if (rect2 && latestCheekVideoValid) {
+                const cLX = rect2.x + latestCheekLVideoX * rect2.w + shiftX;
+                const cLY = rect2.y + latestCheekLVideoY * rect2.h + shiftY;
+                const cRX = rect2.x + latestCheekRVideoX * rect2.w + shiftX;
+                const cRY = rect2.y + latestCheekRVideoY * rect2.h + shiftY;
+
+                if (Number.isFinite(cLX) && Number.isFinite(cLY) && Number.isFinite(cRX) && Number.isFinite(cRY)) {
+                    lastCheekScreenLX = cLX; lastCheekScreenLY = cLY;
+                    lastCheekScreenRX = cRX; lastCheekScreenRY = cRY;
+                    lastCheekScreenValid = true;
+                }
+            }
+
+            if (isBlushEnabled && lastCheekScreenValid) {
+                // Size based on face width (distance between cheeks)
+                const faceW = Math.hypot(lastCheekScreenRX - lastCheekScreenLX, lastCheekScreenRY - lastCheekScreenLY) || (rect2 ? rect2.w * 0.6 : Math.min(w, h));
+                const r = Math.max(18, faceW * 0.12);
+
+                // Create stripe pattern once
+                if (!blushStripePattern) {
+                    const pc = document.createElement('canvas');
+                    pc.width = 32; pc.height = 32;
+                    const pctx = pc.getContext('2d');
+                    pctx.clearRect(0, 0, pc.width, pc.height);
+                    pctx.strokeStyle = 'rgba(255, 140, 185, 0.55)';
+                    pctx.lineWidth = 3;
+                    for (let i = -32; i <= 64; i += 10) {
+                        pctx.beginPath();
+                        pctx.moveTo(i, 32);
+                        pctx.lineTo(i + 32, 0);
+                        pctx.stroke();
+                    }
+                    blushStripePattern = breathOverlayCtx.createPattern(pc, 'repeat');
+                }
+
+                const drawSpot = (cx, cy) => {
+                    // Soft pink base
+                    breathOverlayCtx.save();
+                    breathOverlayCtx.translate(cx, cy);
+                    breathOverlayCtx.filter = 'blur(0.9px)';
+                    const a0 = 0.30 * blushStrength;
+                    const grad = breathOverlayCtx.createRadialGradient(0, 0, r * 0.10, 0, 0, r);
+                    grad.addColorStop(0, `rgba(255, 160, 200, ${a0})`);
+                    grad.addColorStop(1, 'rgba(255, 160, 200, 0)');
+                    breathOverlayCtx.fillStyle = grad;
+                    breathOverlayCtx.beginPath();
+                    breathOverlayCtx.arc(0, 0, r, 0, Math.PI * 2);
+                    breathOverlayCtx.fill();
+                    breathOverlayCtx.restore();
+
+                    // Diagonal stripes overlay (pink)
+                    breathOverlayCtx.save();
+                    breathOverlayCtx.translate(cx, cy);
+                    breathOverlayCtx.globalAlpha = 0.28 * blushStrength;
+                    breathOverlayCtx.beginPath();
+                    breathOverlayCtx.arc(0, 0, r * 0.82, 0, Math.PI * 2);
+                    breathOverlayCtx.clip();
+                    breathOverlayCtx.rotate(-Math.PI / 6);
+                    breathOverlayCtx.fillStyle = blushStripePattern;
+                    breathOverlayCtx.fillRect(-r * 2, -r * 2, r * 4, r * 4);
+                    breathOverlayCtx.restore();
+                };
+
+                // Slightly offset upward toward cheekbones
+                const yLift = r * 0.05;
+                drawSpot(lastCheekScreenLX, lastCheekScreenLY - yLift);
+                drawSpot(lastCheekScreenRX, lastCheekScreenRY - yLift);
+            }
+
+            // Breath rendering uses screen blend & blur for soft mist
+            breathOverlayCtx.globalCompositeOperation = 'screen';
+            breathOverlayCtx.filter = 'blur(1.6px)';
 
             if (baseValid) {
                 lastMouthScreenX = baseMouthX + shiftX + offXpx;
@@ -2209,6 +2350,8 @@ function updateBreathEffect(delta) {
                         // Mouth open estimate from faceLandmarks (fallback if blendshapes are weak/unsupported)
                         const lms = res && res.faceLandmarks && res.faceLandmarks[0];
                         if (lms) {
+                            latestCheekVideoValid = false; // will be set true if indices available
+
                             const up = lms[13], lo = lms[14], lc = lms[78], rc = lms[308];
                             if (up && lo && lc && rc) {
                                 const dxw = (lc.x - rc.x), dyw = (lc.y - rc.y);
@@ -2232,6 +2375,22 @@ function updateBreathEffect(delta) {
                                     latestMouthCenterVideoX = Math.min(1, Math.max(0, vv.x));
                                     latestMouthCenterVideoY = Math.min(1, Math.max(0, vv.y));
                                     latestMouthCenterVideoValid = true;
+
+                                    // Cheek centers for blush (faceLandmarks indices)
+                                    // 234: left cheek, 454: right cheek (MediaPipe FaceMesh)
+                                    const clm = lms[234], crm = lms[454];
+                                    if (clm && crm) {
+                                        const vcl = mpLandmarkNormToVideoNorm(clm.x, clm.y, vw0, vh0, inputRotationDeg, mpW0, mpH0);
+                                        const vcr = mpLandmarkNormToVideoNorm(crm.x, crm.y, vw0, vh0, inputRotationDeg, mpW0, mpH0);
+                                        if (vcl.ok && vcr.ok) {
+                                            latestCheekLVideoX = Math.min(1, Math.max(0, vcl.x));
+                                            latestCheekLVideoY = Math.min(1, Math.max(0, vcl.y));
+                                            latestCheekRVideoX = Math.min(1, Math.max(0, vcr.x));
+                                            latestCheekRVideoY = Math.min(1, Math.max(0, vcr.y));
+                                            latestCheekVideoValid = true;
+                                        }
+                                    }
+
                                 }
 }
                         }
