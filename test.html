@@ -95,23 +95,31 @@
         .control-panel {
             background: rgba(255, 255, 255, 0.95);
             padding: 15px;
+            padding-bottom: calc(15px + env(safe-area-inset-bottom, 0px));
             border-radius: 12px;
             pointer-events: auto;
             backdrop-filter: blur(5px);
-            margin-top: 50px;
-            max-width: 300px;
-            max-height: 80vh;
-            overflow-y: auto;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
-            position: absolute;
+
+            /* Panel layout: always fully reachable on mobile (portrait/landscape) */
+            position: fixed;
             right: 10px;
+            top: calc(10px + 54px + env(safe-area-inset-top, 0px));
+            bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+
+            width: min(92vw, 360px);
+            max-width: 360px;
+
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+            overscroll-behavior: contain;
+
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            z-index: 2000;
         }
 
         /* 縦画面時のスタイル上書き: 最大高さを50%に制限 */
         @media (orientation: portrait) {
-            .control-panel {
-                max-height: 50vh;
-            }
+            .control-panel { width: min(94vw, 360px); }
         }
 
         .tab-container {
@@ -676,7 +684,7 @@
     <script type="module">
         
 // ===== App Version (single source of truth) =====
-const APP_VERSION = "v5.12.19";
+const APP_VERSION = "v5.12.20";
 const APP_VERSION_NOTE = "breath shiftX TDZ fix";
 function setAppVersionLabel() {
   const el = document.getElementById("app-version");
@@ -1295,13 +1303,19 @@ const occlusionToggle = document.getElementById('occlusion-toggle');
         shadowDetails.style.display = forceShadowToggle.checked ? 'block' : 'none';
 
         document.getElementById('toggle-menu-btn').addEventListener('click', () => {
-            lightPanel.style.display = 'none'; 
-            controlPanel.style.display = controlPanel.style.display === 'none' ? 'block' : 'none';
+            // close the other panel first
+            lightPanel.style.display = 'none';
+            const isHidden = getComputedStyle(controlPanel).display === 'none';
+            controlPanel.style.display = isHidden ? 'block' : 'none';
+            if (isHidden) controlPanel.scrollTop = 0;
         });
 
         document.getElementById('toggle-light-btn').addEventListener('click', () => {
-            controlPanel.style.display = 'none'; 
-            lightPanel.style.display = lightPanel.style.display === 'none' ? 'block' : 'none';
+            // close the other panel first
+            controlPanel.style.display = 'none';
+            const isHidden = getComputedStyle(lightPanel).display === 'none';
+            lightPanel.style.display = isHidden ? 'block' : 'none';
+            if (isHidden) lightPanel.scrollTop = 0;
         });
 
         document.getElementById('toggle-fullscreen-btn').addEventListener('click', () => {
@@ -3047,6 +3061,14 @@ function updateBreathEffect(delta) {
                 startScreen.style.display = 'none';
                 loadingText.style.display = 'none';
                 uiContainer.style.display = 'block';
+
+                // Auto open main options on start (restored behavior)
+                try {
+                    lightPanel.style.display = 'none';
+                    controlPanel.style.display = 'block';
+                    controlPanel.scrollTop = 0;
+                } catch(_) {}
+
                 showToast(isRestart ? "再起動しました (MediaPipe)" : "カメラを開始しました (MediaPipe)");
             } catch (err) {
                 console.error(err);
