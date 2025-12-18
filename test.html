@@ -639,8 +639,8 @@
     <script type="module">
         
 // ===== App Version (single source of truth) =====
-const APP_VERSION = "v5.12.7";
-const APP_VERSION_NOTE = "blush follow+offset";
+const APP_VERSION = "v5.12.8";
+const APP_VERSION_NOTE = "blush-anchor-unit-fix";
 function setAppVersionLabel() {
   const el = document.getElementById("app-version");
   if (!el) return;
@@ -1546,18 +1546,34 @@ const occlusionToggle = document.getElementById('occlusion-toggle');
             const head = getBone('head');
             const neck = getBone('neck');
 
-            // estimate "unit" (rough head size) from head-neck distance
-            let unit = 0.08;
-            try {
-                if (head && neck) {
-                    const ph = new THREE.Vector3();
-                    const pn = new THREE.Vector3();
-                    head.getWorldPosition(ph);
-                    neck.getWorldPosition(pn);
-                    const d = ph.distanceTo(pn);
-                    if (Number.isFinite(d) && d > 0.001) unit = d;
-                }
-            } catch (_) {}
+            // estimate "unit" (rough head size) for cheek placement.
+// Prefer eye distance (stable across many VRMs). Fallback to head-neck distance,
+// then to VRM bounding-box height.
+let unit = 0.075;
+try {
+    const leftEye = getBone('leftEye');
+    const rightEye = getBone('rightEye');
+    if (leftEye && rightEye) {
+        const pl = new THREE.Vector3();
+        const pr = new THREE.Vector3();
+        leftEye.getWorldPosition(pl);
+        rightEye.getWorldPosition(pr);
+        const d = pl.distanceTo(pr);
+        if (Number.isFinite(d) && d > 0.001) unit = d;
+    } else if (head && neck) {
+        const ph = new THREE.Vector3();
+        const pn = new THREE.Vector3();
+        head.getWorldPosition(ph);
+        neck.getWorldPosition(pn);
+        const d = ph.distanceTo(pn);
+        if (Number.isFinite(d) && d > 0.001) unit = d;
+    } else {
+        const box = new THREE.Box3().setFromObject(vrm.scene);
+        const sz = new THREE.Vector3();
+        box.getSize(sz);
+        if (Number.isFinite(sz.y) && sz.y > 0.01) unit = sz.y * 0.12;
+    }
+} catch (_) {}
 
             // store unit for debug / tuning
             blushAnchorL.userData.unit = unit;
@@ -1570,10 +1586,11 @@ const occlusionToggle = document.getElementById('occlusion-toggle');
                 attach.add(blushAnchorR);
             }
 
-            // Base positions in head-local space (tuned for typical VRM head scale)
-            const baseX = 0.065 * unit * blushSpread;
-            const baseY = -0.015 * unit;
-            const baseZ = 0.085 * unit;
+            // Base positions in head-local space.
+// (unit is eye-distance-ish) -> cheeks are roughly ~0.7*unit from center.
+const baseX = 0.72 * unit * blushSpread;
+const baseY = -0.32 * unit;
+const baseZ = 0.55 * unit;
 
             // Common shifts (user sliders)
             const sx = blushOffX * unit;
