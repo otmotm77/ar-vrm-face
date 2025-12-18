@@ -1481,13 +1481,6 @@ forceShadowToggle.addEventListener('change', () => {
 
         // Sync once on load
         syncTrackingTogglesFromState();
-videoEl.srcObject = stream;
-                await videoEl.play();
-            } catch (e) {
-                console.error(e);
-                showToast("カメラ切り替えに失敗しました");
-            }
-        });
 
         function handleViewportResize() {
             if (renderer && camera) {
