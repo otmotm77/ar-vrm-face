@@ -446,23 +446,23 @@
             <div id="breath-controls" style="display:none;">
             <div class="slider-container" id="breath-strength-container" style="opacity:0.6;">
                 <span class="slider-label">吐息の強さ</span>
-                <input type="range" id="breath-strength-slider" min="0.0" max="2.0" step="0.1" value="1.0">
-                <span id="breath-strength-slider-val" class="val-display">1.0</span>
+                <input type="range" id="breath-strength-slider" min="0.0" max="1.0" step="0.01" value="1.0">
+                <span id="breath-strength-slider-val" class="val-display">1.00</span>
             </div>
 
 
             <div class="slider-container" id="breath-offset-container" style="opacity:0.9;">
-                <span class="slider-label">吐息位置X（微調整）</span>
+                <span class="slider-label">吐息位置X</span>
                 <input type="range" id="breath-offx-slider" min="-1.0" max="1.0" step="0.01" value="0.00">
                 <span id="breath-offx-slider-val" class="val-display">0.00</span>
             </div>
             <div class="slider-container" id="breath-offset-container-y" style="opacity:0.9;">
-                <span class="slider-label">吐息位置Y（微調整）</span>
+                <span class="slider-label">吐息位置Y</span>
                 <input type="range" id="breath-offy-slider" min="-1.0" max="1.0" step="0.01" value="0.00">
                 <span id="breath-offy-slider-val" class="val-display">0.00</span>
             </div>
             <div class="slider-container" id="breath-offset-container-z" style="opacity:0.9;">
-                <span class="slider-label">吐息位置Z（微調整）</span>
+                <span class="slider-label">吐息位置Z</span>
                 <input type="range" id="breath-offz-slider" min="-1.0" max="1.0" step="0.01" value="0.00">
                 <span id="breath-offz-slider-val" class="val-display">0.00</span>
             </div>
@@ -598,8 +598,8 @@
     <script type="module">
         
 // ===== App Version (single source of truth) =====
-const APP_VERSION = "v5.12.5";
-const APP_VERSION_NOTE = "";
+const APP_VERSION = "v5.12.4";
+const APP_VERSION_NOTE = "breath-save+ui";
 function setAppVersionLabel() {
   const el = document.getElementById("app-version");
   if (!el) return;
@@ -838,21 +838,28 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
         breathDebugEl = document.getElementById('breath-debug');
 
 
-        function updateBreathUI() {
+        function updateBreathUI(skipSave = false) {
             isBreathEnabled = !!breathToggle.checked;
+
             // Show breath-related sliders only when enabled
             if (breathControls) breathControls.style.display = isBreathEnabled ? 'block' : 'none';
+
             // Disable inputs when off
             if (breathStrengthSlider) breathStrengthSlider.disabled = !isBreathEnabled;
             if (breathOffXSlider) breathOffXSlider.disabled = !isBreathEnabled;
             if (breathOffYSlider) breathOffYSlider.disabled = !isBreathEnabled;
             if (breathOffZSlider) breathOffZSlider.disabled = !isBreathEnabled;
-            // Hide breath debug by default (can be re-enabled later in code if needed)
+
+            // Keep breath debug hidden by default
             breathDebugEnabled = false;
             if (breathDebugToggle) breathDebugToggle.checked = false;
             if (breathDebugEl) breathDebugEl.style.display = 'none';
-            breathStrength = parseFloat(breathStrengthSlider.value) || 1.0;
-            breathStrengthSliderVal.textContent = breathStrength.toFixed(1);
+
+            breathStrength = parseFloat(breathStrengthSlider.value);
+            if (!Number.isFinite(breathStrength)) breathStrength = 1.0;
+            // Clamp just in case
+            breathStrength = Math.max(0.0, Math.min(1.0, breathStrength));
+            breathStrengthSliderVal.textContent = breathStrength.toFixed(2);
             breathStrengthContainer.style.opacity = isBreathEnabled ? '1.0' : '0.6';
 
             // Offset multipliers (relative to VRM "unit" length)
@@ -863,23 +870,21 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
             if (breathOffYVal) breathOffYVal.textContent = breathOffY.toFixed(2);
             if (breathOffZVal) breathOffZVal.textContent = breathOffZ.toFixed(2);
 
-            // Recompute mouth emitter position so changes reflect immediately
-            if (currentVrm) updateBreathEmitterFromVRM(currentVrm);
+            // Recompute mouth emitter position so changes reflect immediately (if VRM-side emitter is used)
+            if (currentVrm && typeof updateBreathEmitterFromVRM === 'function') updateBreathEmitterFromVRM(currentVrm);
 
-            breathDebugEnabled = !!(breathDebugToggle && breathDebugToggle.checked);
-            if (breathDebugEl) breathDebugEl.style.display = breathDebugEnabled ? 'block' : 'none';
+            // Persist with the currently loaded VRM (same mechanism as other options)
+            if (!skipSave && typeof saveSettings === 'function') saveSettings();
         }
-        breathToggle.addEventListener('change', updateBreathUI);
-        breathStrengthSlider.addEventListener('input', updateBreathUI);
-        if (breathOffXSlider) breathOffXSlider.addEventListener('input', updateBreathUI);
-        if (breathOffYSlider) breathOffYSlider.addEventListener('input', updateBreathUI);
-        if (breathOffZSlider) breathOffZSlider.addEventListener('input', updateBreathUI);
-        if (breathDebugToggle) breathDebugToggle.addEventListener('change', updateBreathUI);
-        updateBreathUI();
 
-
-        
-        const occlusionToggle = document.getElementById('occlusion-toggle');
+        breathToggle.addEventListener('change', () => updateBreathUI(false));
+breathStrengthSlider.addEventListener('input', () => updateBreathUI(false));
+        if (breathOffXSlider) breathOffXSlider.addEventListener('input', () => updateBreathUI(false));
+        if (breathOffYSlider) breathOffYSlider.addEventListener('input', () => updateBreathUI(false));
+        if (breathOffZSlider) breathOffZSlider.addEventListener('input', () => updateBreathUI(false));
+        if (breathDebugToggle) breathDebugToggle.addEventListener('change', () => updateBreathUI(false));
+        updateBreathUI(true);
+const occlusionToggle = document.getElementById('occlusion-toggle');
         const occlusionDebugToggle = document.getElementById('occlusion-debug-toggle');
         
         // 6点パラメータ用スライダー
@@ -1173,8 +1178,15 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
                 camSat: camSatSlider.value,
                 camCont: camContSlider.value,
                 camBlur: camBlurSlider.value,
-                camSepia: camSepiaSlider.value
+                camSepia: camSepiaSlider.value,
+                // Breath (per-VRM)
+                breathEnabled: (typeof breathToggle !== 'undefined') ? !!breathToggle.checked : false,
+                breathStrength: (typeof breathStrengthSlider !== 'undefined' && breathStrengthSlider) ? breathStrengthSlider.value : '1.0',
+                breathOffX: (typeof breathOffXSlider !== 'undefined' && breathOffXSlider) ? breathOffXSlider.value : '0.0',
+                breathOffY: (typeof breathOffYSlider !== 'undefined' && breathOffYSlider) ? breathOffYSlider.value : '0.0',
+                breathOffZ: (typeof breathOffZSlider !== 'undefined' && breathOffZSlider) ? breathOffZSlider.value : '0.0'
             };
+
             try {
                 localStorage.setItem("vrm_settings_" + currentFileName, JSON.stringify(settings));
             } catch(e) {
@@ -1228,7 +1240,16 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
                     if(s.camBlur) camBlurSlider.value = s.camBlur;
                     if(s.camSepia) camSepiaSlider.value = s.camSepia;
 
-                    // 値の表示を更新
+                    // Breath (per-VRM)
+                    if (Object.prototype.hasOwnProperty.call(s, 'breathEnabled') && typeof breathToggle !== 'undefined') {
+                        breathToggle.checked = !!s.breathEnabled;
+                    }
+                    if (s.breathStrength && breathStrengthSlider) breathStrengthSlider.value = s.breathStrength;
+                    if (Object.prototype.hasOwnProperty.call(s, 'breathOffX') && breathOffXSlider) breathOffXSlider.value = s.breathOffX;
+                    if (Object.prototype.hasOwnProperty.call(s, 'breathOffY') && breathOffYSlider) breathOffYSlider.value = s.breathOffY;
+                    if (Object.prototype.hasOwnProperty.call(s, 'breathOffZ') && breathOffZSlider) breathOffZSlider.value = s.breathOffZ;
+                    if (typeof updateBreathUI === 'function') updateBreathUI(true);
+// 値の表示を更新
                     allSliders.forEach(el => updateSliderDisplay(el));
 
                     updateLight(); 
