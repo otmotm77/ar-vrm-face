@@ -476,7 +476,15 @@
                     <span id="blush-spread-slider-val" class="val-display">1.00</span>
                 </div>
 
-                <div class="toggle-container" style="opacity:0.9; margin-top:6px;">
+
+                <div class="toggle-container" style="opacity:0.9; margin-top:4px; margin-bottom:4px;">
+                    <label class="toggle-label">
+                        <input type="checkbox" id="blush-front-toggle" class="toggle-checkbox" checked>
+                        紅潮を最前面に表示
+                    </label>
+                </div>
+
+            <div class="toggle-container" style="opacity:0.9; margin-top:6px;">
                     <label class="toggle-label">
                         <input type="checkbox" id="blush-debug-toggle" class="toggle-checkbox">
                         紅潮デバッグ（表示）
@@ -648,7 +656,7 @@
     <script type="module">
         
 // ===== App Version (single source of truth) =====
-const APP_VERSION = "v5.12.14";
+const APP_VERSION = "v5.12.15";
 const APP_VERSION_NOTE = "blush head-local fix";
 function setAppVersionLabel() {
   const el = document.getElementById("app-version");
@@ -721,6 +729,7 @@ import * as THREE from 'three';
         let blushOffZ = 0.00;
         let blushSize = 1.00;  // size multiplier
         let blushSpread = 1.00; // distance multiplier (cheek width)
+        let blushFront = true; // render blush on top (toggleable)
 
         // Cheek blush meshes (attached to VRM head; sticks to the model)
 let blushMeshL = null;
@@ -735,6 +744,37 @@ let blushUnit = 0.06;
         let blushDebugEl = null;
         const blushDbgTmp = new THREE.Vector3();
         const blushDbgTmp2 = new THREE.Vector3();
+
+
+        function applyBlushRenderMode() {
+            // Controls whether blush planes are drawn on top of the VRM (UI toggle).
+            // Called from updateBlushUI and when meshes/materials are created.
+            const front = !!blushFront;
+            const mats = [];
+            if (blushMatL) mats.push(blushMatL);
+            if (blushMatR && blushMatR !== blushMatL) mats.push(blushMatR);
+
+            for (const mat of mats) {
+                mat.transparent = true;
+                mat.depthWrite = false;
+                if (front) {
+                    mat.depthTest = false;
+                    mat.polygonOffset = true;
+                    mat.polygonOffsetFactor = -2;
+                    mat.polygonOffsetUnits = -2;
+                } else {
+                    mat.depthTest = true;
+                    mat.polygonOffset = false;
+                    mat.polygonOffsetFactor = 0;
+                    mat.polygonOffsetUnits = 0;
+                }
+                mat.needsUpdate = true;
+            }
+
+            if (blushMeshL) blushMeshL.renderOrder = front ? 9999 : 100;
+            if (blushMeshR) blushMeshR.renderOrder = front ? 9999 : 100;
+        }
+
 
 
 let latestCheekLVideoX = 0.35; // normalized in ORIGINAL video frame (0..1)
@@ -919,7 +959,9 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
         const blushSizeSlider = document.getElementById('blush-size-slider');
         const blushSpreadSlider = document.getElementById('blush-spread-slider');
 
-        const blushOffXSliderVal = document.getElementById('blush-offx-slider-val');
+        
+        const blushFrontToggle = document.getElementById('blush-front-toggle');
+const blushOffXSliderVal = document.getElementById('blush-offx-slider-val');
         const blushOffYSliderVal = document.getElementById('blush-offy-slider-val');
         const blushOffZSliderVal = document.getElementById('blush-offz-slider-val');
         const blushSizeSliderVal = document.getElementById('blush-size-slider-val');
@@ -981,6 +1023,16 @@ function updateBlushUI(skipSave = false) {
             if (currentVrm && typeof updateBlushAnchorsFromVRM === 'function') updateBlushAnchorsFromVRM(currentVrm);
 
 
+
+            // Front-most rendering toggle (persisted)
+            if (typeof blushFrontToggle !== 'undefined' && blushFrontToggle) {
+                blushFront = !!blushFrontToggle.checked;
+                applyBlushRenderMode();
+            } else {
+                blushFront = true;
+                applyBlushRenderMode();
+            }
+
             // Blush debug visibility (not persisted)
             if (blushDebugToggle) {
                 blushDebugEnabled = !!blushDebugToggle.checked;
@@ -1040,7 +1092,8 @@ function updateBreathUI(skipSave = false) {
         if (blushOffZSlider) blushOffZSlider.addEventListener('input', () => updateBlushUI(false));
         if (blushSizeSlider) blushSizeSlider.addEventListener('input', () => updateBlushUI(false));
         if (blushSpreadSlider) blushSpreadSlider.addEventListener('input', () => updateBlushUI(false));
-        if (blushDebugToggle) blushDebugToggle.addEventListener('change', () => { blushDebugEnabled = !!blushDebugToggle.checked; if (blushDebugEl) blushDebugEl.style.display = blushDebugEnabled ? 'block' : 'none'; });
+                if (typeof blushFrontToggle !== 'undefined' && blushFrontToggle) blushFrontToggle.addEventListener('change', () => updateBlushUI(false));
+if (blushDebugToggle) blushDebugToggle.addEventListener('change', () => { blushDebugEnabled = !!blushDebugToggle.checked; if (blushDebugEl) blushDebugEl.style.display = blushDebugEnabled ? 'block' : 'none'; });
 
 breathToggle.addEventListener('change', () => updateBreathUI(false));
 breathStrengthSlider.addEventListener('input', () => updateBreathUI(false));
@@ -1359,6 +1412,7 @@ const occlusionToggle = document.getElementById('occlusion-toggle');
                 blushOffZ: (typeof blushOffZSlider !== 'undefined' && blushOffZSlider) ? blushOffZSlider.value : '0.00',
                 blushSize: (typeof blushSizeSlider !== 'undefined' && blushSizeSlider) ? blushSizeSlider.value : '1.00',
                 blushSpread: (typeof blushSpreadSlider !== 'undefined' && blushSpreadSlider) ? blushSpreadSlider.value : '1.00'
+                blushFront: (typeof blushFrontToggle !== 'undefined' && blushFrontToggle) ? !!blushFrontToggle.checked : true,
             };
 
 
@@ -1435,6 +1489,7 @@ const occlusionToggle = document.getElementById('occlusion-toggle');
                     if (Object.prototype.hasOwnProperty.call(s, 'blushOffZ') && blushOffZSlider) blushOffZSlider.value = s.blushOffZ;
                     if (Object.prototype.hasOwnProperty.call(s, 'blushSize') && blushSizeSlider) blushSizeSlider.value = s.blushSize;
                     if (Object.prototype.hasOwnProperty.call(s, 'blushSpread') && blushSpreadSlider) blushSpreadSlider.value = s.blushSpread;
+                    if (Object.prototype.hasOwnProperty.call(s, 'blushFront') && typeof blushFrontToggle !== 'undefined' && blushFrontToggle) blushFrontToggle.checked = !!s.blushFront;
                     if (typeof updateBlushUI === 'function') updateBlushUI(true);
 
                     if (typeof updateBreathUI === 'function') updateBreathUI(true);
@@ -1626,7 +1681,9 @@ const occlusionToggle = document.getElementById('occlusion-toggle');
             blushMatR = blushMatL.clone();
         }
 
-        if (!blushMeshL) {
+        
+        applyBlushRenderMode();
+if (!blushMeshL) {
             blushMeshL = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), blushMatL);
             blushMeshL.name = 'blushMeshL';
             blushMeshL.renderOrder = 999;
@@ -1694,8 +1751,17 @@ const occlusionToggle = document.getElementById('occlusion-toggle');
 
     // Base cheek offsets relative to eye line in head-local space
     const spread = Math.max(0.5, Math.min(1.8, blushSpread));
-    const baseX = (halfEyeX * 1.55 + 0.01) * spread;
-    const baseY = eyeCenter.y - (0.55 * unit);
+    let baseX = (halfEyeX * 1.55 + 0.01) * spread;
+    // Sanity clamp: some VRMs yield extreme halfEyeX due to normalization/scaling differences.
+    const minX = unit * 0.65 * spread;
+    const maxX = unit * 2.40 * spread;
+    if (!Number.isFinite(baseX)) baseX = minX;
+    baseX = Math.max(minX, Math.min(maxX, baseX));
+
+    let baseY = eyeCenter.y - (0.55 * unit);
+    // Sanity clamp: keep within a reasonable band around head origin.
+    if (!Number.isFinite(baseY) || Math.abs(baseY) > (unit * 6.0)) baseY = (-0.25 * unit);
+
     // Place blush slightly towards the camera side in head-local space (auto-detect Z sign)
     let camLocalZ = -1;
     try {
@@ -1705,9 +1771,9 @@ const occlusionToggle = document.getElementById('occlusion-toggle');
         }
     } catch (_) {}
     const zSign = (camLocalZ >= 0) ? 1 : -1;
-    const baseZ = eyeCenter.z + (zSign * 1.25 * unit);
-
-    const ox = blushOffX * unit;
+    let baseZ = eyeCenter.z + (zSign * 1.25 * unit);
+    if (!Number.isFinite(baseZ) || Math.abs(baseZ) > (unit * 6.0)) baseZ = (zSign * 1.20 * unit);
+const ox = blushOffX * unit;
     const oy = blushOffY * unit;
     const oz = blushOffZ * unit;
 
