@@ -3091,8 +3091,7 @@ function updateBreathEffect(delta) {
 
                 // --- Render loop ---
                 const clock = new THREE.Clock();
-                const lightRelativePos = new THREE.Vector3(0, 0.5, 1);
-
+                // (use global lightRelativePos controlled by sliders)
                 const worldMatrix = new THREE.Matrix4();
                 const rotComp = new THREE.Matrix4();
                 const baseScale = 40;
