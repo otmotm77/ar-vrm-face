@@ -3195,7 +3195,6 @@ const tms = res && res.facialTransformationMatrixes;
                                 // Convert to ORIGINAL video space (undo analysis rotation)
                                 const vw0 = videoEl.videoWidth || 0;
                                 const vh0 = videoEl.videoHeight || 0;
-                                const mpW0 = (inputRotationDeg !== 0) ? (mpOffscreenCanvas.width || 0) : vw0;
                                 const mpW0 = (mpInputIsOffscreen) ? (mpOffscreenCanvas.width || 0) : vw0;
                                 const mpH0 = (mpInputIsOffscreen) ? (mpOffscreenCanvas.height || 0) : vh0;
                                 const vv = mpLandmarkNormToVideoNorm(mx, my, vw0, vh0, mpUsedRotationDeg, mpW0, mpH0);
