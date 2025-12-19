@@ -95,22 +95,50 @@
         .control-panel {
             background: rgba(255, 255, 255, 0.95);
             padding: 15px;
+            padding-bottom: calc(15px + env(safe-area-inset-bottom, 0px));
             border-radius: 12px;
             pointer-events: auto;
             backdrop-filter: blur(5px);
-            margin-top: 50px;
-            max-width: 300px;
-            max-height: 80vh;
-            overflow-y: auto;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
-            position: absolute;
+
+            /* Panel layout: always fully reachable on mobile (portrait/landscape) */
+            position: fixed;
             right: 10px;
+            top: calc(10px + 54px + env(safe-area-inset-top, 0px));
+            bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+
+            width: min(92vw, 360px);
+            max-width: 360px;
+
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+            overscroll-behavior: contain;
+
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            z-index: 2000;
         }
 
-        /* 縦画面時のスタイル上書き: 最大高さを50%に制限 */
+        /* 縦画面時のスタイル上書き（縦表示）:
+           - 横幅: 画面いっぱい（MAX）
+           - 縦幅: 画面の半分まで（MAX 50vh）
+           - 横表示（landscape）は既存のまま */
         @media (orientation: portrait) {
             .control-panel {
+                left: 0;
+                right: 0;
+                width: 100vw;
+                max-width: 100vw;
+
+                /* 既存の right 固定 + bottom 固定を解除して高さを抑える */
+                bottom: auto;
                 max-height: 50vh;
+
+                /* 画面端に揃える（スクロールで中身は見える） */
+                overflow-y: auto;
+                -webkit-overflow-scrolling: touch;
+
+                /* 端末によっては100vwが横スクロールを生むので保険 */
+                box-sizing: border-box;
+                border-radius: 0;
             }
         }
 
@@ -195,6 +223,22 @@
             padding: 0 2px;
             border-radius: 2px;
         }
+
+        /* Compact layout for color picker rows (avoid large empty gaps) */
+        #blush-color-container {
+            gap: 10px;
+        }
+        #blush-color-container input[type="color"] {
+            margin-left: 0 !important;
+            flex: 0 0 auto;
+        }
+        #blush-color-container .val-display {
+            position: static;
+            margin-left: auto;
+            bottom: auto;
+            right: auto;
+        }
+
 
         .toggle-label {
             display: flex;
@@ -339,8 +383,6 @@
 
     <div id="ui-container" style="display:none;">
         <div class="icon-buttons">
-            <button id="toggle-camera-btn" class="icon-btn" title="カメラ切替">📷</button>
-            <button id="toggle-mirror-btn" class="icon-btn" title="ミラー表示切替">🪞</button>
             <button id="toggle-light-btn" class="icon-btn" title="照明・画質設定">💡</button>
             <button id="toggle-menu-btn" class="icon-btn" title="モデル・トラッキング設定">⚙️</button>
             <button id="toggle-fullscreen-btn" class="icon-btn" title="全画面表示切替">⛶</button>
@@ -387,6 +429,7 @@
             </div>
             
             <!-- 6DOF調整スライダー -->
+            <div id="occlusion-sliders" style="display:none;">
             <div class="slider-container">
                 <span class="slider-label">X Position</span>
                 <input type="range" id="occ-pos-x" min="-0.5" max="0.5" step="0.001" value="0.0">
@@ -419,7 +462,9 @@
                 <span id="occ-size-y-val" class="val-display">1.0</span>
             </div>
 
-            <h2>表情設定</h2>
+            
+            </div>
+<h2>表情設定</h2>
             <div class="slider-container">
                 <label class="toggle-label">
                     <input type="checkbox" id="autoblink-toggle" class="toggle-checkbox" checked>
@@ -436,6 +481,71 @@
                 <input type="range" id="mouth-sens-slider" min="0.5" max="5.0" step="0.1" value="1.5">
                 <span id="mouth-sens-slider-val" class="val-display">1.5</span>
             </div>
+
+            <div class="slider-container">
+                <label class="toggle-label">
+                    <input type="checkbox" id="blush-toggle" class="toggle-checkbox">
+                    頬紅潮エフェクト
+                </label>
+            </div>
+            <div id="blush-controls" style="display:none;">
+                <div class="slider-container" id="blush-strength-container" style="opacity:0.85;">
+                    <span class="slider-label">紅潮の強さ</span>
+                    <input type="range" id="blush-strength-slider" min="0.0" max="2.0" step="0.01" value="0.70">
+                    <span id="blush-strength-slider-val" class="val-display">0.70</span>
+                </div>
+            
+                <div class="slider-container" id="blush-offx-container" style="opacity:0.85;">
+                    <span class="slider-label">紅潮位置X</span>
+                    <input type="range" id="blush-offx-slider" min="-2.0" max="2.0" step="0.01" value="0.00">
+                    <span id="blush-offx-slider-val" class="val-display">0.00</span>
+                </div>
+                <div class="slider-container" id="blush-offy-container" style="opacity:0.85;">
+                    <span class="slider-label">紅潮位置Y</span>
+                    <input type="range" id="blush-offy-slider" min="-2.0" max="2.0" step="0.01" value="0.00">
+                    <span id="blush-offy-slider-val" class="val-display">0.00</span>
+                </div>
+                <div class="slider-container" id="blush-offz-container" style="opacity:0.85;">
+                    <span class="slider-label">紅潮位置Z</span>
+                    <input type="range" id="blush-offz-slider" min="-1.0" max="1.0" step="0.01" value="0.00">
+                    <span id="blush-offz-slider-val" class="val-display">0.00</span>
+                </div>
+                <div class="slider-container" id="blush-size-container" style="opacity:0.85;">
+                    <span class="slider-label">紅潮サイズ</span>
+                    <input type="range" id="blush-size-slider" min="0.50" max="5.00" step="0.01" value="1.00">
+                    <span id="blush-size-slider-val" class="val-display">1.00</span>
+                </div>
+                <div class="slider-container" id="blush-spread-container" style="opacity:0.85;">
+                    <span class="slider-label">紅潮幅</span>
+                    <input type="range" id="blush-spread-slider" min="0.50" max="6.00" step="0.01" value="1.00">
+                    <span id="blush-spread-slider-val" class="val-display">1.00</span>
+                </div>
+
+                
+                
+                <div class="slider-container" id="blush-color-container" style="opacity:0.85;">
+                    <span class="slider-label">紅潮の色</span>
+                    <input type="color" id="blush-color-picker" value="#ff5fa0" style="height:30px; width:52px; padding:0; border:0; background:transparent;">
+                    <span id="blush-color-picker-val" class="val-display">#ff5fa0</span>
+                </div>
+
+            <div class="toggle-container" style="opacity:0.9; margin-top:4px; margin-bottom:4px;">
+                    <label class="toggle-label">
+                        <input type="checkbox" id="blush-front-toggle" class="toggle-checkbox" checked>
+                        紅潮を最前面に表示
+                    </label>
+                </div>
+
+            <div class="toggle-container" style="opacity:0.9; margin-top:6px;">
+                    <label class="toggle-label">
+                        <input type="checkbox" id="blush-debug-toggle" class="toggle-checkbox">
+                        紅潮デバッグ（表示）
+                    </label>
+                </div>
+                <div id="blush-debug" style="display:none; font-family: monospace; font-size: 12px; line-height: 1.35; background: rgba(0,0,0,0.55); color: #fff; padding:6px; border-radius:8px; margin-bottom:10px; white-space: pre-wrap;"></div>
+
+</div>
+
 
             <div class="slider-container">
                 <label class="toggle-label">
@@ -478,6 +588,20 @@
             </div>
 
             <h2>トラッキング</h2>
+
+            <div class="slider-container">
+                <label class="toggle-label">
+                    <input type="checkbox" id="tracking-facing-toggle" class="toggle-checkbox">
+                    アウトカメラ（背面）
+                </label>
+            </div>
+            <div class="slider-container">
+                <label class="toggle-label">
+                    <input type="checkbox" id="tracking-mirror-toggle" class="toggle-checkbox">
+                    ミラー表示
+                </label>
+            </div>
+
             <div class="slider-container">
                 <span class="slider-label">滑らかさ</span>
                 <input type="range" id="mincf-slider" min="0.0001" max="0.01" step="0.0001" value="0.0005">
@@ -598,8 +722,8 @@
     <script type="module">
         
 // ===== App Version (single source of truth) =====
-const APP_VERSION = "v5.12.4";
-const APP_VERSION_NOTE = "breath-save+ui";
+const APP_VERSION = "v5.12.30";
+const APP_VERSION_NOTE = "blush: ignore autoRot when inputRot=0 (fix 90deg drift); VRM unchanged";
 function setAppVersionLabel() {
   const el = document.getElementById("app-version");
   if (!el) return;
@@ -631,6 +755,8 @@ import * as THREE from 'three';
         let latestMouthCenterVideoX = 0.5; // normalized in ORIGINAL video frame (0..1)
         let latestMouthCenterVideoY = 0.6;
         let latestMouthCenterVideoValid = false;
+        let latestFaceLandmarks0 = null; // MediaPipe faceLandmarks[0] for 2D overlays (blush/breath)
+
 
         let isFaceVisible = false;
 
@@ -647,6 +773,9 @@ import * as THREE from 'three';
         let deviceGamma = 0;
         let deviceBeta = 0;
         let inputRotationDeg = 0;
+        let lastBaseInputRotDeg = 0;
+        let autoInputRotationDeg = 0;
+        let eyeAngleDeg = 0;
 
         let currentVrm = null;
         let pivotGroup;       
@@ -661,7 +790,79 @@ import * as THREE from 'three';
 
         const holdLastPoseOnLost = true; // 顔認識が外れても最後の姿勢・表情を保持
 
-        // --- Breath (white mist) effect ---
+        
+        // --- Blush (cheek flush) effect ---
+        let isBlushEnabled = false;
+        let blushStrength = 0.70;
+        let blushStripePattern = null;
+        let blushOffX = 0.00;   // common shift (unit multipliers)
+        let blushOffY = 0.00;
+        let blushOffZ = 0.00;
+        let blushSize = 1.00;  // size multiplier
+        let blushSpread = 1.00; // distance multiplier (cheek width)
+        let blushFront = true; // render blush on top (toggleable)
+        let blushColor = '#ff5fa0'; // blush color (hex)
+        let blushTexColor = null; // internal cache for blush texture color
+        const USE_BLUSH_2D_OVERLAY = true; // robust: sticks to tracked face/video space
+
+
+        // Cheek blush meshes (attached to VRM head; sticks to the model)
+let blushMeshL = null;
+let blushMeshR = null;
+let blushMatL = null;
+let blushMatR = null;
+let blushTex = null;
+const blushTmpV = new THREE.Vector3();
+const blushTmpV2 = new THREE.Vector3();
+let blushUnit = 0.06;
+        let blushDebugEnabled = false;
+        let blushDebugEl = null;
+        const blushDbgTmp = new THREE.Vector3();
+        const blushDbgTmp2 = new THREE.Vector3();
+
+
+        function applyBlushRenderMode() {
+            // Controls whether blush planes are drawn on top of the VRM (UI toggle).
+            // Called from updateBlushUI and when meshes/materials are created.
+            const front = !!blushFront;
+            const mats = [];
+            if (blushMatL) mats.push(blushMatL);
+            if (blushMatR && blushMatR !== blushMatL) mats.push(blushMatR);
+
+            for (const mat of mats) {
+                mat.transparent = true;
+                mat.depthWrite = false;
+                if (front) {
+                    mat.depthTest = false;
+                    mat.polygonOffset = true;
+                    mat.polygonOffsetFactor = -2;
+                    mat.polygonOffsetUnits = -2;
+                } else {
+                    mat.depthTest = true;
+                    mat.polygonOffset = false;
+                    mat.polygonOffsetFactor = 0;
+                    mat.polygonOffsetUnits = 0;
+                }
+                mat.needsUpdate = true;
+            }
+
+            if (blushMeshL) blushMeshL.renderOrder = front ? 9999 : 100;
+            if (blushMeshR) blushMeshR.renderOrder = front ? 9999 : 100;
+        }
+
+
+
+let latestCheekLVideoX = 0.35; // normalized in ORIGINAL video frame (0..1)
+        let latestCheekLVideoY = 0.55;
+        let latestCheekRVideoX = 0.65;
+        let latestCheekRVideoY = 0.55;
+        let latestCheekVideoValid = false;
+
+        let lastCheekScreenLX = 0, lastCheekScreenLY = 0;
+        let lastCheekScreenRX = 0, lastCheekScreenRY = 0;
+        let lastCheekScreenValid = false;
+
+// --- Breath (white mist) effect ---
         let isBreathEnabled = false;
         let breathStrength = 1.0;
         let breathOffX = 0.0; // multiplier of unit
@@ -673,6 +874,8 @@ import * as THREE from 'three';
         // 2D overlay breath particles (more robust than 3D sprites across devices)
         let breathOverlayCanvas = null;
         let breathOverlayCtx = null;
+        let blush2DDebug = null; // debug snapshot for 2D blush mapping/rotation
+
         let breathParticles2D = [];
         let lastMouthScreenX = 0;
         let lastMouthScreenY = 0;
@@ -720,15 +923,49 @@ import * as THREE from 'three';
 	        nextBlinkTime = getRandomBlinkTime();
 let lightRelativePos = new THREE.Vector3(1, 1, 1);
         // --- Device tilt (for rotation-locked capture) ---
-        function computeInputRotationDeg(beta, gamma) {
+        function computeInputRotationDeg(beta, gamma, videoW, videoH) {
             const b = (typeof beta === 'number') ? beta : 0;
             const g = (typeof gamma === 'number') ? gamma : 0;
 
-            // Sideways (landscape) while screen is locked portrait
-            if (Math.abs(g) > 45) return g > 0 ? -90 : 90; // invert to match camera frame direction
-
-            // Upside-down portrait
+            // Upside-down portrait (rare, but keep)
             if (Math.abs(b) > 135) return 180;
+
+            const pageIsPortrait = window.innerHeight >= window.innerWidth;
+
+            const vw = (typeof videoW === 'number') ? videoW : 0;
+            const vh = (typeof videoH === 'number') ? videoH : 0;
+
+            // Try to infer whether the camera frames are portrait/landscape.
+            // This is robust even when the *screen orientation is locked* and the user rotates the device.
+            if (vw > 0 && vh > 0) {
+                const videoIsPortrait = vh > vw;
+
+                // If the video frame orientation differs from the current page orientation,
+                // rotate the *analysis input* by 90deg so the face appears upright to the model.
+                if (pageIsPortrait !== videoIsPortrait) {
+                    // Prefer screen orientation angle when available (Android/Chrome).
+                    let ang = 0;
+                    const so = (screen.orientation && typeof screen.orientation.angle === 'number') ? screen.orientation.angle : null;
+                    const wo = (typeof window.orientation === 'number') ? window.orientation : null;
+                    if (so !== null) ang = so;
+                    else if (wo !== null) ang = wo;
+
+                    ang = ((ang % 360) + 360) % 360;
+
+                    if (ang === 90) return -90;
+                    if (ang === 270) return 90;
+
+                    // Fallback: use gamma sign (works well when screen is locked portrait)
+                    return g > 0 ? -90 : 90;
+                }
+
+                // Otherwise, no 90deg correction needed.
+                return 0;
+            }
+
+            // Fallback when video dimensions are not ready:
+            // Sideways (landscape) while screen is locked portrait
+            if (Math.abs(g) > 45) return g > 0 ? -90 : 90;
 
             return 0;
         }
@@ -739,12 +976,35 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
         // This matches how we draw the rotated frame into mpOffscreenCanvas:
         // translate(center) -> rotate(inputRotationDeg) -> drawImage(video centered).
         function mpLandmarkNormToVideoNorm(xNorm, yNorm, videoW, videoH, rotDeg, mpW, mpH) {
+            // Convert MediaPipe landmark (normalized in MediaPipe input canvas) back to ORIGINAL video-frame normalized coords.
+            // IMPORTANT: When rotDeg is ±90, MediaPipe input canvas dimensions are swapped relative to the original video frame.
+            // Using pixel-space rotation with mixed dimensions causes drift/tilt. Use exact normalized mappings for 0/±90/180.
             if (!Number.isFinite(xNorm) || !Number.isFinite(yNorm) || videoW <= 0 || videoH <= 0) {
                 return { x: 0.5, y: 0.5, ok: false };
             }
-            // If no rotation, MediaPipe input == video frame.
-            if (!rotDeg || rotDeg === 0) return { x: xNorm, y: yNorm, ok: true };
+            // Normalize rot to one of {0, 90, -90, 180}
+            let r = rotDeg || 0;
+            r = ((r % 360) + 360) % 360;
+            if (r === 270) r = -90;
 
+            // No rotation: MediaPipe input == video frame.
+            if (r === 0) return { x: xNorm, y: yNorm, ok: true };
+
+            // Exact inverse mappings (rotDeg describes how ORIGINAL was rotated before feeding MediaPipe).
+            // rotDeg = +90 (CW): x' = 1 - y, y' = x  =>  x = y', y = 1 - x'
+            if (r === 90) {
+                return { x: yNorm, y: 1.0 - xNorm, ok: true };
+            }
+            // rotDeg = -90 (CCW): x' = y, y' = 1 - x  =>  x = 1 - y', y = x'
+            if (r === -90) {
+                return { x: 1.0 - yNorm, y: xNorm, ok: true };
+            }
+            // rotDeg = 180: x' = 1 - x, y' = 1 - y  =>  x = 1 - x', y = 1 - y'
+            if (r === 180) {
+                return { x: 1.0 - xNorm, y: 1.0 - yNorm, ok: true };
+            }
+
+            // Fallback (shouldn't happen): do approximate inverse rotate in pixel space assuming same dims.
             const px = xNorm * mpW;
             const py = yNorm * mpH;
 
@@ -760,13 +1020,14 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
             const rx = dx * cos - dy * sin;
             const ry = dx * sin + dy * cos;
 
-            const outX = rx + videoW * 0.5;
-            const outY = ry + videoH * 0.5;
+            const outX = rx + mpW * 0.5;
+            const outY = ry + mpH * 0.5;
 
-            return { x: outX / videoW, y: outY / videoH, ok: true };
+            return { x: outX / mpW, y: outY / mpH, ok: true };
         }
 
         // Compute the on-screen draw rect for a video frame inside a given canvas using "contain" (letterbox/pillarbox).
+        // Returns rect in CSS pixel space of that canvas.
         // Returns rect in CSS pixel space of that canvas.
         function computeContainRect(canvasW, canvasH, videoW, videoH) {
             const ca = canvasW / canvasH;
@@ -787,6 +1048,22 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
             }
             return { x: dx, y: dy, w: dw, h: dh };
         }
+
+        // --- Color helpers (for customizable 2D effects) ---
+        function hexToRgbSafe(hex) {
+            const m = /^#?([0-9a-fA-F]{6})$/.exec((hex || '').trim());
+            if (!m) return { r: 255, g: 95, b: 160 };
+            const n = parseInt(m[1], 16);
+            return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+        }
+        function mixRgb(a, b, t) {
+            return {
+                r: Math.round(a.r + (b.r - a.r) * t),
+                g: Math.round(a.g + (b.g - a.g) * t),
+                b: Math.round(a.b + (b.b - a.b) * t),
+            };
+        }
+
 
         function onDeviceOrientation(e) {
             if (typeof e.gamma === 'number') deviceGamma = e.gamma;
@@ -821,6 +1098,32 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
         const eyeSensSlider = document.getElementById('eye-sens-slider');
         const autoBlinkToggle = document.getElementById('autoblink-toggle');
 
+        const blushToggle = document.getElementById('blush-toggle');
+        const blushControls = document.getElementById('blush-controls');
+        const blushStrengthSlider = document.getElementById('blush-strength-slider');
+        const blushStrengthSliderVal = document.getElementById('blush-strength-slider-val');
+
+
+        const blushOffXSlider = document.getElementById('blush-offx-slider');
+        const blushOffYSlider = document.getElementById('blush-offy-slider');
+        const blushOffZSlider = document.getElementById('blush-offz-slider');
+        const blushSizeSlider = document.getElementById('blush-size-slider');
+        const blushSpreadSlider = document.getElementById('blush-spread-slider');
+
+        
+        const blushFrontToggle = document.getElementById('blush-front-toggle');
+const blushOffXSliderVal = document.getElementById('blush-offx-slider-val');
+        const blushOffYSliderVal = document.getElementById('blush-offy-slider-val');
+        const blushOffZSliderVal = document.getElementById('blush-offz-slider-val');
+        const blushSizeSliderVal = document.getElementById('blush-size-slider-val');
+        const blushSpreadSliderVal = document.getElementById('blush-spread-slider-val');
+
+        const blushColorPicker = document.getElementById('blush-color-picker');
+        const blushColorPickerVal = document.getElementById('blush-color-picker-val');
+
+        const blushDebugToggle = document.getElementById('blush-debug-toggle');
+        blushDebugEl = document.getElementById('blush-debug');
+
         const breathToggle = document.getElementById('breath-toggle');
         const breathStrengthSlider = document.getElementById('breath-strength-slider');
         const breathStrengthSliderVal = document.getElementById('breath-strength-slider-val');
@@ -838,7 +1141,79 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
         breathDebugEl = document.getElementById('breath-debug');
 
 
-        function updateBreathUI(skipSave = false) {
+        
+        
+function updateBlushUI(skipSave = false) {
+            if (!blushToggle || !blushStrengthSlider) return;
+
+            isBlushEnabled = !!blushToggle.checked;
+            if (blushControls) blushControls.style.display = isBlushEnabled ? 'block' : 'none';
+
+            const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+
+            blushStrength = parseFloat(blushStrengthSlider.value);
+            if (!Number.isFinite(blushStrength)) blushStrength = 0.70;
+            blushStrength = clamp(blushStrength, 0.0, 2.0);
+            if (blushStrengthSliderVal) blushStrengthSliderVal.textContent = blushStrength.toFixed(2);
+
+            blushOffX = blushOffXSlider ? (parseFloat(blushOffXSlider.value) || 0) : 0;
+            blushOffY = blushOffYSlider ? (parseFloat(blushOffYSlider.value) || 0) : 0;
+            blushOffZ = blushOffZSlider ? (parseFloat(blushOffZSlider.value) || 0) : 0;
+            blushOffX = clamp(blushOffX, -2.0, 2.0);
+            blushOffY = clamp(blushOffY, -2.0, 2.0);
+            blushOffZ = clamp(blushOffZ, -1.0, 1.0);
+
+            blushSize = blushSizeSlider ? (parseFloat(blushSizeSlider.value) || 1.0) : 1.0;
+            blushSpread = blushSpreadSlider ? (parseFloat(blushSpreadSlider.value) || 1.0) : 1.0;
+            blushSize = clamp(blushSize, 0.5, 5.0);
+            blushSpread = clamp(blushSpread, 0.5, 6.0);
+
+            if (blushOffXSliderVal) blushOffXSliderVal.textContent = blushOffX.toFixed(2);
+            if (blushOffYSliderVal) blushOffYSliderVal.textContent = blushOffY.toFixed(2);
+            if (blushOffZSliderVal) blushOffZSliderVal.textContent = blushOffZ.toFixed(2);
+            if (blushSizeSliderVal) blushSizeSliderVal.textContent = blushSize.toFixed(2);
+            if (blushSpreadSliderVal) blushSpreadSliderVal.textContent = blushSpread.toFixed(2);
+            // Blush color (persisted per VRM)
+            if (typeof blushColorPicker !== 'undefined' && blushColorPicker) {
+                const v = (blushColorPicker.value || '').trim();
+                if (/^#[0-9a-fA-F]{6}$/.test(v)) blushColor = v.toLowerCase();
+                if (blushColorPickerVal) blushColorPickerVal.textContent = blushColor;
+                // Force rebuild texture/pattern when color changes
+                if (blushTexColor !== blushColor) {
+                    blushTexColor = null;
+                    try { if (blushTex) { blushTex.dispose(); } } catch(_) {}
+                    blushTex = null;
+                }
+            }
+
+
+            if (currentVrm && typeof updateBlushAnchorsFromVRM === 'function') updateBlushAnchorsFromVRM(currentVrm);
+
+
+
+            // Front-most rendering toggle (persisted)
+            if (typeof blushFrontToggle !== 'undefined' && blushFrontToggle) {
+                blushFront = !!blushFrontToggle.checked;
+                applyBlushRenderMode();
+            } else {
+                blushFront = true;
+                applyBlushRenderMode();
+            }
+
+            // Blush debug visibility (not persisted)
+            if (blushDebugToggle) {
+                blushDebugEnabled = !!blushDebugToggle.checked;
+                if (blushDebugEl) blushDebugEl.style.display = blushDebugEnabled ? 'block' : 'none';
+            } else {
+                blushDebugEnabled = false;
+                if (blushDebugEl) blushDebugEl.style.display = 'none';
+            }
+
+            if (!skipSave) saveSettings();
+        }
+
+
+function updateBreathUI(skipSave = false) {
             isBreathEnabled = !!breathToggle.checked;
 
             // Show breath-related sliders only when enabled
@@ -877,14 +1252,26 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
             if (!skipSave && typeof saveSettings === 'function') saveSettings();
         }
 
-        breathToggle.addEventListener('change', () => updateBreathUI(false));
+        if (blushToggle) blushToggle.addEventListener('change', () => updateBlushUI(false));
+        if (blushStrengthSlider) blushStrengthSlider.addEventListener('input', () => updateBlushUI(false));
+        if (blushOffXSlider) blushOffXSlider.addEventListener('input', () => updateBlushUI(false));
+        if (blushOffYSlider) blushOffYSlider.addEventListener('input', () => updateBlushUI(false));
+        if (blushOffZSlider) blushOffZSlider.addEventListener('input', () => updateBlushUI(false));
+        if (blushSizeSlider) blushSizeSlider.addEventListener('input', () => updateBlushUI(false));
+        if (blushSpreadSlider) blushSpreadSlider.addEventListener('input', () => updateBlushUI(false));
+                if (typeof blushFrontToggle !== 'undefined' && blushFrontToggle) blushFrontToggle.addEventListener('change', () => updateBlushUI(false));
+if (blushDebugToggle) blushDebugToggle.addEventListener('change', () => { blushDebugEnabled = !!blushDebugToggle.checked; if (blushDebugEl) blushDebugEl.style.display = blushDebugEnabled ? 'block' : 'none'; });
+
+breathToggle.addEventListener('change', () => updateBreathUI(false));
 breathStrengthSlider.addEventListener('input', () => updateBreathUI(false));
         if (breathOffXSlider) breathOffXSlider.addEventListener('input', () => updateBreathUI(false));
         if (breathOffYSlider) breathOffYSlider.addEventListener('input', () => updateBreathUI(false));
         if (breathOffZSlider) breathOffZSlider.addEventListener('input', () => updateBreathUI(false));
         if (breathDebugToggle) breathDebugToggle.addEventListener('change', () => updateBreathUI(false));
+        if (typeof updateBlushUI === 'function') updateBlushUI(true);
         updateBreathUI(true);
 const occlusionToggle = document.getElementById('occlusion-toggle');
+        const occlusionSliders = document.getElementById('occlusion-sliders');
         const occlusionDebugToggle = document.getElementById('occlusion-debug-toggle');
         
         // 6点パラメータ用スライダー
@@ -982,12 +1369,14 @@ const occlusionToggle = document.getElementById('occlusion-toggle');
 
         autoBlinkToggle.addEventListener('change', (e) => { isAutoBlink = e.target.checked; saveSettings(); });
         occlusionToggle.addEventListener('change', (e) => { updateOccluder(); saveSettings(); });
-        occlusionDebugToggle.addEventListener('change', (e) => { 
-            updateOccluder(); 
-            if(lightHelper) lightHelper.visible = e.target.checked;
+        occlusionDebugToggle.addEventListener('change', (e) => {
+            updateOccluder();
+            if (lightHelper) lightHelper.visible = e.target.checked;
+            if (occlusionSliders) occlusionSliders.style.display = e.target.checked ? 'block' : 'none';
         });
-        
-        forceShadowToggle.addEventListener('change', () => {
+        if (occlusionSliders) occlusionSliders.style.display = occlusionDebugToggle && occlusionDebugToggle.checked ? 'block' : 'none';
+
+forceShadowToggle.addEventListener('change', () => {
             shadowDetails.style.display = forceShadowToggle.checked ? 'block' : 'none';
             if(currentVrm) updateMaterialSettings(currentVrm);
             saveSettings();
@@ -1009,13 +1398,19 @@ const occlusionToggle = document.getElementById('occlusion-toggle');
         shadowDetails.style.display = forceShadowToggle.checked ? 'block' : 'none';
 
         document.getElementById('toggle-menu-btn').addEventListener('click', () => {
-            lightPanel.style.display = 'none'; 
-            controlPanel.style.display = controlPanel.style.display === 'none' ? 'block' : 'none';
+            // close the other panel first
+            lightPanel.style.display = 'none';
+            const isHidden = getComputedStyle(controlPanel).display === 'none';
+            controlPanel.style.display = isHidden ? 'block' : 'none';
+            if (isHidden) controlPanel.scrollTop = 0;
         });
 
         document.getElementById('toggle-light-btn').addEventListener('click', () => {
-            controlPanel.style.display = 'none'; 
-            lightPanel.style.display = lightPanel.style.display === 'none' ? 'block' : 'none';
+            // close the other panel first
+            controlPanel.style.display = 'none';
+            const isHidden = getComputedStyle(lightPanel).display === 'none';
+            lightPanel.style.display = isHidden ? 'block' : 'none';
+            if (isHidden) lightPanel.scrollTop = 0;
         });
 
         document.getElementById('toggle-fullscreen-btn').addEventListener('click', () => {
@@ -1025,51 +1420,109 @@ const occlusionToggle = document.getElementById('occlusion-toggle');
                 if (document.exitFullscreen) document.exitFullscreen();
             }
         });
+        // ===== Tracking UI: Camera (in/out) + Mirror toggles (moved into main menu > Tracking) =====
+        const facingToggle = document.getElementById('tracking-facing-toggle');
+        const mirrorToggle = document.getElementById('tracking-mirror-toggle');
 
-        // ミラー表示切り替えボタンのイベント
-        document.getElementById('toggle-mirror-btn').addEventListener('click', () => {
-            mirrorEnabled = !mirrorEnabled;
+        const syncTrackingTogglesFromState = () => {
+            if (facingToggle) facingToggle.checked = (currentFacingMode === 'environment');
+            if (mirrorToggle) mirrorToggle.checked = !!mirrorEnabled;
+        };
+
+        const applyMirrorFromToggle = () => {
+            if (!mirrorToggle) return;
+            mirrorEnabled = !!mirrorToggle.checked;
             mirrorUserOverride = true;
             applyMirrorToRenderer();
             showToast(mirrorEnabled ? 'ミラー表示: ON' : 'ミラー表示: OFF');
-        });
+        };
 
-// カメラ切り替えボタンのイベント
-        document.getElementById('toggle-camera-btn').addEventListener('click', async () => {
+        const switchCameraFacing = async (wantFacing) => {
             if (!videoEl) return;
-            currentFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
+            if (wantFacing !== 'user' && wantFacing !== 'environment') return;
+            if (currentFacingMode === wantFacing && stream) return;
+
+            currentFacingMode = wantFacing;
             showToast(currentFacingMode === 'user' ? "インカメラに切り替えます" : "アウトカメラに切り替えます");
+
+            // Default mirror behavior when not explicitly overridden
             if (!mirrorUserOverride) {
                 mirrorEnabled = (currentFacingMode === 'user');
+                if (mirrorToggle) mirrorToggle.checked = mirrorEnabled;
             }
             applyMirrorToRenderer();
 
             try {
                 if (stream) {
                     stream.getTracks().forEach(t => t.stop());
-                    stream = null;
                 }
                 stream = await navigator.mediaDevices.getUserMedia({
-                    audio: false,
-                    video: { facingMode: currentFacingMode, width: { ideal: 1280 }, height: { ideal: 720 } }
+                    video: {
+                        facingMode: { ideal: currentFacingMode },
+                        width: { ideal: currentCamWidth || 1280 },
+                        height: { ideal: currentCamHeight || 720 },
+                        frameRate: { ideal: currentCamFps || 30 }
+                    },
+                    audio: false
                 });
                 videoEl.srcObject = stream;
                 await videoEl.play();
-            } catch (e) {
-                console.error(e);
-                showToast("カメラ切り替えに失敗しました");
+                lastVideoRect = null;
+                syncTrackingTogglesFromState();
+            } catch (err) {
+                console.error('Camera switch failed:', err);
+                showToast('カメラ切替に失敗しました');
             }
+        };
+
+        if (mirrorToggle) {
+            mirrorToggle.addEventListener('change', applyMirrorFromToggle);
+        }
+        if (facingToggle) {
+            facingToggle.addEventListener('change', async () => {
+                const want = facingToggle.checked ? 'environment' : 'user';
+                await switchCameraFacing(want);
+            });
+        }
+
+        // Backward compatibility: if old icon buttons exist (older HTML), wire them too.
+        const oldMirrorBtn = document.getElementById('toggle-mirror-btn');
+        if (oldMirrorBtn) oldMirrorBtn.addEventListener('click', () => {
+            mirrorEnabled = !mirrorEnabled;
+            mirrorUserOverride = true;
+            if (mirrorToggle) mirrorToggle.checked = mirrorEnabled;
+            applyMirrorToRenderer();
+            showToast(mirrorEnabled ? 'ミラー表示: ON' : 'ミラー表示: OFF');
         });
 
+        const oldCameraBtn = document.getElementById('toggle-camera-btn');
+        if (oldCameraBtn) oldCameraBtn.addEventListener('click', async () => {
+            const want = (currentFacingMode === 'user') ? 'environment' : 'user';
+            if (facingToggle) facingToggle.checked = (want === 'environment');
+            await switchCameraFacing(want);
+        });
+
+        // Sync once on load
+        syncTrackingTogglesFromState();
+
+        function handleViewportResize() {
+            if (renderer && camera) {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+                updateBgPlaneSizeLetterbox();
+            }
+            // 2D overlay canvas used by breath/blush must match viewport, especially on orientation change.
+            try { resizeBreathOverlayCanvas(); } catch (_) {}
+        }
+
         window.addEventListener('resize', () => {
-            if (!renderer || !camera) return;
+            handleViewportResize();
+        });
 
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-
-            renderer.setSize(window.innerWidth, window.innerHeight);
-
-            updateBgPlaneSizeLetterbox();
+        window.addEventListener('orientationchange', () => {
+            // Some browsers fire resize late; defer to get correct innerWidth/innerHeight.
+            setTimeout(() => handleViewportResize(), 150);
         });
 
         startBtn.addEventListener('click', async () => {
@@ -1184,8 +1637,19 @@ const occlusionToggle = document.getElementById('occlusion-toggle');
                 breathStrength: (typeof breathStrengthSlider !== 'undefined' && breathStrengthSlider) ? breathStrengthSlider.value : '1.0',
                 breathOffX: (typeof breathOffXSlider !== 'undefined' && breathOffXSlider) ? breathOffXSlider.value : '0.0',
                 breathOffY: (typeof breathOffYSlider !== 'undefined' && breathOffYSlider) ? breathOffYSlider.value : '0.0',
-                breathOffZ: (typeof breathOffZSlider !== 'undefined' && breathOffZSlider) ? breathOffZSlider.value : '0.0'
+                breathOffZ: (typeof breathOffZSlider !== 'undefined' && breathOffZSlider) ? breathOffZSlider.value : '0.0',
+                // Blush (per-VRM)
+                blushEnabled: (typeof blushToggle !== 'undefined' && blushToggle) ? !!blushToggle.checked : false,
+                blushStrength: (typeof blushStrengthSlider !== 'undefined' && blushStrengthSlider) ? blushStrengthSlider.value : '0.70',
+                blushOffX: (typeof blushOffXSlider !== 'undefined' && blushOffXSlider) ? blushOffXSlider.value : '0.00',
+                blushOffY: (typeof blushOffYSlider !== 'undefined' && blushOffYSlider) ? blushOffYSlider.value : '0.00',
+                blushOffZ: (typeof blushOffZSlider !== 'undefined' && blushOffZSlider) ? blushOffZSlider.value : '0.00',
+                blushSize: (typeof blushSizeSlider !== 'undefined' && blushSizeSlider) ? blushSizeSlider.value : '1.00',
+                blushSpread: (typeof blushSpreadSlider !== 'undefined' && blushSpreadSlider) ? blushSpreadSlider.value : '1.00',
+                blushFront: (typeof blushFrontToggle !== 'undefined' && blushFrontToggle) ? !!blushFrontToggle.checked : true,
+                blushColor: (typeof blushColorPicker !== 'undefined' && blushColorPicker) ? blushColorPicker.value : '#ff5fa0',
             };
+
 
             try {
                 localStorage.setItem("vrm_settings_" + currentFileName, JSON.stringify(settings));
@@ -1248,6 +1712,20 @@ const occlusionToggle = document.getElementById('occlusion-toggle');
                     if (Object.prototype.hasOwnProperty.call(s, 'breathOffX') && breathOffXSlider) breathOffXSlider.value = s.breathOffX;
                     if (Object.prototype.hasOwnProperty.call(s, 'breathOffY') && breathOffYSlider) breathOffYSlider.value = s.breathOffY;
                     if (Object.prototype.hasOwnProperty.call(s, 'breathOffZ') && breathOffZSlider) breathOffZSlider.value = s.breathOffZ;
+                    
+                    // Blush (per-VRM)
+                    if (Object.prototype.hasOwnProperty.call(s, 'blushEnabled') && blushToggle) blushToggle.checked = !!s.blushEnabled;
+                    if (Object.prototype.hasOwnProperty.call(s, 'blushStrength') && blushStrengthSlider) blushStrengthSlider.value = s.blushStrength;
+                    if (Object.prototype.hasOwnProperty.call(s, 'blushOffX') && blushOffXSlider) blushOffXSlider.value = s.blushOffX;
+                    if (Object.prototype.hasOwnProperty.call(s, 'blushOffY') && blushOffYSlider) blushOffYSlider.value = s.blushOffY;
+                    if (Object.prototype.hasOwnProperty.call(s, 'blushOffZ') && blushOffZSlider) blushOffZSlider.value = s.blushOffZ;
+                    if (Object.prototype.hasOwnProperty.call(s, 'blushSize') && blushSizeSlider) blushSizeSlider.value = s.blushSize;
+                    if (Object.prototype.hasOwnProperty.call(s, 'blushSpread') && blushSpreadSlider) blushSpreadSlider.value = s.blushSpread;
+                    if (Object.prototype.hasOwnProperty.call(s, 'blushFront') && blushFrontToggle) blushFrontToggle.checked = !!s.blushFront;
+                    if (Object.prototype.hasOwnProperty.call(s, 'blushColor') && typeof blushColorPicker !== 'undefined' && blushColorPicker) blushColorPicker.value = s.blushColor;
+
+                    if (typeof updateBlushUI === 'function') updateBlushUI(true);
+
                     if (typeof updateBreathUI === 'function') updateBreathUI(true);
 // 値の表示を更新
                     allSliders.forEach(el => updateSliderDisplay(el));
@@ -1360,6 +1838,239 @@ const occlusionToggle = document.getElementById('occlusion-toggle');
             tex.generateMipmaps = false;
             return tex;
         }
+
+        function updateBlushAnchorsFromVRM(vrm) {
+    if (typeof USE_BLUSH_2D_OVERLAY !== 'undefined' && USE_BLUSH_2D_OVERLAY) {
+        // 2D overlay mode: don't create 3D cheek planes (they are sensitive to VRM bone scaling/head-only transforms).
+        if (blushMeshL) blushMeshL.visible = false;
+        if (blushMeshR) blushMeshR.visible = false;
+        return;
+    }
+
+    // NOTE: Despite the historical name, this now updates 3D blush meshes that are
+    // attached to the VRM head so they stay perfectly "stuck" to the model.
+    if (!vrm) return;
+
+    const humanoid = vrm.humanoid;
+    const getBone = (name) => {
+        try {
+            return humanoid?.getNormalizedBoneNode?.(name)
+                || humanoid?.getRawBoneNode?.(name)
+                || humanoid?.getBoneNode?.(name)
+                || null;
+        } catch (_) { return null; }
+    };
+
+    const head = getBone('head') || adjustmentGroup || vrm.scene;
+
+    // Build texture once
+    const ensureTexture = () => {
+        if (blushTex && blushTexColor === blushColor) return blushTex;
+
+        blushTexColor = blushColor || '#ff5fa0';
+
+        const c = document.createElement('canvas');
+        c.width = 256; c.height = 256;
+        const ctx = c.getContext('2d');
+        ctx.clearRect(0, 0, 256, 256);
+
+        
+        // --- color helpers for customizable blush ---
+        const hexToRgb = (hex) => {
+            const m = /^#?([0-9a-fA-F]{6})$/.exec(hex || '');
+            if (!m) return {r:255,g:95,b:160};
+            const n = parseInt(m[1], 16);
+            return { r:(n>>16)&255, g:(n>>8)&255, b:n&255 };
+        };
+        const mix = (a, b, t) => ({
+            r: Math.round(a.r + (b.r - a.r) * t),
+            g: Math.round(a.g + (b.g - a.g) * t),
+            b: Math.round(a.b + (b.b - a.b) * t),
+        });
+        const base = hexToRgb(blushTexColor || blushColor || '#ff5fa0');
+        const white = {r:255,g:255,b:255};
+        const soft0 = mix(base, white, 0.55);
+        const soft1 = mix(base, white, 0.75);
+
+// Soft pink base (radial)
+        const g = ctx.createRadialGradient(128, 128, 16, 128, 128, 120);
+        g.addColorStop(0.0, `rgba(${soft0.r}, ${soft0.g}, ${soft0.b}, 0.55)`);
+        g.addColorStop(0.55, `rgba(${soft1.r}, ${soft1.g}, ${soft1.b}, 0.22)`);
+        g.addColorStop(1.0, `rgba(${soft1.r}, ${soft1.g}, ${soft1.b}, 0.0)`);
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.ellipse(128, 128, 120, 96, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Pink hatch stripes
+        ctx.globalAlpha = 0.65;
+        ctx.strokeStyle = `rgba(${base.r}, ${base.g}, ${base.b}, 0.95)`;
+        ctx.lineWidth = 10;
+        for (let i = -256; i <= 512; i += 28) {
+            ctx.beginPath();
+            ctx.moveTo(i, 0);
+            ctx.lineTo(i - 256, 256);
+            ctx.stroke();
+        }
+        ctx.globalAlpha = 1.0;
+
+        blushTex = new THREE.CanvasTexture(c);
+        // three r160+ uses colorSpace; older uses encoding. Guard both.
+        try { blushTex.colorSpace = THREE.SRGBColorSpace; } catch (_) {}
+        try { blushTex.encoding = THREE.sRGBEncoding; } catch (_) {}
+        blushTex.needsUpdate = true;
+        return blushTex;
+    };
+
+    const ensureMeshes = () => {
+        const tex = ensureTexture();
+
+        if (!blushMatL) {
+            blushMatL = new THREE.MeshBasicMaterial({
+                map: tex,
+                transparent: true,
+                opacity: 1.0,
+                depthTest: false,
+                depthWrite: false,
+                side: THREE.DoubleSide,
+                polygonOffset: true,
+                polygonOffsetFactor: -2,
+                polygonOffsetUnits: -2,
+            });
+        }
+        if (!blushMatR) {
+            blushMatR = blushMatL.clone();
+        }
+
+        
+        applyBlushRenderMode();
+if (!blushMeshL) {
+            blushMeshL = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), blushMatL);
+            blushMeshL.name = 'blushMeshL';
+            blushMeshL.renderOrder = 999;
+        }
+        if (!blushMeshR) {
+            blushMeshR = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), blushMatR);
+            blushMeshR.name = 'blushMeshR';
+            blushMeshR.renderOrder = 999;
+        }
+
+        // attach (re-attach) to head
+        if (head) {
+            if (blushMeshL.parent !== head) {
+                if (blushMeshL.parent) blushMeshL.parent.remove(blushMeshL);
+                head.add(blushMeshL);
+            }
+            if (blushMeshR.parent !== head) {
+                if (blushMeshR.parent) blushMeshR.parent.remove(blushMeshR);
+                head.add(blushMeshR);
+            }
+        }
+    };
+
+    const computeUnitAndEyeCenter = () => {
+        // Default fallback
+        let unit = 0.06;
+        let eyeCenter = new THREE.Vector3(0, 0.05, 0.02);
+        let halfEyeX = 0.03;
+
+        const leftEye = getBone('leftEye');
+        const rightEye = getBone('rightEye');
+
+        try {
+            if (head && leftEye && rightEye) {
+                const wL = leftEye.getWorldPosition(new THREE.Vector3());
+                const wR = rightEye.getWorldPosition(new THREE.Vector3());
+                // Convert to head-local
+                head.worldToLocal(wL);
+                head.worldToLocal(wR);
+                eyeCenter.copy(wL).add(wR).multiplyScalar(0.5);
+                unit = wL.distanceTo(wR);
+                halfEyeX = Math.abs(wR.x - wL.x) * 0.5;
+            } else {
+                // Fallback: VRM overall height
+                const box = new THREE.Box3().setFromObject(vrm.scene);
+                const sz = new THREE.Vector3();
+                box.getSize(sz);
+                if (Number.isFinite(sz.y) && sz.y > 0.01) {
+                    unit = sz.y * 0.05; // ~ eye distance
+                }
+            }
+        } catch (_) {}
+
+        // Clamp to sane range
+        unit = Math.max(0.02, Math.min(0.14, unit));
+        blushUnit = unit;
+        return { unit, eyeCenter, halfEyeX };
+    };
+
+    // Build/update
+    ensureMeshes();
+    if (!blushMeshL || !blushMeshR || !blushMatL || !blushMatR) return;
+
+    const { unit, eyeCenter, halfEyeX } = computeUnitAndEyeCenter();
+
+    // Base cheek offsets relative to eye line in head-local space
+    const spread = Math.max(0.5, Math.min(6.0, blushSpread));
+    let baseX = (halfEyeX * 1.55 + 0.01) * spread;
+    // Sanity clamp: some VRMs yield extreme halfEyeX due to normalization/scaling differences.
+    const minX = unit * 0.65 * spread;
+    const maxX = unit * 2.40 * spread;
+    if (!Number.isFinite(baseX)) baseX = minX;
+    baseX = Math.max(minX, Math.min(maxX, baseX));
+
+    let baseY = eyeCenter.y - (0.55 * unit);
+    // Sanity clamp: keep within a reasonable band around head origin.
+    if (!Number.isFinite(baseY) || Math.abs(baseY) > (unit * 6.0)) baseY = (-0.25 * unit);
+
+    // Place blush slightly towards the camera side in head-local space (auto-detect Z sign)
+    let camLocalZ = -1;
+    try {
+        if (head && camera) {
+            const camLocal = head.worldToLocal(camera.position.clone());
+            camLocalZ = camLocal.z;
+        }
+    } catch (_) {}
+    const zSign = (camLocalZ >= 0) ? 1 : -1;
+    let baseZ = eyeCenter.z + (zSign * 1.25 * unit);
+    if (!Number.isFinite(baseZ) || Math.abs(baseZ) > (unit * 6.0)) baseZ = (zSign * 1.20 * unit);
+const ox = blushOffX * unit;
+    const oy = blushOffY * unit;
+    const oz = blushOffZ * unit;
+
+    // Position & size
+    const s = (unit * 1.60) * Math.max(0.5, Math.min(2.5, blushSize));
+
+    // IMPORTANT:
+    // In this app we scale the VRM head bone massively (makeHeadOnly) to show "head only".
+    // If we attach blush planes directly under the head bone, their local position/scale will be
+    // multiplied by that scale and fly far away / become gigantic.
+    // NOTE: In head-only mode, the head bone may be scaled up a lot.
+    // We intentionally keep blush meshes in head-local space so they stick perfectly to the cheeks.
+    // (Counter-scaling by head world scale makes the effect tiny / invisible.)
+
+    blushMeshL.position.set((-baseX + ox), (baseY + oy), (baseZ + oz));
+    blushMeshR.position.set((+baseX + ox), (baseY + oy), (baseZ + oz));
+
+    const sLocal = s;
+    blushMeshL.scale.set(sLocal, sLocal, sLocal);
+    blushMeshR.scale.set(sLocal, sLocal, sLocal);
+
+// Slight mirror so hatch doesn't look identical
+    blushMeshL.rotation.set(0, 0, 0);
+    blushMeshR.rotation.set(0, Math.PI, 0);
+
+    // Visibility/strength
+    const a = Math.max(0, Math.min(1, blushStrength));
+    blushMatL.opacity = a;
+    blushMatR.opacity = a;
+
+    const vis = !!isBlushEnabled && a > 0.001;
+    blushMeshL.visible = vis;
+    blushMeshR.visible = vis;
+}
+
+
 
         function updateBreathEmitterFromVRM(vrm) {
             if (!breathEmitter || !vrm) return;
@@ -1492,6 +2203,7 @@ const occlusionToggle = document.getElementById('occlusion-toggle');
         }
 
 function updateBreathEffect(delta) {
+            let shiftX = 0, shiftY = 0;
             // 2D overlay "breath" effect drawn on breathOverlayCanvas.
             // Designed to be visible regardless of 3D depth/scale differences.
 
@@ -1505,8 +2217,162 @@ function updateBreathEffect(delta) {
 
             breathOverlayCtx.setTransform(pr, 0, 0, pr, 0, 0);
             breathOverlayCtx.clearRect(0, 0, w, h);
-            breathOverlayCtx.globalCompositeOperation = 'screen';
-            breathOverlayCtx.filter = 'blur(1.6px)';
+            // Draw blush first (normal blend), then breath (screen blend)
+            breathOverlayCtx.globalCompositeOperation = 'source-over';
+            breathOverlayCtx.filter = 'none';
+            // --- Cheek blush (2D overlay; sticks to tracked face) ---
+            if (USE_BLUSH_2D_OVERLAY && isBlushEnabled && blushStrength > 0.001 && latestFaceLandmarks0 && videoEl) {
+                const vwB = videoEl.videoWidth || 0;
+                const vhB = videoEl.videoHeight || 0;
+                if (vwB > 0 && vhB > 0) {
+                    const rectB = computeContainRect(w, h, vwB, vhB);
+                    // IMPORTANT (blush): Use the same coordinate system as the displayed video.
+                    // Landmarks are produced from the actual MediaPipe input (mpInput).
+                    // When inputRotationDeg==0, DO NOT apply autoInputRotationDeg here (it causes 90° drift on screen-locked rotation).
+                    const blushRotDeg = inputRotationDeg;
+
+                    const lm = latestFaceLandmarks0;
+                    const pt = (i) => (lm && lm[i]) ? lm[i] : null;
+
+                    // Use stable points (eye outer, mouth corners, cheek-ish) and blend them inward.
+                    const pLEye = pt(33);
+                    const pREye = pt(263);
+                    const pLMouth = pt(61);
+                    const pRMouth = pt(291);
+                    const pLCheek = pt(205) || pt(50) || pt(234);
+                    const pRCheek = pt(425) || pt(280) || pt(454);
+
+                    if (pLEye && pREye && pLMouth && pRMouth) {
+                        const mapXY = (p) => {
+                            // FaceLandmarker landmarks are normalized in the MediaPipe *input* canvas.
+                            // When we rotate the video into mpOffscreenCanvas (inputRotationDeg), we must
+                            // map them back into ORIGINAL video-frame normalized coords before drawing overlays.
+                            const mpW = (inputRotationDeg !== 0) ? (mpOffscreenCanvas.width || vwB) : vwB;
+                            const mpH = (inputRotationDeg !== 0) ? (mpOffscreenCanvas.height || vhB) : vhB;
+                            const vv = mpLandmarkNormToVideoNorm(p.x, p.y, vwB, vhB, blushRotDeg, mpW, mpH);
+                            const xx = rectB.x + vv.x * rectB.w;
+                            const yy = rectB.y + vv.y * rectB.h;
+                            return { x: xx, y: yy, vx: vv.x, vy: vv.y, mpW, mpH, rot: inputRotationDeg, vw: vwB, vh: vhB, rect: {x: rectB.x, y: rectB.y, w: rectB.w, h: rectB.h} };
+                        };
+
+                        const le = mapXY(pLEye), re = mapXY(pREye);
+                        const lm0 = mapXY(pLMouth), rm0 = mapXY(pRMouth);
+                        const lc = pLCheek ? mapXY(pLCheek) : null;
+                        const rc = pRCheek ? mapXY(pRCheek) : null;
+
+                        // Face scale in pixels
+                        const faceW = Math.max(10, Math.hypot(re.x - le.x, re.y - le.y));
+
+                        // Cheek centers (weighted blend)
+                        const mix2 = (a, b, t) => ({ x: a.x * (1 - t) + b.x * t, y: a.y * (1 - t) + b.y * t });
+                        let L = mix2(lm0, le, 0.55);
+                        let R = mix2(rm0, re, 0.55);
+                        if (lc) L = { x: L.x * 0.70 + lc.x * 0.30, y: L.y * 0.70 + lc.y * 0.30 };
+                        if (rc) R = { x: R.x * 0.70 + rc.x * 0.30, y: R.y * 0.70 + rc.y * 0.30 };
+
+                        // Apply VRM adjustment shift so blush follows your VRM height/position sliders.
+                        L.x += shiftX; L.y += shiftY;
+                        R.x += shiftX; R.y += shiftY;
+
+                        // Apply user offsets in *face-local* pixel space (so it doesn't drift when the face rolls)
+                        // u: left->right direction along the eyes, v: u rotated +90deg (down relative to face)
+                        const ux = (re.x - le.x) / faceW;
+                        const uy = (re.y - le.y) / faceW;
+                        const vx = -uy;
+                        const vy = ux;
+
+                        const offU = blushOffX * faceW * 0.35;
+                        const offV = blushOffY * faceW * 0.35;
+
+                        L.x += ux * offU + vx * offV; L.y += uy * offU + vy * offV;
+                        R.x += ux * offU + vx * offV; R.y += uy * offU + vy * offV;
+
+                        // Spread nudges outward along face-local u axis
+                        const spreadN = Math.max(0.5, Math.min(6.0, blushSpread));
+                        const spreadU = (spreadN - 1.0) * faceW * 0.18;
+                        L.x -= ux * spreadU; L.y -= uy * spreadU;
+                        R.x += ux * spreadU; R.y += uy * spreadU;
+
+// Roll angle from eyes
+                        const roll = Math.atan2((re.y - le.y), (re.x - le.x));
+
+                        if (blushDebugEnabled) {
+                            blush2DDebug = {
+                                inputRotationDeg,
+                                baseRotDeg: lastBaseInputRotDeg,
+                                autoRotDeg: autoInputRotationDeg,
+                                blushRotDeg,
+                                eyeAngleDeg,
+                                deviceBeta, deviceGamma,
+                                pageIsPortrait: (window.innerHeight >= window.innerWidth),
+                                videoW: vwB, videoH: vhB,
+                                mpW: ((inputRotationDeg !== 0) ? (mpOffscreenCanvas.width || vwB) : vwB),
+                                mpH: ((inputRotationDeg !== 0) ? (mpOffscreenCanvas.height || vhB) : vhB),
+                                le, re,
+                                L, R,
+                                rollRad: roll,
+                                rollDeg: (roll * 180 / Math.PI),
+                                shiftX, shiftY
+                            };
+                        }
+
+
+                        // Size
+                        const r = faceW * 0.20 * Math.max(0.5, Math.min(2.5, blushSize));
+                        const rw = r * 1.25;
+                        const rh = r * 0.90;
+
+                        // Composite: if "front" then normal overlay; else multiply for under-skin feel
+                        breathOverlayCtx.save();
+                        breathOverlayCtx.globalAlpha = Math.max(0, Math.min(1, blushStrength));
+                        breathOverlayCtx.globalCompositeOperation = blushFront ? 'source-over' : 'multiply';
+
+                        const drawOne = (cx, cy, flip) => {
+                            breathOverlayCtx.save();
+                            breathOverlayCtx.translate(cx, cy);
+                            breathOverlayCtx.rotate(roll);
+
+                            // soft base
+                            const baseC = hexToRgbSafe(blushColor || '#ff5fa0');
+                            const whiteC = { r: 255, g: 255, b: 255 };
+                            const softC0 = mixRgb(baseC, whiteC, 0.55);
+                            const softC1 = mixRgb(baseC, whiteC, 0.75);
+                            const grad = breathOverlayCtx.createRadialGradient(0, 0, 0, 0, 0, rw);
+                            grad.addColorStop(0.0, `rgba(${softC0.r}, ${softC0.g}, ${softC0.b}, 0.55)`);
+                            grad.addColorStop(0.55, `rgba(${softC1.r}, ${softC1.g}, ${softC1.b}, 0.22)`);
+                            grad.addColorStop(1.0, `rgba(${softC1.r}, ${softC1.g}, ${softC1.b}, 0.00)`);
+                            breathOverlayCtx.fillStyle = grad;
+                            breathOverlayCtx.beginPath();
+                            breathOverlayCtx.ellipse(0, 0, rw, rh, 0, 0, Math.PI * 2);
+                            breathOverlayCtx.fill();
+
+                            // hatch stripes clipped to ellipse
+                            breathOverlayCtx.beginPath();
+                            breathOverlayCtx.ellipse(0, 0, rw, rh, 0, 0, Math.PI * 2);
+                            breathOverlayCtx.clip();
+
+                            breathOverlayCtx.rotate((Math.PI / 4) * (flip ? -1 : 1)); // diagonal
+                            breathOverlayCtx.strokeStyle = `rgba(${baseC.r}, ${baseC.g}, ${baseC.b}, 0.45)`;
+                            breathOverlayCtx.lineWidth = Math.max(1, r * 0.08);
+                            const step = Math.max(6, r * 0.22);
+                            for (let x = -rw * 2; x <= rw * 2; x += step) {
+                                breathOverlayCtx.beginPath();
+                                breathOverlayCtx.moveTo(x, -rh * 2);
+                                breathOverlayCtx.lineTo(x, rh * 2);
+                                breathOverlayCtx.stroke();
+                            }
+
+                            breathOverlayCtx.restore();
+                        };
+
+                        drawOne(L.x, L.y, false);
+                        drawOne(R.x, R.y, true);
+
+                        breathOverlayCtx.restore();
+                    }
+                }
+            }
+
 // Update mouth screen position from faceLandmarks (2D) + VRM adjustment shift (follows height slider).
             const vw2 = videoEl ? (videoEl.videoWidth || 0) : 0;
             const vh2 = videoEl ? (videoEl.videoHeight || 0) : 0;
@@ -1524,7 +2390,7 @@ function updateBreathEffect(delta) {
             }
 
             // Convert VRM UI adjustments (pivot -> adjustment) into a screen-space delta
-            let shiftX = 0, shiftY = 0;
+            shiftX = 0; shiftY = 0;
             if (pivotGroup && adjustmentGroup && camera) {
                 breathTmpV2.setFromMatrixPosition(pivotGroup.matrixWorld).project(camera);
                 breathTmpV.setFromMatrixPosition(adjustmentGroup.matrixWorld).project(camera);
@@ -1544,6 +2410,10 @@ function updateBreathEffect(delta) {
             const unitPx = rect2 ? (rect2.w * 0.25) : (Math.min(w, h) * 0.25);
             const offXpx = breathOffX * unitPx;
             const offYpx = breathOffY * unitPx;
+
+            // Breath rendering uses screen blend & blur for soft mist
+            breathOverlayCtx.globalCompositeOperation = 'screen';
+            breathOverlayCtx.filter = 'blur(1.6px)';
 
             if (baseValid) {
                 lastMouthScreenX = baseMouthX + shiftX + offXpx;
@@ -1702,6 +2572,85 @@ function updateBreathEffect(delta) {
             breathOverlayCtx.globalCompositeOperation = 'source-over';
 
         }
+
+
+        function updateBlushDebug() {
+            if (!blushDebugEnabled || !blushDebugEl) return;
+
+            const hasVrm = !!currentVrm;
+            const hasScene = !!scene && !!camera && !!renderer;
+            const hasMeshes = !!blushMeshL && !!blushMeshR;
+
+            let headName = "(none)";
+            let headScale = 0;
+            let invHeadScale = 0;
+            let parentL = "(none)", parentR = "(none)";
+            let scrL = null, scrR = null;
+
+            const w = renderer?.domElement?.clientWidth || 0;
+            const h = renderer?.domElement?.clientHeight || 0;
+
+            const projectObj = (obj) => {
+                if (!obj || !camera || !renderer) return null;
+                obj.getWorldPosition(blushDbgTmp);
+                blushDbgTmp2.copy(blushDbgTmp).project(camera);
+                const sx = (blushDbgTmp2.x * 0.5 + 0.5) * w;
+                const sy = (-blushDbgTmp2.y * 0.5 + 0.5) * h;
+                const inView = (blushDbgTmp2.z >= -1 && blushDbgTmp2.z <= 1) && sx >= -50 && sx <= w+50 && sy >= -50 && sy <= h+50;
+                return { world: blushDbgTmp.clone(), ndc: blushDbgTmp2.clone(), sx, sy, inView };
+            };
+
+            try {
+                if (currentVrm) {
+                    const getBoneNode = (name) => {
+                        try { return currentVrm.humanoid?.getRawBoneNode?.(name) || null; } catch (_) { return null; }
+                    };
+                    const head = getBoneNode('head') || adjustmentGroup || currentVrm.scene;
+                    headName = head?.name || "head";
+                    parentL = blushMeshL?.parent?.name || "(no parent)";
+                    parentR = blushMeshR?.parent?.name || "(no parent)";
+                    if (head && head.getWorldScale) {
+                        const ws = head.getWorldScale(new THREE.Vector3());
+                        headScale = ws.x || 0;
+                        invHeadScale = headScale ? (1.0 / headScale) : 0;
+                    }
+                }
+            } catch (_) {}
+
+            scrL = projectObj(blushMeshL);
+            scrR = projectObj(blushMeshR);
+
+            const lines = [];
+            lines.push(`[BlushDebug] enabled=${isBlushEnabled} strength=${blushStrength.toFixed(2)}`);
+            lines.push(`vrm=${hasVrm} meshes=${hasMeshes} scene=${hasScene}`);
+            lines.push(`head=${headName} headScale=${headScale.toFixed(4)} inv=${invHeadScale.toFixed(8)}`);
+            lines.push(`parents: L=${parentL} R=${parentR}`);
+            if (blushMatL) lines.push(`matL: op=${(blushMatL.opacity??0).toFixed(2)} depthTest=${!!blushMatL.depthTest} polyOff=${!!blushMatL.polygonOffset}`);
+            if (blushMatR) lines.push(`matR: op=${(blushMatR.opacity??0).toFixed(2)} depthTest=${!!blushMatR.depthTest} polyOff=${!!blushMatR.polygonOffset}`);
+            lines.push(`params: off=(${blushOffX.toFixed(2)},${blushOffY.toFixed(2)},${blushOffZ.toFixed(2)}) size=${blushSize.toFixed(2)} spread=${blushSpread.toFixed(2)} unit=${blushUnit.toFixed(4)}`);
+            lines.push(`viewport: ${w}x${h}`);
+
+            // 2D blush mapping debug (used in current implementation)
+            if (blush2DDebug) {
+                lines.push(`inputRot=${blush2DDebug.inputRotationDeg}deg baseRot=${blush2DDebug.baseRotDeg} autoRot=${blush2DDebug.autoRotDeg} blushRot=${blush2DDebug.blushRotDeg} eyeAng=${(blush2DDebug.eyeAngleDeg||0).toFixed(1)}deg beta=${(blush2DDebug.deviceBeta||0).toFixed(1)} gamma=${(blush2DDebug.deviceGamma||0).toFixed(1)}`);
+                lines.push(`pagePortrait=${!!blush2DDebug.pageIsPortrait} video=${blush2DDebug.videoW}x${blush2DDebug.videoH} mp=${blush2DDebug.mpW}x${blush2DDebug.mpH}`);
+                lines.push(`roll=${(blush2DDebug.rollDeg||0).toFixed(1)}deg shift=(${(blush2DDebug.shiftX||0).toFixed(1)},${(blush2DDebug.shiftY||0).toFixed(1)})`);
+                lines.push(`Lscr=(${blush2DDebug.L.x.toFixed(1)},${blush2DDebug.L.y.toFixed(1)}) Rscr=(${blush2DDebug.R.x.toFixed(1)},${blush2DDebug.R.y.toFixed(1)})`);
+            } else {
+                lines.push(`2D: (no data)`);
+            }
+
+
+            const fmt = (p, tag) => {
+                if (!p) return `${tag}: (no data)`;
+                return `${tag}: screen=(${p.sx.toFixed(1)},${p.sy.toFixed(1)}) inView=${p.inView} ndc=(${p.ndc.x.toFixed(2)},${p.ndc.y.toFixed(2)},${p.ndc.z.toFixed(2)}) world=(${p.world.x.toFixed(3)},${p.world.y.toFixed(3)},${p.world.z.toFixed(3)})`;
+            };
+            lines.push(fmt(scrL, "L"));
+            lines.push(fmt(scrR, "R"));
+
+            blushDebugEl.textContent = lines.join("\n");
+        }
+
 
         function ensureDisplayCanvasSize() {
             if (!videoEl || !displayCanvas) return;
@@ -2149,7 +3098,9 @@ function updateBreathEffect(delta) {
 
                     // Determine device tilt -> choose a rotation for the *input* frame
                     // (Screen rotation is locked; we rotate analysis input only)
-                    inputRotationDeg = computeInputRotationDeg(deviceBeta, deviceGamma);
+                    const baseRotDeg = computeInputRotationDeg(deviceBeta, deviceGamma, videoEl.videoWidth, videoEl.videoHeight);
+                    lastBaseInputRotDeg = baseRotDeg;
+                    inputRotationDeg = baseRotDeg;
 
                     // Draw rotated frame to offscreen canvas when needed
                     let mpInput = videoEl;
@@ -2178,7 +3129,38 @@ function updateBreathEffect(delta) {
 
                     if (faceLandmarker && videoEl.readyState >= 2) {
                         const res = faceLandmarker.detectForVideo(mpInput, performance.now());
-                        const tms = res && res.facialTransformationMatrixes;
+                        latestFaceLandmarks0 = (res && res.faceLandmarks && res.faceLandmarks[0]) ? res.faceLandmarks[0] : null;
+                        
+                        // Auto-rotation fallback (when screen orientation is locked and videoW/H alone can't detect rotation):
+                        // Use eye-line angle in MediaPipe's normalized coordinates to detect if the frame is effectively rotated ~90deg.
+                        try {
+                            if (latestFaceLandmarks0 && latestFaceLandmarks0.length > 263) {
+                                const le = latestFaceLandmarks0[33];   // left eye outer
+                                const rePt = latestFaceLandmarks0[263]; // right eye outer
+                                if (le && rePt && Number.isFinite(le.x) && Number.isFinite(le.y) && Number.isFinite(rePt.x) && Number.isFinite(rePt.y)) {
+                                    const ang = Math.atan2((rePt.y - le.y), (rePt.x - le.x)) * 180 / Math.PI;
+                                    eyeAngleDeg = ang;
+                                    // Only engage auto-rot when the base heuristic says "0" (otherwise we'd fight it)
+                                    if (lastBaseInputRotDeg === 0) {
+                                        const a = Math.abs(ang);
+                                        let cand = 0;
+                                        if (a > 60 && a < 120) cand = (ang > 0) ? -90 : 90;
+                                        else if (a >= 150) cand = 180;
+                                        else cand = 0;
+                                        // Hysteresis: once engaged, keep until angle is clearly near-horizontal
+                                        if (cand !== 0) {
+                                            autoInputRotationDeg = cand;
+                                        } else if (a < 25) {
+                                            autoInputRotationDeg = 0;
+                                        }
+                                    } else {
+                                        // When base heuristic is confident, don't override it.
+                                        autoInputRotationDeg = 0;
+                                    }
+                                }
+                            }
+                        } catch (_) {}
+const tms = res && res.facialTransformationMatrixes;
                         if (tms && tms.length > 0) {
                             isFaceVisible = true;
 
@@ -2209,6 +3191,8 @@ function updateBreathEffect(delta) {
                         // Mouth open estimate from faceLandmarks (fallback if blendshapes are weak/unsupported)
                         const lms = res && res.faceLandmarks && res.faceLandmarks[0];
                         if (lms) {
+                            latestCheekVideoValid = false; // will be set true if indices available
+
                             const up = lms[13], lo = lms[14], lc = lms[78], rc = lms[308];
                             if (up && lo && lc && rc) {
                                 const dxw = (lc.x - rc.x), dyw = (lc.y - rc.y);
@@ -2232,6 +3216,34 @@ function updateBreathEffect(delta) {
                                     latestMouthCenterVideoX = Math.min(1, Math.max(0, vv.x));
                                     latestMouthCenterVideoY = Math.min(1, Math.max(0, vv.y));
                                     latestMouthCenterVideoValid = true;
+
+                                    // Cheek centers for blush (faceLandmarks indices)
+                                    // Use a blended center (cheek + eye outer + mouth corner) for more stable placement across VRMs
+                                    // Left: cheek(234), eyeOuter(33), mouthCorner(61)
+                                    // Right: cheek(454), eyeOuter(263), mouthCorner(291)
+                                    const lCheek = lms[234], rCheek = lms[454];
+                                    const lEyeO = lms[33],  rEyeO = lms[263];
+                                    const lMouth = lms[61], rMouth = lms[291];
+
+                                    if (lCheek && rCheek && lEyeO && rEyeO && lMouth && rMouth) {
+                                        // Weighted blend to pull the spot slightly down/in from the raw cheek landmark
+                                        const lx = (lCheek.x * 0.55 + lEyeO.x * 0.15 + lMouth.x * 0.30);
+                                        const ly = (lCheek.y * 0.45 + lEyeO.y * 0.10 + lMouth.y * 0.45);
+                                        const rx = (rCheek.x * 0.55 + rEyeO.x * 0.15 + rMouth.x * 0.30);
+                                        const ry = (rCheek.y * 0.45 + rEyeO.y * 0.10 + rMouth.y * 0.45);
+
+                                        const vcl = mpLandmarkNormToVideoNorm(lx, ly, vw0, vh0, inputRotationDeg, mpW0, mpH0);
+                                        const vcr = mpLandmarkNormToVideoNorm(rx, ry, vw0, vh0, inputRotationDeg, mpW0, mpH0);
+
+                                        if (vcl.ok && vcr.ok) {
+                                            latestCheekLVideoX = Math.min(1, Math.max(0, vcl.x));
+                                            latestCheekLVideoY = Math.min(1, Math.max(0, vcl.y));
+                                            latestCheekRVideoX = Math.min(1, Math.max(0, vcr.x));
+                                            latestCheekRVideoY = Math.min(1, Math.max(0, vcr.y));
+                                            latestCheekVideoValid = true;
+                                        }
+                                    }
+
                                 }
 }
                         }
@@ -2270,6 +3282,7 @@ function updateBreathEffect(delta) {
                     }
 
                     updateBreathEffect(delta);
+                    updateBlushDebug();
                     renderer.render(scene, camera);
                 });
 
@@ -2277,6 +3290,14 @@ function updateBreathEffect(delta) {
                 startScreen.style.display = 'none';
                 loadingText.style.display = 'none';
                 uiContainer.style.display = 'block';
+
+                // Auto open main options on start (restored behavior)
+                try {
+                    lightPanel.style.display = 'none';
+                    controlPanel.style.display = 'block';
+                    controlPanel.scrollTop = 0;
+                } catch(_) {}
+
                 showToast(isRestart ? "再起動しました (MediaPipe)" : "カメラを開始しました (MediaPipe)");
             } catch (err) {
                 console.error(err);
@@ -2430,6 +3451,7 @@ function updateBreathEffect(delta) {
 
                             adjustmentGroup.add(vrm.scene);
                         updateBreathEmitterFromVRM(vrm);
+                        updateBlushAnchorsFromVRM(vrm);
                         }
 
                         loadSettings(currentFileName);
