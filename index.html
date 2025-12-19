@@ -2712,6 +2712,17 @@ function updateBreathEffect(delta) {
                 color.setRGB(r, g, b);
             }
             dirLight.color = color;
+
+            // Apply immediately (so sliders work even if the per-frame follow block is skipped)
+            if (pivotGroup && dirLight) {
+                const pos = new THREE.Vector3();
+                pivotGroup.getWorldPosition(pos);
+                dirLight.target.position.copy(pos);
+                dirLight.position.copy(pos).add(lightRelativePos);
+                dirLight.updateMatrixWorld();
+                dirLight.target.updateMatrixWorld();
+            }
+
             
             if(lightHelper) lightHelper.update();
         }
@@ -3080,8 +3091,7 @@ function updateBreathEffect(delta) {
 
                 // --- Render loop ---
                 const clock = new THREE.Clock();
-                const lightRelativePos = new THREE.Vector3(0, 0.5, 1);
-
+                // (use global lightRelativePos controlled by sliders)
                 const worldMatrix = new THREE.Matrix4();
                 const rotComp = new THREE.Matrix4();
                 const baseScale = 40;
