@@ -748,7 +748,7 @@
     <script type="module">
         
 // ===== App Version (single source of truth) =====
-const APP_VERSION = "v6.00.05";
+const APP_VERSION = "v6.00.06";
 const APP_VERSION_NOTE = "camera: add black level + color temperature; improve skin smooth (blur blend)";
 function setAppVersionLabel() {
   const el = document.getElementById("app-version");
@@ -965,9 +965,15 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
             const g = (typeof gamma === 'number') ? gamma : 0;
             const pageIsPortrait = window.innerHeight >= window.innerWidth;
 
-            // NOTE: In landscape, beta can exceed 135deg when shooting from above/below.
-            // The camera frame itself is not rotated 180deg, so applying 180 here would flip VRM.
-            if (pageIsPortrait && Math.abs(b) > 135) return 180;
+            // NOTE:
+            // When the device is pitched steeply (e.g. shooting from above/below), beta can approach ±180
+            // even though the camera frame is NOT actually rotated 180deg. Treat that as 0deg unless the
+            // screen itself is upside-down (orientation angle 180).
+            const screenAngle = (typeof screen !== 'undefined' && screen.orientation && typeof screen.orientation.angle === 'number')
+                ? screen.orientation.angle
+                : (typeof window.orientation === 'number' ? window.orientation : 0);
+            const allow180 = Math.abs(screenAngle) === 180;
+            if (Math.abs(b) > 135) return allow180 ? 180 : 0;
 
             const vw = (typeof videoW === 'number') ? videoW : 0;
             const vh = (typeof videoH === 'number') ? videoH : 0;
