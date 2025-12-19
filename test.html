@@ -715,6 +715,18 @@
                     <input type="range" id="cam-sepia-slider" min="0" max="100" step="1" value="0">
                     <span id="cam-sepia-slider-val" class="val-display">0</span>
                 </div>
+
+                <div class="slider-container">
+                    <span class="slider-label">ビネット<br>(Vignette)</span>
+                    <input type="range" id="cam-vignette-slider" min="0" max="100" step="1" value="0">
+                    <span id="cam-vignette-slider-val" class="val-display">0</span>
+                </div>
+                <div class="slider-container">
+                    <span class="slider-label">ソフトグロー<br>(Soft Glow)</span>
+                    <input type="range" id="cam-softglow-slider" min="0" max="100" step="1" value="0">
+                    <span id="cam-softglow-slider-val" class="val-display">0</span>
+                </div>
+
             </div>
         </div>
     </div>
@@ -724,8 +736,8 @@
     <script type="module">
         
 // ===== App Version (single source of truth) =====
-const APP_VERSION = "v6.00.01";
-const APP_VERSION_NOTE = "blush: ignore autoRot when inputRot=0 (fix 90deg drift); VRM unchanged";
+const APP_VERSION = "v6.00.02";
+const APP_VERSION_NOTE = "ui: add camera vignette + soft glow sliders; implement post effects on camera only";
 function setAppVersionLabel() {
   const el = document.getElementById("app-version");
   if (!el) return;
@@ -768,7 +780,13 @@ import * as THREE from 'three';
         // Display (filtered) canvas for background video
         const displayCanvas = document.createElement('canvas');
         const displayCtx = displayCanvas.getContext('2d', { willReadFrequently: false });
-        let videoTexture = null; // THREE.CanvasTexture
+        
+        // Post effects (camera only)
+        let camVignetteStrength = 0;   // 0..1
+        let camSoftGlowStrength = 0;   // 0..1
+        const glowCanvas = document.createElement('canvas');
+        const glowCtx = glowCanvas.getContext('2d', { willReadFrequently: false });
+let videoTexture = null; // THREE.CanvasTexture
         let cameraFilterStr = 'none';
 
 
@@ -1306,7 +1324,10 @@ const occlusionToggle = document.getElementById('occlusion-toggle');
         const camBlurSlider = document.getElementById('cam-blur-slider');
         const camSepiaSlider = document.getElementById('cam-sepia-slider');
 
-        const tabVrm = document.getElementById('tab-vrm');
+        
+        const camVignetteSlider = document.getElementById('cam-vignette-slider');
+        const camSoftGlowSlider = document.getElementById('cam-softglow-slider');
+const tabVrm = document.getElementById('tab-vrm');
         const tabCamera = document.getElementById('tab-camera');
         const vrmLightSettings = document.getElementById('vrm-light-settings');
         const cameraSettings = document.getElementById('camera-settings');
@@ -1329,6 +1350,7 @@ const occlusionToggle = document.getElementById('occlusion-toggle');
             minCfSlider, betaSlider, mouthSensSlider, eyeSensSlider,
             lightIntSlider, ambIntSlider, lightYSlider, lightRotSlider, lightColorSlider, vrmSatSlider,
             skinSmoothSlider, camBrightSlider, camSatSlider, camContSlider, camBlurSlider, camSepiaSlider,
+            camVignetteSlider, camSoftGlowSlider,
             occPosXSlider, occPosYSlider, occPosZSlider, occSizeXSlider, occSizeYSlider, occSizeZSlider,
             // Main transform
             scaleSlider, ySlider, zSlider, 
@@ -1811,7 +1833,13 @@ forceShadowToggle.addEventListener('change', () => {
             let bl = parseFloat(camBlurSlider.value);
             const sp = parseFloat(camSepiaSlider.value);
 
-            const skin = parseFloat(skinSmoothSlider.value);
+            
+            // Post effects (not part of ctx.filter)
+            const vg = camVignetteSlider ? parseFloat(camVignetteSlider.value) : 0;
+            const gl = camSoftGlowSlider ? parseFloat(camSoftGlowSlider.value) : 0;
+            camVignetteStrength = Math.max(0, Math.min(1, vg / 100));
+            camSoftGlowStrength = Math.max(0, Math.min(1, gl / 100));
+const skin = parseFloat(skinSmoothSlider.value);
             if (skin > 0) {
                 b += skin * 0.3;
                 s += skin * 0.2;
@@ -2682,7 +2710,45 @@ function updateBreathEffect(delta) {
             displayCtx.drawImage(videoEl, 0, 0, vw, vh);
             displayCtx.restore();
 
-            if (videoTexture) videoTexture.needsUpdate = true;
+            
+
+            // Soft Glow (cinematic bloom-ish)
+            const glow = (typeof camSoftGlowStrength === 'number') ? camSoftGlowStrength : 0;
+            if (glow > 0.001) {
+                if (glowCanvas.width !== vw || glowCanvas.height !== vh) {
+                    glowCanvas.width = vw;
+                    glowCanvas.height = vh;
+                }
+                glowCtx.save();
+                glowCtx.clearRect(0, 0, vw, vh);
+                const blurPx = glow * 12; // 0..12px
+                glowCtx.filter = `blur(${blurPx}px)`;
+                glowCtx.drawImage(displayCanvas, 0, 0, vw, vh);
+                glowCtx.restore();
+
+                displayCtx.save();
+                displayCtx.globalCompositeOperation = 'screen';
+                displayCtx.globalAlpha = glow * 0.65;
+                displayCtx.drawImage(glowCanvas, 0, 0, vw, vh);
+                displayCtx.restore();
+            }
+
+            // Vignette (edge darken)
+            const vig = (typeof camVignetteStrength === 'number') ? camVignetteStrength : 0;
+            if (vig > 0.001) {
+                const cx = vw * 0.5;
+                const cy = vh * 0.5;
+                const inner = Math.min(vw, vh) * 0.25;
+                const outer = Math.sqrt(vw * vw + vh * vh) * 0.5;
+                const g = displayCtx.createRadialGradient(cx, cy, inner, cx, cy, outer);
+                g.addColorStop(0, 'rgba(0,0,0,0)');
+                g.addColorStop(1, `rgba(0,0,0,${0.85 * vig})`);
+                displayCtx.save();
+                displayCtx.fillStyle = g;
+                displayCtx.fillRect(0, 0, vw, vh);
+                displayCtx.restore();
+            }
+if (videoTexture) videoTexture.needsUpdate = true;
         }
 
 
