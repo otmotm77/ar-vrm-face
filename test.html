@@ -646,6 +646,17 @@
                             <span class="slider-label" style="font-size:10px; color:#333;">影の色<br>(Color)</span>
                             <input type="color" id="shadow-color-picker" value="#ffa3d0" style="height:30px; width:50px; border:none; background:none; cursor:pointer;">
                         </div>
+
+                <div class="slider-container">
+                    <span class="slider-label" style="font-size:10px; color:#333;">光の高さ<br>(上下)</span>
+                    <input type="range" id="light-y-slider" min="-10.0" max="10.0" step="0.1" value="2.0">
+                    <span id="light-y-slider-val" class="val-display">2.0</span>
+                </div>
+                <div class="slider-container">
+                    <span class="slider-label" style="font-size:10px; color:#333;">光の向き<br>(回転)</span>
+                    <input type="range" id="light-rot-slider" min="0" max="360" step="10" value="45">
+                    <span id="light-rot-slider-val" class="val-display">45</span>
+                </div>
                     </div>
                 </div>
 
@@ -659,16 +670,7 @@
                     <input type="range" id="amb-int-slider" min="0.0" max="2.0" step="0.1" value="0.2">
                     <span id="amb-int-slider-val" class="val-display">0.2</span>
                 </div>
-                <div class="slider-container">
-                    <span class="slider-label">光の高さ<br>(上下)</span>
-                    <input type="range" id="light-y-slider" min="-10.0" max="10.0" step="0.1" value="2.0">
-                    <span id="light-y-slider-val" class="val-display">2.0</span>
-                </div>
-                <div class="slider-container">
-                    <span class="slider-label">光の向き<br>(回転)</span>
-                    <input type="range" id="light-rot-slider" min="0" max="360" step="10" value="45">
-                    <span id="light-rot-slider-val" class="val-display">45</span>
-                </div>
+
                 <div class="slider-container">
                     <span class="slider-label">色味<br>(暖色⇔寒色)</span>
                     <input type="range" id="light-color-slider" min="0" max="100" step="1" value="50">
@@ -722,8 +724,8 @@
     <script type="module">
         
 // ===== App Version (single source of truth) =====
-const APP_VERSION = "v6.00.00";
-const APP_VERSION_NOTE = "";
+const APP_VERSION = "v6.00.01";
+const APP_VERSION_NOTE = "blush: ignore autoRot when inputRot=0 (fix 90deg drift); VRM unchanged";
 function setAppVersionLabel() {
   const el = document.getElementById("app-version");
   if (!el) return;
