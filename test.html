@@ -2227,8 +2227,8 @@ function updateBreathEffect(delta) {
                             // FaceLandmarker landmarks are normalized in the MediaPipe *input* canvas.
                             // When we rotate the video into mpOffscreenCanvas (inputRotationDeg), we must
                             // map them back into ORIGINAL video-frame normalized coords before drawing overlays.
-                            const mpW = mpOffscreenCanvas.width || vwB;
-                            const mpH = mpOffscreenCanvas.height || vhB;
+                            const mpW = (inputRotationDeg !== 0) ? (mpOffscreenCanvas.width || vwB) : vwB;
+                            const mpH = (inputRotationDeg !== 0) ? (mpOffscreenCanvas.height || vhB) : vhB;
                             const vv = mpLandmarkNormToVideoNorm(p.x, p.y, vwB, vhB, blushRotDeg, mpW, mpH);
                             const xx = rectB.x + vv.x * rectB.w;
                             const yy = rectB.y + vv.y * rectB.h;
@@ -2279,8 +2279,8 @@ function updateBreathEffect(delta) {
                                 deviceBeta, deviceGamma,
                                 pageIsPortrait: (window.innerHeight >= window.innerWidth),
                                 videoW: vwB, videoH: vhB,
-                                mpW: (mpOffscreenCanvas.width || vwB),
-                                mpH: (mpOffscreenCanvas.height || vhB),
+                                mpW: ((inputRotationDeg !== 0) ? (mpOffscreenCanvas.width || vwB) : vwB),
+                                mpH: ((inputRotationDeg !== 0) ? (mpOffscreenCanvas.height || vhB) : vhB),
                                 le, re,
                                 L, R,
                                 rollRad: roll,
