@@ -2254,19 +2254,26 @@ function updateBreathEffect(delta) {
                         L.x += shiftX; L.y += shiftY;
                         R.x += shiftX; R.y += shiftY;
 
-                        // Apply user offsets in pixel space
-                        const offPxX = blushOffX * faceW * 0.35;
-                        const offPxY = blushOffY * faceW * 0.35;
-                        L.x += offPxX; L.y += offPxY;
-                        R.x += offPxX; R.y += offPxY;
+                        // Apply user offsets in *face-local* pixel space (so it doesn't drift when the face rolls)
+                        // u: left->right direction along the eyes, v: u rotated +90deg (down relative to face)
+                        const ux = (re.x - le.x) / faceW;
+                        const uy = (re.y - le.y) / faceW;
+                        const vx = -uy;
+                        const vy = ux;
 
-                        // Spread nudges outward
+                        const offU = blushOffX * faceW * 0.35;
+                        const offV = blushOffY * faceW * 0.35;
+
+                        L.x += ux * offU + vx * offV; L.y += uy * offU + vy * offV;
+                        R.x += ux * offU + vx * offV; R.y += uy * offU + vy * offV;
+
+                        // Spread nudges outward along face-local u axis
                         const spreadN = Math.max(0.5, Math.min(6.0, blushSpread));
-                        const spreadDx = (spreadN - 1.0) * faceW * 0.18;
-                        L.x -= spreadDx;
-                        R.x += spreadDx;
+                        const spreadU = (spreadN - 1.0) * faceW * 0.18;
+                        L.x -= ux * spreadU; L.y -= uy * spreadU;
+                        R.x += ux * spreadU; R.y += uy * spreadU;
 
-                        // Roll angle from eyes
+// Roll angle from eyes
                         const roll = Math.atan2((re.y - le.y), (re.x - le.x));
 
                         if (blushDebugEnabled) {
