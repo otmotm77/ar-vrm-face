@@ -717,6 +717,18 @@
                 </div>
 
                 <div class="slider-container">
+                    <span class="slider-label">黒レベル<br>(Black Lift)</span>
+                    <input type="range" id="cam-black-slider" min="0" max="100" step="1" value="0">
+                    <span id="cam-black-slider-val" class="val-display">0</span>
+                </div>
+                <div class="slider-container">
+                    <span class="slider-label">色温度<br>(Warm ⇔ Cool)</span>
+                    <input type="range" id="cam-temp-slider" min="0" max="100" step="1" value="50">
+                    <span id="cam-temp-slider-val" class="val-display">50</span>
+                </div>
+
+
+                <div class="slider-container">
                     <span class="slider-label">ビネット<br>(Vignette)</span>
                     <input type="range" id="cam-vignette-slider" min="0" max="100" step="1" value="0">
                     <span id="cam-vignette-slider-val" class="val-display">0</span>
@@ -736,8 +748,8 @@
     <script type="module">
         
 // ===== App Version (single source of truth) =====
-const APP_VERSION = "v6.00.02";
-const APP_VERSION_NOTE = "ui: add camera vignette + soft glow sliders; implement post effects on camera only";
+const APP_VERSION = "v6.00.04";
+const APP_VERSION_NOTE = "camera: add black level + color temperature; improve skin smooth (blur blend)";
 function setAppVersionLabel() {
   const el = document.getElementById("app-version");
   if (!el) return;
@@ -784,8 +796,13 @@ import * as THREE from 'three';
         // Post effects (camera only)
         let camVignetteStrength = 0;   // 0..1
         let camSoftGlowStrength = 0;   // 0..1
+        let camBlackLiftStrength = 0;  // 0..1 (lift shadows)
+        let camTempStrength = 0;       // -1..1 (warm(+)/cool(-))
+        let camSkinSmoothStrength = 0; // 0..1
         const glowCanvas = document.createElement('canvas');
         const glowCtx = glowCanvas.getContext('2d', { willReadFrequently: false });
+        const smoothCanvas = document.createElement('canvas');
+        const smoothCtx = smoothCanvas.getContext('2d', { willReadFrequently: false });
 let videoTexture = null; // THREE.CanvasTexture
         let cameraFilterStr = 'none';
 
@@ -1323,6 +1340,8 @@ const occlusionToggle = document.getElementById('occlusion-toggle');
         const camContSlider = document.getElementById('cam-cont-slider');
         const camBlurSlider = document.getElementById('cam-blur-slider');
         const camSepiaSlider = document.getElementById('cam-sepia-slider');
+        const camBlackSlider = document.getElementById('cam-black-slider');
+        const camTempSlider = document.getElementById('cam-temp-slider');
 
         
         const camVignetteSlider = document.getElementById('cam-vignette-slider');
@@ -1350,6 +1369,7 @@ const tabVrm = document.getElementById('tab-vrm');
             minCfSlider, betaSlider, mouthSensSlider, eyeSensSlider,
             lightIntSlider, ambIntSlider, lightYSlider, lightRotSlider, lightColorSlider, vrmSatSlider,
             skinSmoothSlider, camBrightSlider, camSatSlider, camContSlider, camBlurSlider, camSepiaSlider,
+            camBlackSlider, camTempSlider,
             camVignetteSlider, camSoftGlowSlider,
             occPosXSlider, occPosYSlider, occPosZSlider, occSizeXSlider, occSizeYSlider, occSizeZSlider,
             // Main transform
@@ -1656,6 +1676,10 @@ forceShadowToggle.addEventListener('change', () => {
                 camCont: camContSlider.value,
                 camBlur: camBlurSlider.value,
                 camSepia: camSepiaSlider.value,
+                camBlack: camBlackSlider ? camBlackSlider.value : '0',
+                camTemp: camTempSlider ? camTempSlider.value : '50',
+                camVignette: camVignetteSlider ? camVignetteSlider.value : '0',
+                camSoftGlow: camSoftGlowSlider ? camSoftGlowSlider.value : '0',
                 // Breath (per-VRM)
                 breathEnabled: (typeof breathToggle !== 'undefined') ? !!breathToggle.checked : false,
                 breathStrength: (typeof breathStrengthSlider !== 'undefined' && breathStrengthSlider) ? breathStrengthSlider.value : '1.0',
@@ -1727,6 +1751,10 @@ forceShadowToggle.addEventListener('change', () => {
                     if(s.camCont) camContSlider.value = s.camCont;
                     if(s.camBlur) camBlurSlider.value = s.camBlur;
                     if(s.camSepia) camSepiaSlider.value = s.camSepia;
+                    if(Object.prototype.hasOwnProperty.call(s,'camBlack') && camBlackSlider) camBlackSlider.value = s.camBlack;
+                    if(Object.prototype.hasOwnProperty.call(s,'camTemp') && camTempSlider) camTempSlider.value = s.camTemp;
+                    if(Object.prototype.hasOwnProperty.call(s,'camVignette') && camVignetteSlider) camVignetteSlider.value = s.camVignette;
+                    if(Object.prototype.hasOwnProperty.call(s,'camSoftGlow') && camSoftGlowSlider) camSoftGlowSlider.value = s.camSoftGlow;
 
                     // Breath (per-VRM)
                     if (Object.prototype.hasOwnProperty.call(s, 'breathEnabled') && typeof breathToggle !== 'undefined') {
@@ -1837,14 +1865,22 @@ forceShadowToggle.addEventListener('change', () => {
             // Post effects (not part of ctx.filter)
             const vg = camVignetteSlider ? parseFloat(camVignetteSlider.value) : 0;
             const gl = camSoftGlowSlider ? parseFloat(camSoftGlowSlider.value) : 0;
+            const blk = camBlackSlider ? parseFloat(camBlackSlider.value) : 0;
+            const tmp = camTempSlider ? parseFloat(camTempSlider.value) : 50;
+
             camVignetteStrength = Math.max(0, Math.min(1, vg / 100));
             camSoftGlowStrength = Math.max(0, Math.min(1, gl / 100));
-const skin = parseFloat(skinSmoothSlider.value);
+            camBlackLiftStrength = Math.max(0, Math.min(1, blk / 100));
+            camTempStrength = Math.max(-1, Math.min(1, (tmp - 50) / 50));
+
+            const skin = skinSmoothSlider ? parseFloat(skinSmoothSlider.value) : 0;
+            camSkinSmoothStrength = Math.max(0, Math.min(1, skin / 100));
+
+            // Mild tone tweak (keep subtle; main smoothing is a blur-blend pass in drawVideoToDisplayCanvas)
             if (skin > 0) {
-                b += skin * 0.3;
-                s += skin * 0.2;
-                bl += skin * 0.008;
-                c -= skin * 0.15;
+                b += skin * 0.12;   // slight brighten
+                s += skin * 0.08;   // slight saturate
+                c -= skin * 0.10;   // soften contrast
             }
 
             // CanvasRenderingContext2D.filter supports these (Chrome/Safari modern)
@@ -2711,6 +2747,54 @@ function updateBreathEffect(delta) {
             displayCtx.restore();
 
             
+
+
+            // Skin Smooth (beauty) - blur-blend pass (camera only)
+            const skinS = (typeof camSkinSmoothStrength === 'number') ? camSkinSmoothStrength : 0;
+            if (skinS > 0.001) {
+                if (smoothCanvas.width !== vw || smoothCanvas.height !== vh) {
+                    smoothCanvas.width = vw;
+                    smoothCanvas.height = vh;
+                }
+                smoothCtx.save();
+                smoothCtx.clearRect(0, 0, vw, vh);
+                const blurPx = 0.5 + skinS * 6.0; // 0.5..6.5px
+                smoothCtx.filter = `blur(${blurPx}px)`;
+                smoothCtx.drawImage(displayCanvas, 0, 0, vw, vh);
+                smoothCtx.restore();
+
+                displayCtx.save();
+                displayCtx.globalCompositeOperation = 'source-over';
+                displayCtx.globalAlpha = Math.min(0.65, skinS * 0.55);
+                displayCtx.drawImage(smoothCanvas, 0, 0, vw, vh);
+                displayCtx.restore();
+            }
+
+            // Color Temperature (warm/cool) - subtle tint
+            const tempS = (typeof camTempStrength === 'number') ? camTempStrength : 0;
+            if (Math.abs(tempS) > 0.001) {
+                const a = Math.min(0.35, Math.abs(tempS) * 0.28);
+                const tint = tempS > 0
+                    ? `rgba(255, 180, 110, ${a})`  // warm
+                    : `rgba(120, 190, 255, ${a})`; // cool
+                displayCtx.save();
+                displayCtx.globalCompositeOperation = 'soft-light';
+                if (displayCtx.globalCompositeOperation !== 'soft-light') displayCtx.globalCompositeOperation = 'overlay';
+                displayCtx.fillStyle = tint;
+                displayCtx.fillRect(0, 0, vw, vh);
+                displayCtx.restore();
+            }
+
+            // Black Level (lift shadows)
+            const liftS = (typeof camBlackLiftStrength === 'number') ? camBlackLiftStrength : 0;
+            if (liftS > 0.001) {
+                const v = Math.round(255 * (liftS * 0.55)); // max ~140
+                displayCtx.save();
+                displayCtx.globalCompositeOperation = 'screen';
+                displayCtx.fillStyle = `rgb(${v},${v},${v})`;
+                displayCtx.fillRect(0, 0, vw, vh);
+                displayCtx.restore();
+            }
 
             // Soft Glow (cinematic bloom-ish)
             const glow = (typeof camSoftGlowStrength === 'number') ? camSoftGlowStrength : 0;
