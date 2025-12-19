@@ -702,8 +702,8 @@
     <script type="module">
         
 // ===== App Version (single source of truth) =====
-const APP_VERSION = "v5.12.28";
-const APP_VERSION_NOTE = "blush autoRot mapping + debug";
+const APP_VERSION = "v5.12.29";
+const APP_VERSION_NOTE = "blushRot sign fix (autoRot)";
 function setAppVersionLabel() {
   const el = document.getElementById("app-version");
   if (!el) return;
@@ -2207,8 +2207,8 @@ function updateBreathEffect(delta) {
                 if (vwB > 0 && vhB > 0) {
                     const rectB = computeContainRect(w, h, vwB, vhB);
 
-      // Rotation fix for screen-locked devices: if inputRotationDeg is 0 but autoRotDeg indicates 90deg, use -autoRotDeg for mapping.
-      const blushRotDeg = (Math.abs(inputRotationDeg) > 0.1) ? inputRotationDeg : (-(autoInputRotationDeg || 0));
+      // Rotation fix for screen-locked devices: if inputRotationDeg is 0 but autoRotDeg indicates +/-90deg, use autoRotDeg for mapping.
+      const blushRotDeg = (Math.abs(inputRotationDeg) > 0.1) ? inputRotationDeg : ((autoInputRotationDeg || 0));
 
                     const lm = latestFaceLandmarks0;
                     const pt = (i) => (lm && lm[i]) ? lm[i] : null;
@@ -2604,7 +2604,7 @@ function updateBreathEffect(delta) {
 
             // 2D blush mapping debug (used in current implementation)
             if (blush2DDebug) {
-                lines.push(`inputRot=${blush2DDebug.inputRotationDeg}deg baseRot=${blush2DDebug.baseRotDeg} autoRot=${blush2DDebug.autoRotDeg} eyeAng=${(blush2DDebug.eyeAngleDeg||0).toFixed(1)}deg beta=${(blush2DDebug.deviceBeta||0).toFixed(1)} gamma=${(blush2DDebug.deviceGamma||0).toFixed(1)}`);
+                lines.push(`inputRot=${blush2DDebug.inputRotationDeg}deg baseRot=${blush2DDebug.baseRotDeg} autoRot=${blush2DDebug.autoRotDeg} blushRot=${blush2DDebug.blushRotDeg} eyeAng=${(blush2DDebug.eyeAngleDeg||0).toFixed(1)}deg beta=${(blush2DDebug.deviceBeta||0).toFixed(1)} gamma=${(blush2DDebug.deviceGamma||0).toFixed(1)}`);
                 lines.push(`pagePortrait=${!!blush2DDebug.pageIsPortrait} video=${blush2DDebug.videoW}x${blush2DDebug.videoH} mp=${blush2DDebug.mpW}x${blush2DDebug.mpH}`);
                 lines.push(`roll=${(blush2DDebug.rollDeg||0).toFixed(1)}deg shift=(${(blush2DDebug.shiftX||0).toFixed(1)},${(blush2DDebug.shiftY||0).toFixed(1)})`);
                 lines.push(`Lscr=(${blush2DDebug.L.x.toFixed(1)},${blush2DDebug.L.y.toFixed(1)}) Rscr=(${blush2DDebug.R.x.toFixed(1)},${blush2DDebug.R.y.toFixed(1)})`);
