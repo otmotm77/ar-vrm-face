@@ -702,8 +702,8 @@
     <script type="module">
         
 // ===== App Version (single source of truth) =====
-const APP_VERSION = "v5.12.29";
-const APP_VERSION_NOTE = "blushRot sign fix (autoRot)";
+const APP_VERSION = "v5.12.30";
+const APP_VERSION_NOTE = "mpUsedRot sync (apply autoRot to MP input)";
 function setAppVersionLabel() {
   const el = document.getElementById("app-version");
   if (!el) return;
@@ -756,6 +756,10 @@ import * as THREE from 'three';
         let lastBaseInputRotDeg = 0;
         let autoInputRotationDeg = 0;
         let eyeAngleDeg = 0;
+        // MediaPipe input rotation actually used for the current frame (base heuristic OR auto fallback).
+        let mpUsedRotationDeg = 0;
+        let mpInputIsOffscreen = false;
+
 
         let currentVrm = null;
         let pivotGroup;       
@@ -2208,8 +2212,8 @@ function updateBreathEffect(delta) {
                     const rectB = computeContainRect(w, h, vwB, vhB);
 
       // Rotation fix for screen-locked devices: if inputRotationDeg is 0 but autoRotDeg indicates +/-90deg, use autoRotDeg for mapping.
-      const blushRotDeg = (Math.abs(inputRotationDeg) > 0.1) ? inputRotationDeg : ((autoInputRotationDeg || 0));
-
+      // Use the SAME rotation that was applied to this frame's MediaPipe input.
+      const blushRotDeg = mpUsedRotationDeg || 0;
                     const lm = latestFaceLandmarks0;
                     const pt = (i) => (lm && lm[i]) ? lm[i] : null;
 
@@ -2226,8 +2230,8 @@ function updateBreathEffect(delta) {
                             // FaceLandmarker landmarks are normalized in the MediaPipe *input* canvas.
                             // When we rotate the video into mpOffscreenCanvas (inputRotationDeg), we must
                             // map them back into ORIGINAL video-frame normalized coords before drawing overlays.
-                            const mpW = mpOffscreenCanvas.width || vwB;
-                            const mpH = mpOffscreenCanvas.height || vhB;
+                            const mpW = (mpInputIsOffscreen) ? (mpOffscreenCanvas.width || vwB) : vwB;
+                            const mpH = (mpInputIsOffscreen) ? (mpOffscreenCanvas.height || vhB) : vhB;
                             const vv = mpLandmarkNormToVideoNorm(p.x, p.y, vwB, vhB, blushRotDeg, mpW, mpH);
                             const xx = rectB.x + vv.x * rectB.w;
                             const yy = rectB.y + vv.y * rectB.h;
@@ -2273,13 +2277,15 @@ function updateBreathEffect(delta) {
                                 inputRotationDeg,
                                 baseRotDeg: lastBaseInputRotDeg,
                                 autoRotDeg: autoInputRotationDeg,
+                                usedRotDeg: mpUsedRotationDeg,
+                                mpInputIsOffscreen,
                                 blushRotDeg,
                                 eyeAngleDeg,
                                 deviceBeta, deviceGamma,
                                 pageIsPortrait: (window.innerHeight >= window.innerWidth),
                                 videoW: vwB, videoH: vhB,
-                                mpW: (mpOffscreenCanvas.width || vwB),
-                                mpH: (mpOffscreenCanvas.height || vhB),
+                                mpW: (mpInputIsOffscreen ? (mpOffscreenCanvas.width || vwB) : vwB),
+                                mpH: (mpInputIsOffscreen ? (mpOffscreenCanvas.height || vhB) : vhB),
                                 le, re,
                                 L, R,
                                 rollRad: roll,
@@ -2604,8 +2610,8 @@ function updateBreathEffect(delta) {
 
             // 2D blush mapping debug (used in current implementation)
             if (blush2DDebug) {
-                lines.push(`inputRot=${blush2DDebug.inputRotationDeg}deg baseRot=${blush2DDebug.baseRotDeg} autoRot=${blush2DDebug.autoRotDeg} blushRot=${blush2DDebug.blushRotDeg} eyeAng=${(blush2DDebug.eyeAngleDeg||0).toFixed(1)}deg beta=${(blush2DDebug.deviceBeta||0).toFixed(1)} gamma=${(blush2DDebug.deviceGamma||0).toFixed(1)}`);
-                lines.push(`pagePortrait=${!!blush2DDebug.pageIsPortrait} video=${blush2DDebug.videoW}x${blush2DDebug.videoH} mp=${blush2DDebug.mpW}x${blush2DDebug.mpH}`);
+                lines.push(`inputRot=${blush2DDebug.inputRotationDeg}deg baseRot=${blush2DDebug.baseRotDeg} autoRot=${blush2DDebug.autoRotDeg} usedRot=${blush2DDebug.usedRotDeg} blushRot=${blush2DDebug.blushRotDeg} eyeAng=${(blush2DDebug.eyeAngleDeg||0).toFixed(1)}deg beta=${(blush2DDebug.deviceBeta||0).toFixed(1)} gamma=${(blush2DDebug.deviceGamma||0).toFixed(1)}`);
+                lines.push(`pagePortrait=${!!blush2DDebug.pageIsPortrait} video=${blush2DDebug.videoW}x${blush2DDebug.videoH} mp=${blush2DDebug.mpW}x${blush2DDebug.mpH} off=${!!blush2DDebug.mpInputIsOffscreen}`);
                 lines.push(`roll=${(blush2DDebug.rollDeg||0).toFixed(1)}deg shift=(${(blush2DDebug.shiftX||0).toFixed(1)},${(blush2DDebug.shiftY||0).toFixed(1)})`);
                 lines.push(`Lscr=(${blush2DDebug.L.x.toFixed(1)},${blush2DDebug.L.y.toFixed(1)}) Rscr=(${blush2DDebug.R.x.toFixed(1)},${blush2DDebug.R.y.toFixed(1)})`);
             } else {
@@ -3074,24 +3080,32 @@ function updateBreathEffect(delta) {
                     lastBaseInputRotDeg = baseRotDeg;
                     inputRotationDeg = baseRotDeg;
 
+                    // IMPORTANT: Use a single, consistent rotation value per-frame.
+                    // If base heuristic says 0deg but the device is actually rotated (screen-locked),
+                    // autoInputRotationDeg (estimated from eye-line angle) is applied to the *MediaPipe input* as well.
+                    const usedInputRotDeg = (Math.abs(inputRotationDeg) > 0.1) ? inputRotationDeg : (autoInputRotationDeg || 0);
+                    mpUsedRotationDeg = usedInputRotDeg;
+
                     // Draw rotated frame to offscreen canvas when needed
                     let mpInput = videoEl;
-                    if (inputRotationDeg !== 0 && mpOffscreenCtx) {
+                    mpInputIsOffscreen = false;
+                    if (usedInputRotDeg !== 0 && mpOffscreenCtx) {
                         const vw = videoEl.videoWidth || 0;
                         const vh = videoEl.videoHeight || 0;
                         if (vw > 0 && vh > 0) {
-                            const rot90 = Math.abs(inputRotationDeg) === 90;
+                            const rot90 = Math.abs(usedInputRotDeg) === 90;
                             mpOffscreenCanvas.width = rot90 ? vh : vw;
                             mpOffscreenCanvas.height = rot90 ? vw : vh;
 
                             mpOffscreenCtx.save();
                             mpOffscreenCtx.clearRect(0, 0, mpOffscreenCanvas.width, mpOffscreenCanvas.height);
                             mpOffscreenCtx.translate(mpOffscreenCanvas.width / 2, mpOffscreenCanvas.height / 2);
-                            mpOffscreenCtx.rotate(THREE.MathUtils.degToRad(inputRotationDeg));
+                            mpOffscreenCtx.rotate(THREE.MathUtils.degToRad(usedInputRotDeg));
                             mpOffscreenCtx.drawImage(videoEl, -vw / 2, -vh / 2, vw, vh);
                             mpOffscreenCtx.restore();
 
                             mpInput = mpOffscreenCanvas;
+                            mpInputIsOffscreen = true;
                         }
                     }
 
@@ -3148,10 +3162,10 @@ const tms = res && res.facialTransformationMatrixes;
                             worldMatrix.scale(new THREE.Vector3(baseScale, baseScale, baseScale));
 
                             if (inputRotationDeg !== 0) {
-                                rotComp.makeRotationZ(THREE.MathUtils.degToRad(inputRotationDeg));
+                            if (mpUsedRotationDeg !== 0) {
+                                rotComp.makeRotationZ(THREE.MathUtils.degToRad(mpUsedRotationDeg));
                                 worldMatrix.premultiply(rotComp);
                             }
-
                             pivotGroup.matrix.copy(worldMatrix);
                             if (!pivotGroup.visible) pivotGroup.visible = true;
                         } else {
@@ -3182,9 +3196,9 @@ const tms = res && res.facialTransformationMatrixes;
                                 const vw0 = videoEl.videoWidth || 0;
                                 const vh0 = videoEl.videoHeight || 0;
                                 const mpW0 = (inputRotationDeg !== 0) ? (mpOffscreenCanvas.width || 0) : vw0;
-                                const mpH0 = (inputRotationDeg !== 0) ? (mpOffscreenCanvas.height || 0) : vh0;
-                                const vv = mpLandmarkNormToVideoNorm(mx, my, vw0, vh0, inputRotationDeg, mpW0, mpH0);
-                                if (vv.ok) {
+                                const mpW0 = (mpInputIsOffscreen) ? (mpOffscreenCanvas.width || 0) : vw0;
+                                const mpH0 = (mpInputIsOffscreen) ? (mpOffscreenCanvas.height || 0) : vh0;
+                                const vv = mpLandmarkNormToVideoNorm(mx, my, vw0, vh0, mpUsedRotationDeg, mpW0, mpH0);
                                     latestMouthCenterVideoX = Math.min(1, Math.max(0, vv.x));
                                     latestMouthCenterVideoY = Math.min(1, Math.max(0, vv.y));
                                     latestMouthCenterVideoValid = true;
@@ -3204,9 +3218,8 @@ const tms = res && res.facialTransformationMatrixes;
                                         const rx = (rCheek.x * 0.55 + rEyeO.x * 0.15 + rMouth.x * 0.30);
                                         const ry = (rCheek.y * 0.45 + rEyeO.y * 0.10 + rMouth.y * 0.45);
 
-                                        const vcl = mpLandmarkNormToVideoNorm(lx, ly, vw0, vh0, inputRotationDeg, mpW0, mpH0);
-                                        const vcr = mpLandmarkNormToVideoNorm(rx, ry, vw0, vh0, inputRotationDeg, mpW0, mpH0);
-
+                                        const vcl = mpLandmarkNormToVideoNorm(lx, ly, vw0, vh0, mpUsedRotationDeg, mpW0, mpH0);
+                                        const vcr = mpLandmarkNormToVideoNorm(rx, ry, vw0, vh0, mpUsedRotationDeg, mpW0, mpH0);
                                         if (vcl.ok && vcr.ok) {
                                             latestCheekLVideoX = Math.min(1, Math.max(0, vcl.x));
                                             latestCheekLVideoY = Math.min(1, Math.max(0, vcl.y));
