@@ -748,7 +748,7 @@
     <script type="module">
         
 // ===== App Version (single source of truth) =====
-const APP_VERSION = "v6.00.04";
+const APP_VERSION = "v6.00.05";
 const APP_VERSION_NOTE = "camera: add black level + color temperature; improve skin smooth (blur blend)";
 function setAppVersionLabel() {
   const el = document.getElementById("app-version");
@@ -963,11 +963,11 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
         function computeInputRotationDeg(beta, gamma, videoW, videoH) {
             const b = (typeof beta === 'number') ? beta : 0;
             const g = (typeof gamma === 'number') ? gamma : 0;
-
-            // Upside-down portrait (rare, but keep)
-            if (Math.abs(b) > 135) return 180;
-
             const pageIsPortrait = window.innerHeight >= window.innerWidth;
+
+            // NOTE: In landscape, beta can exceed 135deg when shooting from above/below.
+            // The camera frame itself is not rotated 180deg, so applying 180 here would flip VRM.
+            if (pageIsPortrait && Math.abs(b) > 135) return 180;
 
             const vw = (typeof videoW === 'number') ? videoW : 0;
             const vh = (typeof videoH === 'number') ? videoH : 0;
