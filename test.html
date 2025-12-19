@@ -702,8 +702,8 @@
     <script type="module">
         
 // ===== App Version (single source of truth) =====
-const APP_VERSION = "v5.12.27";
-const APP_VERSION_NOTE = "rotation+ui tweaks+debug";
+const APP_VERSION = "v5.12.28";
+const APP_VERSION_NOTE = "blush autoRot mapping + debug";
 function setAppVersionLabel() {
   const el = document.getElementById("app-version");
   if (!el) return;
@@ -2207,6 +2207,9 @@ function updateBreathEffect(delta) {
                 if (vwB > 0 && vhB > 0) {
                     const rectB = computeContainRect(w, h, vwB, vhB);
 
+      // Rotation fix for screen-locked devices: if inputRotationDeg is 0 but autoRotDeg indicates 90deg, use -autoRotDeg for mapping.
+      const blushRotDeg = (Math.abs(inputRotationDeg) > 0.1) ? inputRotationDeg : (-(autoInputRotationDeg || 0));
+
                     const lm = latestFaceLandmarks0;
                     const pt = (i) => (lm && lm[i]) ? lm[i] : null;
 
@@ -2225,7 +2228,7 @@ function updateBreathEffect(delta) {
                             // map them back into ORIGINAL video-frame normalized coords before drawing overlays.
                             const mpW = mpOffscreenCanvas.width || vwB;
                             const mpH = mpOffscreenCanvas.height || vhB;
-                            const vv = mpLandmarkNormToVideoNorm(p.x, p.y, vwB, vhB, inputRotationDeg, mpW, mpH);
+                            const vv = mpLandmarkNormToVideoNorm(p.x, p.y, vwB, vhB, blushRotDeg, mpW, mpH);
                             const xx = rectB.x + vv.x * rectB.w;
                             const yy = rectB.y + vv.y * rectB.h;
                             return { x: xx, y: yy, vx: vv.x, vy: vv.y, mpW, mpH, rot: inputRotationDeg, vw: vwB, vh: vhB, rect: {x: rectB.x, y: rectB.y, w: rectB.w, h: rectB.h} };
@@ -2270,6 +2273,7 @@ function updateBreathEffect(delta) {
                                 inputRotationDeg,
                                 baseRotDeg: lastBaseInputRotDeg,
                                 autoRotDeg: autoInputRotationDeg,
+                                blushRotDeg,
                                 eyeAngleDeg,
                                 deviceBeta, deviceGamma,
                                 pageIsPortrait: (window.innerHeight >= window.innerWidth),
