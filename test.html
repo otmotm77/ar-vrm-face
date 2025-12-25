@@ -823,8 +823,8 @@
     <script type="module">
         
 // ===== App Version (single source of truth) =====
-const APP_VERSION = "v6.01.14";
-const APP_VERSION_NOTE = "camera: force first-frame refresh after switch | auto btn: 💧 + bgcolor";
+const APP_VERSION = "v6.01.15";
+const APP_VERSION_NOTE = "cream: auto target uses face-oval screen sampling + exclude lower 10% | note: cream is 2D overlay (no Z)";
 
 
 function getOverlayPixelRatio() {
@@ -3360,37 +3360,83 @@ if (vy < 0) { vx = -vx; vy = -vy; }
         }
         function sampleAutoCreamTargetPx(basis, cssW, cssH) {
             if (!basis) return null;
-            // Center of face (between eyes and mouth)
+
+            // Prefer sampling in SCREEN space using face-oval landmarks so auto shots stay within the VRM face region.
+            // Also excludes the lower 10% region (near the chin/neck) by clamping Y.
+            const lm = latestFaceLandmarks0;
+            const rect = basis.rect;
+            const idxForehead = 10;   // upper forehead
+            const idxChin = 152;      // chin
+            const idxCheekL = 234;    // left cheek (face oval)
+            const idxCheekR = 454;    // right cheek (face oval)
+
+            if (lm && rect && lm[idxForehead] && lm[idxChin] && lm[idxCheekL] && lm[idxCheekR]) {
+                const pf = mapMpLandmarkToScreenPx(lm[idxForehead], cssW, cssH, rect);
+                const pc = mapMpLandmarkToScreenPx(lm[idxChin], cssW, cssH, rect);
+                const pl = mapMpLandmarkToScreenPx(lm[idxCheekL], cssW, cssH, rect);
+                const pr = mapMpLandmarkToScreenPx(lm[idxCheekR], cssW, cssH, rect);
+
+                if (pf && pc && pl && pr) {
+                    const centerX = (pl.x + pr.x) * 0.5;
+                    const centerY = (pf.y + pc.y) * 0.5;
+
+                    const faceH = Math.max(12, Math.hypot(pc.x - pf.x, pc.y - pf.y));
+                    const faceW = Math.max(12, Math.hypot(pr.x - pl.x, pr.y - pl.y));
+
+                    // Mildly follow the VRM head-scale slider (avoid expanding too far outside face).
+                    const s = Math.min(Math.max(getHeadOverlayScale(), 0.6), 1.35);
+
+                    // Ellipse that roughly fits the face oval in screen space.
+                    const aPx = (faceW * 0.55) * s;
+                    const bPx = (faceH * 0.55) * s;
+
+                    const yTop = Math.min(pf.y, pc.y);
+                    const yBot = Math.max(pf.y, pc.y);
+                    const yMaxAllowed = yTop + (yBot - yTop) * 0.90; // exclude lower 10%
+
+                    let x = centerX, y = centerY;
+                    let tries = 0;
+                    do {
+                        const theta = Math.random() * Math.PI * 2;
+                        const rr = Math.sqrt(Math.random()); // uniform area
+                        x = centerX + aPx * rr * Math.cos(theta);
+                        y = centerY + bPx * rr * Math.sin(theta);
+                        tries++;
+                    } while (y > yMaxAllowed && tries < 18);
+
+                    y = Math.min(y, yMaxAllowed);
+                    x = Math.min(Math.max(x, 0), cssW);
+                    y = Math.min(Math.max(y, 0), cssH);
+                    return { x, y };
+                }
+            }
+
+            // Fallback (older face-local sampling)
             const centerX = (basis.eyeMid.x * 0.55 + basis.mouthMid.x * 0.45);
             const centerY = (basis.eyeMid.y * 0.55 + basis.mouthMid.y * 0.45);
 
-            // Sample uniformly inside an ellipse in face-local coordinates.
-            // U: left(-) to right(+), V: up(-) to down(+)
             const headS = getHeadOverlayScale();
-            const a = 0.50 * headS;     // half-width
-            const b = 0.95 * headS;     // half-height
-            const vCenter = 0.08;       // slight center bias (keep as-is)
-            const vMaxAllowed = vCenter + b * 0.90; // exclude bottom 10%
+            const a = 0.50 * headS;
+            const b = 0.75 * headS;
+            const vCenter = 0.02;
+            const vMaxAllowed = vCenter + b * 0.90;
 
             let u = 0, v = 0;
             let tries = 0;
             do {
                 const theta = Math.random() * Math.PI * 2;
-                const rr = Math.sqrt(Math.random()); // uniform area
+                const rr = Math.sqrt(Math.random());
                 u = a * rr * Math.cos(theta);
                 v = vCenter + (b * rr * Math.sin(theta));
                 tries++;
             } while (v > vMaxAllowed && tries < 12);
 
             v = Math.min(v, vMaxAllowed);
-
             const pt = faceLocalToScreenPx(u, v, basis);
             return pt ? { x: pt.x, y: pt.y } : { x: centerX, y: centerY };
         }
 
-
-
-        function spawnCreamBurst(targetX = null, targetY = null, ignoreCooldown = false, groupId = null) {
+function spawnCreamBurst(targetX = null, targetY = null, ignoreCooldown = false, groupId = null) {
             const now = performance.now();
             const gid = (groupId !== null && groupId !== undefined) ? groupId : (creamNextPatchGroupId++);
             const bornMs = now;
