@@ -810,8 +810,8 @@
     <script type="module">
         
 // ===== App Version (single source of truth) =====
-const APP_VERSION = "v6.01.08";
-const APP_VERSION_NOTE = "cream: auto-shot covers head scale (uniform ellipse) | patches start more vertical/liquid";
+const APP_VERSION = "v6.01.09";
+const APP_VERSION_NOTE = "cream: shot start = face bottom-center | auto-shot uniform ellipse w/ head scale | patches: vertical + taper + randomness";
 
 
 function getOverlayPixelRatio() {
@@ -3036,16 +3036,13 @@ const CREAM_SHOT_COOLDOWN_MS = 320;
             const basis = computeCreamFaceBasis(cssW, cssH) || creamLastFaceBasis;
             if (!basis) return;
 
-            let start = getCreamButtonCenterPx();
-            // Mirror compensation for the shot start point: keep it on the visual left even when mirrored.
-            if (typeof mirrorEnabled === "boolean" && mirrorEnabled) {
-                start = { x: cssW - start.x, y: start.y };
-            }
-
             const centerX = (basis.eyeMid.x * 0.55 + basis.mouthMid.x * 0.45);
             const centerY = (basis.eyeMid.y * 0.55 + basis.mouthMid.y * 0.45);
 
-            // If user tapped, aim at that screen point. Otherwise aim around face center.
+            // Shot start point: bottom-center relative to the face (screen space).
+            // Place the nozzle under the face center, clamped near the bottom of the viewport.
+            let start = { x: centerX, y: centerY + basis.faceW * 1.35 };
+            start.y = Math.max(24, Math.min(cssH - 24, start.y));// If user tapped, aim at that screen point. Otherwise aim around face center.
             let tx = (targetX !== null ? targetX : null);
             let ty = (targetY !== null ? targetY : null);
 
