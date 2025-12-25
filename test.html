@@ -1750,80 +1750,153 @@ document.getElementById('toggle-menu-btn').addEventListener('click', () => {
                 return;
             }
 
-            // Keep previous state in case the switch fails
             const prevFacing = currentFacingMode;
             const prevStream = stream;
 
-            // Build constraints. Some devices fail when you keep the same resolution/fps across cameras,
-            // so we retry with relaxed constraints.
-            const buildConstraints = (includeResFps) => {
+            const stopStream = (st) => {
+                try {
+                    if (!st) return;
+                    st.getTracks().forEach(t => {
+                        try { t.stop(); } catch (_) {}
+                    });
+                } catch (_) {}
+            };
+
+            const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+            const buildFacingConstraints = (includeResFps) => {
                 const v = { facingMode: { ideal: wantFacing } };
                 if (includeResFps) {
+                    // Keep current capture size as a hint, but allow device to choose.
                     if (currentCamWidth)  v.width  = { ideal: currentCamWidth };
                     if (currentCamHeight) v.height = { ideal: currentCamHeight };
-                    if (currentCamFps)    v.frameRate = { ideal: currentCamFps };
+                } else {
+                    // Use a reasonable default hint only
+                    v.width  = { ideal: 1280 };
+                    v.height = { ideal: 720 };
                 }
                 return { video: v, audio: false };
             };
 
-            let newStream = null;
-            try {
-                // 1) Try with resolution/fps
-                newStream = await navigator.mediaDevices.getUserMedia(buildConstraints(true));
-            } catch (e1) {
+            const pickDeviceIdForFacing = async () => {
                 try {
-                    // 2) Retry with only facingMode (most compatible)
-                    newStream = await navigator.mediaDevices.getUserMedia(buildConstraints(false));
-                } catch (e2) {
+                    const devices = await navigator.mediaDevices.enumerateDevices();
+                    const cams = devices.filter(d => d.kind === 'videoinput');
+                    if (!cams.length) return null;
+
+                    const label = (s) => (s || '').toLowerCase();
+                    const isBack = (d) => /back|rear|environment|アウト|背面/.test(label(d.label));
+                    const isFront = (d) => /front|user|face|イン|前面/.test(label(d.label));
+
+                    let candidates = [];
+                    if (wantFacing === 'environment') {
+                        candidates = cams.filter(isBack);
+                        if (!candidates.length) candidates = cams; // fallback
+                    } else {
+                        candidates = cams.filter(isFront);
+                        if (!candidates.length) candidates = cams; // fallback
+                    }
+
+                    // Prefer the last one (often the primary/back on some Androids), but try a few.
+                    const ids = [];
+                    for (let i = candidates.length - 1; i >= 0; i--) ids.push(candidates[i].deviceId);
+                    // Ensure uniqueness
+                    return Array.from(new Set(ids)).slice(0, 3);
+                } catch (_) {
+                    return null;
+                }
+            };
+
+            const tryGetUserMedia = async (attempts) => {
+                let lastErr = null;
+                for (const a of attempts) {
                     try {
-                        // 3) Last resort: exact facingMode (can still fail on some devices/browsers)
-                        newStream = await navigator.mediaDevices.getUserMedia({
-                            video: { facingMode: { exact: wantFacing } },
-                            audio: false
-                        });
-                    } catch (e3) {
-                        console.error('Camera switch failed:', e1, e2, e3);
-                        showToast('カメラ切替に失敗しました');
-                        // Restore state + UI
-                        currentFacingMode = prevFacing;
-                        stream = prevStream;
-                        syncTrackingTogglesFromState();
-                        return;
+                        const st = await navigator.mediaDevices.getUserMedia(a);
+                        return { stream: st, err: null };
+                    } catch (e) {
+                        lastErr = e;
                     }
                 }
-            }
+                return { stream: null, err: lastErr };
+            };
 
-            // Success: swap streams safely (stop old AFTER new is playing)
+            const showFail = (err) => {
+                const name = err && err.name ? err.name : 'UnknownError';
+                showToast('カメラ切替に失敗しました (' + name + ')');
+            };
+
             try {
-                videoEl.srcObject = newStream;
+                // 1) Try switching without stopping previous stream (works on many devices)
+                const attempts = [
+                    buildFacingConstraints(true),
+                    buildFacingConstraints(false),
+                    { video: { facingMode: { exact: wantFacing } }, audio: false },
+                ];
 
-                // Wait metadata so videoWidth/Height become valid
-                await new Promise(resolve => {
-                    const done = () => { videoEl.onloadedmetadata = null; resolve(); };
-                    videoEl.onloadedmetadata = done;
-                    // In some browsers metadata is already ready
-                    if (videoEl.readyState >= 1) done();
-                });
+                // 2) Add deviceId-based attempts (more reliable on some browsers)
+                const ids = await pickDeviceIdForFacing();
+                if (ids && ids.length) {
+                    for (const id of ids) {
+                        attempts.push({ video: { deviceId: { exact: id } }, audio: false });
+                        attempts.push({ video: { deviceId: { exact: id }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
+                    }
+                }
 
-                await videoEl.play();
+                let { stream: newStream, err: err1 } = await tryGetUserMedia(attempts);
 
-                // Commit facing mode now that we have a working stream
+                // Some devices can't open the other camera while the first is active.
+                // If we get NotReadable/TrackStart-like errors, stop previous stream and retry once.
+                const errName = err1 && err1.name ? err1.name : '';
+                const needsStopRetry = (errName === 'NotReadableError' || errName === 'TrackStartError' || errName === 'AbortError');
+
+                if (!newStream && needsStopRetry) {
+                    stopStream(prevStream);
+                    if (videoEl) videoEl.srcObject = null;
+                    await sleep(80);
+                    ({ stream: newStream, err: err1 } = await tryGetUserMedia(attempts));
+                }
+
+                if (!newStream) {
+                    console.error('Camera switch failed:', err1);
+                    showFail(err1);
+                    currentFacingMode = prevFacing;
+                    stream = prevStream;
+                    syncTrackingTogglesFromState();
+                    return;
+                }
+
+                // Apply new stream
+                const oldStreamToStop = prevStream;
+                stream = newStream;
                 currentFacingMode = wantFacing;
 
-                // Default mirror behavior when not explicitly overridden
-                if (!mirrorUserOverride) {
-                    mirrorEnabled = (currentFacingMode === 'user');
-                    if (mirrorToggle) mirrorToggle.checked = mirrorEnabled;
+                try {
+                    videoEl.srcObject = newStream;
+                    await new Promise(resolve => { videoEl.onloadedmetadata = () => resolve(); });
+                    await videoEl.play();
+                } catch (applyErr) {
+                    console.error('Camera switch apply failed:', applyErr);
+                    showFail(applyErr);
+                    // rollback
+                    stopStream(newStream);
+                    stream = prevStream;
+                    currentFacingMode = prevFacing;
+                    if (videoEl && prevStream) videoEl.srcObject = prevStream;
+                    syncTrackingTogglesFromState();
+                    return;
                 }
-                applyMirrorToRenderer();
 
-                // Stop old tracks after new stream is live
-                if (prevStream && prevStream !== newStream) {
-                    try { prevStream.getTracks().forEach(t => t.stop()); } catch (_) {}
-                }
-                stream = newStream;
+                // Now stop old stream after successful apply (if still alive)
+                stopStream(oldStreamToStop);
 
-                lastVideoRect = null;
+                // Update current capture size hints (best-effort)
+                try {
+                    const track = newStream.getVideoTracks()[0];
+                    const st = track && track.getSettings ? track.getSettings() : null;
+                    if (st && st.width) currentCamWidth = st.width;
+                    if (st && st.height) currentCamHeight = st.height;
+                } catch (_) {}
+
                 syncTrackingTogglesFromState();
                 showToast(currentFacingMode === 'user' ? "インカメラに切り替えました" : "アウトカメラに切り替えました");
 
@@ -1834,17 +1907,15 @@ document.getElementById('toggle-menu-btn').addEventListener('click', () => {
 
                 // Persist (if available)
                 try { if (typeof saveSettings === 'function') saveSettings(); } catch (_) {}
-            } catch (err) {
-                console.error('Camera switch apply failed:', err);
-                showToast('カメラ切替に失敗しました');
 
-                // Cleanup new stream and restore previous if possible
-                try { if (newStream) newStream.getTracks().forEach(t => t.stop()); } catch (_) {}
+            } catch (err) {
+                console.error('Camera switch unexpected error:', err);
+                showFail(err);
+
+                // Restore previous state + UI
                 currentFacingMode = prevFacing;
                 stream = prevStream;
-                if (videoEl && prevStream) {
-                    try { videoEl.srcObject = prevStream; await videoEl.play(); } catch (_) {}
-                }
+                try { if (videoEl && prevStream) videoEl.srcObject = prevStream; } catch (_) {}
                 syncTrackingTogglesFromState();
             }
         };
@@ -2037,6 +2108,8 @@ document.getElementById('toggle-menu-btn').addEventListener('click', () => {
                 creamAuto: (typeof creamAutoEnabled !== 'undefined') ? !!creamAutoEnabled : false,
                 creamInterval: (typeof creamAutoIntervalSlider !== 'undefined' && creamAutoIntervalSlider) ? creamAutoIntervalSlider.value : String(creamAutoIntervalSec),
                 creamMax: (typeof creamMaxCountSlider !== 'undefined' && creamMaxCountSlider) ? creamMaxCountSlider.value : String(creamMaxCount),
+                trackingFacing: currentFacingMode,
+                trackingMirror: !!mirrorEnabled,
             };
 
 
@@ -2141,6 +2214,25 @@ document.getElementById('toggle-menu-btn').addEventListener('click', () => {
                         setCreamAutoEnabled(!!s.creamAuto);
                     } else {
                         syncCreamAutoUI();
+                    }
+
+                    // Tracking (camera + mirror)
+                    if (Object.prototype.hasOwnProperty.call(s, 'trackingMirror')) {
+                        mirrorEnabled = !!s.trackingMirror;
+                        mirrorUserOverride = true;
+                        try { if (mirrorToggle) mirrorToggle.checked = mirrorEnabled; } catch (_) {}
+                        try { applyMirrorToRenderer(); } catch (_) {}
+                    }
+                    if (Object.prototype.hasOwnProperty.call(s, 'trackingFacing')) {
+                        const want = s.trackingFacing;
+                        if (want === 'user' || want === 'environment') {
+                            currentFacingMode = want;
+                            try { if (facingToggle) facingToggle.checked = (want === 'environment'); } catch (_) {}
+                            // If camera already running, switch now (non-blocking)
+                            try {
+                                if (videoEl && stream) setTimeout(() => { try { switchCameraFacing(want); } catch (_) {} }, 0);
+                            } catch (_) {}
+                        }
                     }
 
                    if (typeof updateBreathUI === 'function') updateBreathUI(true);
@@ -3878,7 +3970,7 @@ if (videoTexture) videoTexture.needsUpdate = true;
                 stream = await navigator.mediaDevices.getUserMedia({
                     audio: false,
                     video: {
-                        facingMode: currentFacingMode,
+                        facingMode: { ideal: currentFacingMode },
                         width: { ideal: 1280 },
                         height: { ideal: 720 }
                     }
