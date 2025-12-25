@@ -823,8 +823,8 @@
     <script type="module">
         
 // ===== App Version (single source of truth) =====
-const APP_VERSION = "v6.01.13";
-const APP_VERSION_NOTE = "cream: fix auto exclude bottom 10% | auto burst = 2x count but 1 cap | interval random 0.5-2.0x";
+const APP_VERSION = "v6.01.14";
+const APP_VERSION_NOTE = "camera: force first-frame refresh after switch | auto btn: 💧 + bgcolor";
 
 
 function getOverlayPixelRatio() {
@@ -1679,7 +1679,7 @@ function syncCreamAutoUI() {
     if (autoCreamBtn) {
         autoCreamBtn.classList.toggle('on', !!creamAutoEnabled);
         autoCreamBtn.setAttribute('aria-pressed', creamAutoEnabled ? 'true' : 'false');
-        autoCreamBtn.textContent = creamAutoEnabled ? 'AUTO' : 'A';
+        autoCreamBtn.textContent = '💧';
         autoCreamBtn.title = creamAutoEnabled ? '自動射出: ON' : '自動射出: OFF';
     }
 }
@@ -1851,6 +1851,44 @@ document.getElementById('toggle-menu-btn').addEventListener('click', () => {
 
             const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
+            const waitForVideoEvent = (el, evName, timeoutMs=1500) => new Promise(resolve => {
+                try {
+                    if (!el) return resolve(false);
+                    const done = (ok) => {
+                        try { clearTimeout(t); } catch (_) {}
+                        try { el.removeEventListener(evName, onEv); } catch (_) {}
+                        resolve(!!ok);
+                    };
+                    const onEv = () => done(true);
+                    if ((evName === 'loadedmetadata' && el.readyState >= 1) || (evName !== 'loadedmetadata' && el.readyState >= 2)) {
+                        return done(true);
+                    }
+                    const t = setTimeout(() => done(false), timeoutMs);
+                    el.addEventListener(evName, onEv, { once: true });
+                } catch (_) { resolve(false); }
+            });
+
+            const waitForFirstFrame = async (el, timeoutMs=1500) => {
+                try {
+                    if (!el) return false;
+                    if (el.readyState >= 2) return true;
+                    const start = performance.now();
+                    return await new Promise(resolve => {
+                        const tick = () => {
+                            if (el.readyState >= 2) return resolve(true);
+                            if (performance.now() - start > timeoutMs) return resolve(false);
+                            if (typeof el.requestVideoFrameCallback === 'function') {
+                                el.requestVideoFrameCallback(() => tick());
+                            } else {
+                                requestAnimationFrame(tick);
+                            }
+                        };
+                        tick();
+                    });
+                } catch (_) { return false; }
+            };
+
+
             const buildFacingConstraints = (includeResFps) => {
                 const v = { facingMode: { ideal: wantFacing } };
 
@@ -1963,9 +2001,22 @@ document.getElementById('toggle-menu-btn').addEventListener('click', () => {
                 currentFacingMode = wantFacing;
 
                 try {
+                    // Attach new stream (avoid overwriting global handlers by using addEventListener)
+                    try { videoEl.pause(); } catch (_) {}
                     videoEl.srcObject = newStream;
-                    await new Promise(resolve => { videoEl.onloadedmetadata = () => resolve(); });
-                    await videoEl.play();
+
+                    // Wait for metadata / canplay (best-effort)
+                    await waitForVideoEvent(videoEl, 'loadedmetadata', 2000);
+                    try { await videoEl.play(); } catch (_) {}
+
+                    // Ensure at least one frame becomes available so drawVideoToDisplayCanvas can update
+                    await waitForFirstFrame(videoEl, 2000);
+
+                    // Force an immediate refresh of the background once after switching
+                    try {
+                        ensureDisplayCanvasSize();
+                        drawVideoToDisplayCanvas();
+                    } catch (_) {}
                 } catch (applyErr) {
                     console.error('Camera switch apply failed:', applyErr);
                     showFail(applyErr);
