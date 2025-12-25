@@ -777,8 +777,8 @@
     <script type="module">
         
 // ===== App Version (single source of truth) =====
-const APP_VERSION = "v6.01.04";
-const APP_VERSION_NOTE = "fix: cream button clickable (pointer-events)";
+const APP_VERSION = "v6.01.05";
+const APP_VERSION_NOTE = "cream: remove drips; patches flow down";
 function setAppVersionLabel() {
   const el = document.getElementById("app-version");
   if (!el) return;
@@ -946,7 +946,6 @@ let latestCheekLVideoX = 0.35; // normalized in ORIGINAL video frame (0..1)
         // Cream VFX state
         let creamProjectiles = [];
         let creamPatches = [];
-        let creamDrips = [];
         let creamLastFaceBasis = null; // cached basis for when tracking is lost
         let creamLastFaceValid = false;
         let creamLastShotMs = 0;
@@ -967,7 +966,6 @@ let latestCheekLVideoX = 0.35; // normalized in ORIGINAL video frame (0..1)
                 creamOverlayCtx = null;
                 creamProjectiles = [];
                 creamPatches = [];
-                creamDrips = [];
                 creamLastFaceBasis = null;
                 creamLastFaceValid = false;
           // attached to adjustmentGroup (mouth position proxy)
@@ -2993,7 +2991,9 @@ function drawCreamDrip(ctx, x, y, w, h, opacity, angleRad) {
                                 dripDelay: 1.4 + Math.random() * 1.4,
                                 dripRate: 1.0 / (1.4 + Math.random() * 1.8),
                                 dripAcc: 0,
-                                rollBias: (Math.random() - 0.5) * 0.15
+                                rollBias: (Math.random() - 0.5) * 0.15,
+                                // face-local v units per second (scaled by faceW in projection). keep it subtle.
+                                flowVel: 0.0015 + Math.random() * 0.0035
                             });
 
                             const n = 2 + Math.floor(Math.random() * 3);
@@ -3009,7 +3009,8 @@ function drawCreamDrip(ctx, x, y, w, h, opacity, angleRad) {
                                     spreadT: 0,
                                     dripDelay: 999,
                                     dripAcc: 0,
-                                    rollBias: (Math.random() - 0.5) * 0.25
+                                    rollBias: (Math.random() - 0.5) * 0.25,
+                                    flowVel: 0.0008 + Math.random() * 0.0020
                                 });
                             }
                         }
@@ -3036,26 +3037,9 @@ function drawCreamDrip(ctx, x, y, w, h, opacity, angleRad) {
                 s.spreadT = Math.min(1, s.spreadT + delta / 0.18);
                 const spread = 1.0 + 0.25 * s.spreadT;
 
-                if (s.age >= s.dripDelay) {
-                    const rate = (s.dripRate != null) ? s.dripRate : (1.0 / (1.4 + Math.random() * 1.8));
-                    s.dripAcc += rate * delta;
-                    let made = 0;
-                    while (s.dripAcc >= 1.0 && made < 1) {
-                        s.dripAcc -= 1.0;
-                        made++;
-                        const speedMul = 0.7 + Math.random() * 0.9;
-                        creamDrips.push({
-                            age: 0,
-                            life: Math.min(6.5, s.life - s.age),
-                            u: s.u + (Math.random() - 0.5) * 0.05,
-                            v: s.v + (Math.random() * 0.02),
-                            vel: (0.030 + Math.random() * 0.055) * speedMul,
-                            acc: (0.10 + Math.random() * 0.20) * speedMul,
-                            w: 0.045 + Math.random() * 0.030,
-                            h: 0.13 + Math.random() * 0.09,
-                            rollBias: (Math.random() - 0.5) * 0.18
-                        });
-                    }
+                // Let the attached cream itself slowly flow down along the face v-axis (no separate drip objects)
+                if (typeof s.flowVel === 'number') {
+                    s.v += s.flowVel * delta;
                 }
 
                 if (useBasis) {
@@ -3074,69 +3058,7 @@ function drawCreamDrip(ctx, x, y, w, h, opacity, angleRad) {
             }
             creamPatches = keepP;
 
-            // Drips
-            const keepD = [];
-            for (const d of creamDrips) {
-                d.age += delta;
-                const t = d.age / Math.max(1e-3, d.life);
-                if (t >= 1) continue;
-
-                d.v += d.vel * delta;
-                d.vel += d.acc * delta;
-
-                let a = 1.0;
-                if (t > 0.65) a = Math.max(0, 1 - (t - 0.65) / 0.35);
-
-                if (useBasis) {
-                    const pxy = faceLocalToScreenPx(d.u, d.v, useBasis);
-                    if (pxy) {
-                        const angV = Math.atan2(useBasis.vy, useBasis.vx);
-                        // drawCreamDrip is oriented along +Y (down). Align it with the face "down" direction (v-axis).
-                        const ang = (angV - Math.PI * 0.5) + (d.rollBias || 0);
-
-                        // Syrupy trail (tapered look using 2 strokes)
-                        const trailLen = Math.min(0.32, 0.12 + d.vel * 0.26);
-                        const back = faceLocalToScreenPx(d.u, d.v - trailLen, useBasis);
-                        if (back) {
-                            // wide faint
-                            creamOverlayCtx.save();
-                            creamOverlayCtx.globalAlpha = 0.14 * a;
-                            creamOverlayCtx.strokeStyle = 'rgba(255,248,232,1)';
-                            creamOverlayCtx.lineCap = 'round';
-                            creamOverlayCtx.lineWidth = Math.max(1, useBasis.faceW * 0.010);
-                            creamOverlayCtx.beginPath();
-                            creamOverlayCtx.moveTo(back.x, back.y);
-                            creamOverlayCtx.lineTo(pxy.x, pxy.y);
-                            creamOverlayCtx.stroke();
-                            creamOverlayCtx.restore();
-
-                            // thin brighter
-                            creamOverlayCtx.save();
-                            creamOverlayCtx.globalAlpha = 0.22 * a;
-                            creamOverlayCtx.strokeStyle = 'rgba(255,255,255,1)';
-                            creamOverlayCtx.lineCap = 'round';
-                            creamOverlayCtx.lineWidth = Math.max(1, useBasis.faceW * 0.006);
-                            creamOverlayCtx.beginPath();
-                            creamOverlayCtx.moveTo(back.x, back.y);
-                            creamOverlayCtx.lineTo(pxy.x, pxy.y);
-                            creamOverlayCtx.stroke();
-                            creamOverlayCtx.restore();
-                        }
-
-                        const ww = useBasis.faceW * d.w * (1.0 - Math.min(0.25, d.vel * 0.18));
-                        const hh = useBasis.faceW * d.h * (0.95 + 0.45 * t) * (1.0 + Math.min(1.2, d.vel * 0.9));
-                        creamOverlayCtx.globalAlpha = 0.80 * a;
-                        drawCreamDrip(creamOverlayCtx, pxy.x, pxy.y, ww, hh, 1.0, ang);
-                        creamOverlayCtx.globalAlpha = 1.0;
-                    }
-                }
-
-                keepD.push(d);
-            }
-            creamDrips = keepD;
-
             if (creamPatches.length > 60) creamPatches = creamPatches.slice(-60);
-            if (creamDrips.length > 80) creamDrips = creamDrips.slice(-80);
         }
 
 
