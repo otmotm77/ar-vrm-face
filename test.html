@@ -95,6 +95,7 @@
             user-select: none;
             -webkit-user-select: none;
             touch-action: manipulation;
+            pointer-events: auto;
         }
         .cream-shot-btn:active{
             transform: scale(0.96);
@@ -778,8 +779,8 @@
     <script type="module">
         
 // ===== App Version (single source of truth) =====
-const APP_VERSION = "v6.01.01";
-const APP_VERSION_NOTE = "vfx: add cream splash/drip button (2D overlay)";
+const APP_VERSION = "v6.01.02";
+const APP_VERSION_NOTE = "fix: cream button clickable (pointer-events)";
 function setAppVersionLabel() {
   const el = document.getElementById("app-version");
   if (!el) return;
