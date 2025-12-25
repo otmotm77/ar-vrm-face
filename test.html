@@ -521,6 +521,13 @@
                 <input type="range" id="cream-size-mul-slider" min="0.5" max="2.0" step="0.05" value="1.0">
                 <span id="cream-size-mul-slider-val" class="val-display">1.0</span>
             </div>
+
+            <div class="slider-container">
+                <span class="slider-label">貼り付き（擬似Z）</span>
+                <input type="range" id="cream-z-attach-slider" min="0" max="1" step="0.05" value="0.6">
+                <span id="cream-z-attach-slider-val" class="val-display">0.6</span>
+            </div>
+
             <div class="slider-container">
                 <span class="slider-label">同時射出個数</span>
                 <input type="range" id="cream-simul-count-slider" min="1" max="20" step="1" value="3">
@@ -823,8 +830,8 @@
     <script type="module">
         
 // ===== App Version (single source of truth) =====
-const APP_VERSION = "v6.01.15";
-const APP_VERSION_NOTE = "cream: auto target uses face-oval screen sampling + exclude lower 10% | note: cream is 2D overlay (no Z)";
+const APP_VERSION = "v6.01.16";
+const APP_VERSION_NOTE = "cream: auto-jitter clamp keeps lower10% excluded | cream pseudo-Z stick slider (yaw/pitch foreshorten)";
 
 
 function getOverlayPixelRatio() {
@@ -1031,6 +1038,7 @@ let latestCheekLVideoX = 0.35; // normalized in ORIGINAL video frame (0..1)
                 var creamMaxCount = 40;         // max total (patches + projectiles)
                 var creamSizeMul = 1.0;      // size multiplier (0.5-2.0)
                 var creamSimulCount = 3;   // simultaneous shots per tap/auto (1-20)
+                var creamZAttach = 0.6;     // pseudo "Z-stick" (0..1)
                 let creamAutoElapsedSec = 0.0;
                 let creamNextAutoIntervalSec = null;
 
@@ -1646,6 +1654,19 @@ if (creamSizeMulSlider) {
     });
 }
 
+// Cream pseudo-Z stick slider (0..1)
+const creamZAttachSlider = document.getElementById('cream-z-attach-slider');
+if (creamZAttachSlider) {
+    updateSliderDisplay(creamZAttachSlider);
+    creamZAttach = Math.max(0, Math.min(1, parseFloat(creamZAttachSlider.value) || creamZAttach));
+    creamZAttachSlider.addEventListener('input', () => {
+        updateSliderDisplay(creamZAttachSlider);
+        creamZAttach = Math.max(0, Math.min(1, parseFloat(creamZAttachSlider.value) || 0));
+        saveSettings();
+    });
+}
+
+
 // Cream simultaneous shot count slider (1-20)
 const creamSimulCountSlider = document.getElementById('cream-simul-count-slider');
 if (creamSimulCountSlider) {
@@ -2253,6 +2274,7 @@ document.getElementById('toggle-menu-btn').addEventListener('click', () => {
                 creamMax: (typeof creamMaxCountSlider !== 'undefined' && creamMaxCountSlider) ? creamMaxCountSlider.value : String(creamMaxCount),
                 creamSizeMul: (typeof creamSizeMulSlider !== 'undefined' && creamSizeMulSlider) ? creamSizeMulSlider.value : String(creamSizeMul),
                 creamSimul: (typeof creamSimulCountSlider !== 'undefined' && creamSimulCountSlider) ? creamSimulCountSlider.value : String(creamSimulCount),
+                creamZAttach: (typeof creamZAttachSlider !== 'undefined' && creamZAttachSlider) ? creamZAttachSlider.value : String(creamZAttach),
                 trackingFacing: currentFacingMode,
                 trackingMirror: !!mirrorEnabled,
             };
@@ -2365,6 +2387,12 @@ document.getElementById('toggle-menu-btn').addEventListener('click', () => {
                         updateSliderDisplay(creamSimulCountSlider);
                         creamSimulCount = parseInt(creamSimulCountSlider.value, 10) || creamSimulCount;
                     }
+                    if (Object.prototype.hasOwnProperty.call(s, 'creamZAttach') && typeof creamZAttachSlider !== 'undefined' && creamZAttachSlider) {
+                        creamZAttachSlider.value = s.creamZAttach;
+                        updateSliderDisplay(creamZAttachSlider);
+                        creamZAttach = Math.max(0, Math.min(1, parseFloat(creamZAttachSlider.value) || creamZAttach));
+                    }
+
 
                     if (Object.prototype.hasOwnProperty.call(s, 'creamAuto')) {
                         setCreamAutoEnabled(!!s.creamAuto);
@@ -3331,24 +3359,38 @@ const CREAM_SHOT_COOLDOWN_MS = 320;
 // Ensure +V always points downward in screen space (fixes top/bottom inversion on some rotations).
 if (vy < 0) { vx = -vx; vy = -vy; }
 
+            
             const roll = Math.atan2(uy, ux);
-            return { rect, le, re, eyeMid, mouthMid, faceW, ux, uy, vx, vy, roll };
+
+            // Pseudo depth: foreshorten UV axes based on face yaw/pitch so cream feels less "floating" during rotation.
+            const k = Math.max(0, Math.min(1, (typeof creamZAttach !== 'undefined' ? (creamZAttach || 0) : 0)));
+            const cy = Math.cos(Math.min(Math.abs(typeof latestFaceYawRad !== 'undefined' ? (latestFaceYawRad || 0) : 0), Math.PI / 2));
+            const cp = Math.cos(Math.min(Math.abs(typeof latestFacePitchRad !== 'undefined' ? (latestFacePitchRad || 0) : 0), Math.PI / 2));
+            const su = 1.0 - k + k * Math.max(0.35, cy);
+            const sv = 1.0 - k + k * Math.max(0.35, cp);
+
+            return { rect, le, re, eyeMid, mouthMid, faceW, ux, uy, vx, vy, roll, su, sv };
+
         }
 
         function screenPxToFaceLocal(px, py, basis) {
             if (!basis) return null;
             const dx = px - basis.eyeMid.x;
             const dy = py - basis.eyeMid.y;
-            const u = (dx * basis.ux + dy * basis.uy) / basis.faceW;
-            const v = (dx * basis.vx + dy * basis.vy) / basis.faceW;
+            const su = (basis.su || 1.0);
+            const sv = (basis.sv || 1.0);
+            const u = (dx * basis.ux + dy * basis.uy) / (basis.faceW * su);
+            const v = (dx * basis.vx + dy * basis.vy) / (basis.faceW * sv);
             return { u, v };
         }
 
         function faceLocalToScreenPx(localU, localV, basis) {
             if (!basis) return null;
+            const su = (basis.su || 1.0);
+            const sv = (basis.sv || 1.0);
             return {
-                x: basis.eyeMid.x + (basis.ux * localU + basis.vx * localV) * basis.faceW,
-                y: basis.eyeMid.y + (basis.uy * localU + basis.vy * localV) * basis.faceW
+                x: basis.eyeMid.x + (basis.ux * (localU * su) + basis.vx * (localV * sv)) * basis.faceW,
+                y: basis.eyeMid.y + (basis.uy * (localU * su) + basis.vy * (localV * sv)) * basis.faceW
             };
         }
 
@@ -3407,7 +3449,7 @@ if (vy < 0) { vx = -vx; vy = -vy; }
                     y = Math.min(y, yMaxAllowed);
                     x = Math.min(Math.max(x, 0), cssW);
                     y = Math.min(Math.max(y, 0), cssH);
-                    return { x, y };
+                    return { x, y, yTop, yMaxAllowed };
                 }
             }
 
@@ -3634,7 +3676,15 @@ function drawCreamDrip(ctx, x, y, w, h, opacity, angleRad) {
                                 // Same hit randomness as manual tap: tiny horizontal, mostly vertical (slight down-bias)
                                 const dx = (Math.random() * 2 - 1) * 5.0;        // ±5px
                                 const dy = (Math.random() * 2 - 1) * 14.0 + 6.0; // mostly vertical
-                                spawnCreamBurst(tgt.x + dx, tgt.y + dy, true, gid);
+                                let ax = tgt.x + dx;
+                                let ay = tgt.y + dy;
+                                // Keep bounds AFTER jitter so the lower-10% exclusion stays effective.
+                                if (Number.isFinite(tgt.yTop) && Number.isFinite(tgt.yMaxAllowed)) {
+                                    ay = Math.min(Math.max(ay, tgt.yTop), tgt.yMaxAllowed);
+                                }
+                                ax = Math.min(Math.max(ax, 0), cssW);
+                                ay = Math.min(Math.max(ay, 0), cssH);
+                                spawnCreamBurst(ax, ay, true, gid);
                             }
                             scheduleNextAutoCream();
                         } else {
@@ -4423,6 +4473,9 @@ if (videoTexture) videoTexture.needsUpdate = true;
                 const tmpPos = new THREE.Vector3();
                 const tmpQuat = new THREE.Quaternion();
                 const tmpScaleVec = new THREE.Vector3();
+                const tmpEuler = new THREE.Euler();
+                let latestFaceYawRad = 0.0;
+                let latestFacePitchRad = 0.0;
 
                 renderer.setAnimationLoop(() => {
                     const delta = clock.getDelta();
@@ -4505,6 +4558,13 @@ const tms = res && res.facialTransformationMatrixes;
                             worldMatrix.decompose(tmpPos, tmpQuat, tmpScaleVec);
                             tmpScaleVec.set(1, 1, 1);
                             worldMatrix.compose(tmpPos, tmpQuat, tmpScaleVec);
+
+                            // Capture face yaw/pitch for 2D cream pseudo-depth attachment.
+                            try {
+                                tmpEuler.setFromQuaternion(tmpQuat, 'YXZ');
+                                latestFacePitchRad = tmpEuler.x || 0.0;
+                                latestFaceYawRad = tmpEuler.y || 0.0;
+                            } catch (_) {}
 
                             // Apply our own uniform scale
                             worldMatrix.scale(new THREE.Vector3(baseScale, baseScale, baseScale));
