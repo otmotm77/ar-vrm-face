@@ -2916,12 +2916,12 @@ const uvTap = screenPxToFaceLocal(tx, ty, basis);
             });
 }
 
-        function drawCreamBlob(ctx, x, y, r, opacity, angleRad = 0, stretchY = 1.0) {
+        function drawCreamBlob(ctx, x, y, r, opacity, angleRad = 0, stretchY = 1.0, rxScale = 1.0) {
             ctx.save();
             ctx.translate(x, y);
             ctx.rotate(angleRad);
 
-            const rx = r * 1.00;
+            const rx = r * 1.00 * rxScale;
             const ry = r * 1.18 * stretchY;
 
             const g = ctx.createRadialGradient(-rx * 0.15, -ry * 0.20, 0, 0, 0, Math.max(rx, ry));
@@ -3048,6 +3048,8 @@ const ang = Math.atan2(dvy, dvx);
                                 v0: local.v,
                                 sizeU: patchSize,
                                 sizeV: patchSize * (0.75 + Math.random() * 0.30),
+                                rotRad: (Math.random() * 2 - 1) * (Math.PI / 180) * 5,
+                                rxScale: 0.8 + Math.random() * 0.4,
                                 spreadT: 0,
                                 dripDelay: 1.4 + Math.random() * 1.4,
                                 dripRate: 1.0 / (1.4 + Math.random() * 1.8),
@@ -3068,6 +3070,8 @@ const ang = Math.atan2(dvy, dvx);
                                     v0: local.v + (Math.random() - 0.5) * 0.10,
                                     sizeU: 0.07 + Math.random() * 0.06,
                                     sizeV: 0.06 + Math.random() * 0.06,
+                                    rotRad: (Math.random() * 2 - 1) * (Math.PI / 180) * 5,
+                                    rxScale: 0.8 + Math.random() * 0.4,
                                     spreadT: 0,
                                     dripDelay: 999,
                                     dripAcc: 0,
@@ -3113,11 +3117,12 @@ const ang = Math.atan2(dvy, dvx);
                 if (useBasis) {
                     const pxy = faceLocalToScreenPx(s.u, s.v, useBasis);
                     if (pxy) {
-                        const r = useBasis.faceW * 0.18 * s.sizeU * spread * narrow;
-                        const ang = (useBasis.roll || 0) + (s.rollBias || 0);
+                        const r = useBasis.faceW * 0.18 * s.sizeU * spread;
+                        const ang = (useBasis.roll || 0) + (s.rollBias || 0) + (s.rotRad || 0);
                         const stretchY = 1.0 + Math.max(0, (s.age - s.dripDelay) * 0.10);
+                        const rxScale = (s.rxScale || 1.0) * narrow;
                         creamOverlayCtx.globalAlpha = 0.75 * a;
-                        drawCreamBlob(creamOverlayCtx, pxy.x, pxy.y, r, 1.0, ang, stretchY);
+                        drawCreamBlob(creamOverlayCtx, pxy.x, pxy.y, r, 1.0, ang, stretchY, rxScale);
                         creamOverlayCtx.globalAlpha = 1.0;
                     }
                 }
