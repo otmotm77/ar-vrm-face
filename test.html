@@ -811,12 +811,25 @@
         
 // ===== App Version (single source of truth) =====
 const APP_VERSION = "v6.01.08";
-const APP_VERSION_NOTE = "cream: flow taper (narrowing width) | multi-shot tap + stronger flow";
+const APP_VERSION_NOTE = "cream: auto-shot covers head scale (uniform ellipse) | patches start more vertical/liquid";
 
 
 function getOverlayPixelRatio() {
   // Must match resizeCreamOverlayCanvas()/resizeBreathOverlayCanvas() DPR clamp for performance.
   return Math.min(window.devicePixelRatio || 1, 2);
+}
+
+
+function getHeadOverlayScale() {
+  // The VRM head overlay is scaled via adjustmentGroup.scale (scaleSlider).
+  // Use it to expand/contract the auto-shot sampling area, so shots still cover the visible head.
+  try {
+    if (typeof scaleSlider !== "undefined" && scaleSlider) {
+      const s = parseFloat(scaleSlider.value);
+      return (isFinite(s) && s > 0) ? s : 1;
+    }
+  } catch (e) {}
+  return 1;
 }
 
 function setAppVersionLabel() {
@@ -3040,16 +3053,22 @@ const CREAM_SHOT_COOLDOWN_MS = 320;
                 // Auto/random: pick a point inside the head/face area (face-local UV), then convert to CSS pixels.
                 // U: left(-) to right(+), V: up(-) to down(+)
                 let u = 0, v = 0;
-                // Sample inside an ellipse to stay roughly within the face silhouette.
-                for (let k = 0; k < 8; k++) {
-                    const uu = (Math.random() * 2 - 1) * 0.46;   // ~±0.46 face widths
-                    const vv = -0.35 + Math.random() * 1.25;     // forehead..chin (biased range)
-                    const eu = uu / 0.46;
-                    const ev = (vv - 0.22) / 0.70;
-                    if ((eu * eu + ev * ev) <= 1.0) { u = uu; v = vv; break; }
-                    u = uu; v = vv;
-                }
-                const pt = faceLocalToScreenPx(u, v, basis);
+                // Sample uniformly inside an ellipse so it doesn't bias toward the center.
+// Expand/contract sampling with the VRM head overlay scale.
+const headS = getHeadOverlayScale();
+const a = 0.50 * headS;     // half-width in face-local units
+const b = 0.95 * headS;     // half-height in face-local units
+const vCenter = 0.08;       // shift slightly toward forehead
+const theta = Math.random() * Math.PI * 2;
+const rr = Math.sqrt(Math.random()); // sqrt => uniform area
+u = a * rr * Math.cos(theta);
+v = vCenter + (b * rr * Math.sin(theta));
+
+// Keep within a reasonable face-local range to avoid going outside the head too often
+u = Math.max(-0.85, Math.min(0.85, u));
+v = Math.max(-0.70, Math.min(1.35, v));
+
+const pt = faceLocalToScreenPx(u, v, basis);
                 tx = (pt ? pt.x : centerX);
                 ty = (pt ? pt.y : centerY);
             } else {
@@ -3239,7 +3258,7 @@ const ang = Math.atan2(dvy, dvx);
                                 v: local.v,
                                 v0: local.v,
                                 sizeU: patchSize,
-                                sizeV: patchSize * (0.75 + Math.random() * 0.30),
+                                sizeV: patchSize * (1.40 + Math.random() * 0.85), // more vertical (liquid-like)
                                 rotRad: (Math.random() * 2 - 1) * (Math.PI / 180) * 5,
                                 rxScale: 0.8 + Math.random() * 0.4,
                                 spreadT: 0,
@@ -3253,6 +3272,8 @@ const ang = Math.atan2(dvy, dvx);
 
                             const n = 2 + Math.floor(Math.random() * 3);
                             for (let i = 0; i < n; i++) {
+                                const su = 0.07 + Math.random() * 0.06;
+                                const sv = su * (1.20 + Math.random() * 0.70); // vertical splashes
                                 creamPatches.push({
                                     age: 0,
                                     life: 3.2 + Math.random() * 2.0,
@@ -3260,8 +3281,8 @@ const ang = Math.atan2(dvy, dvx);
                                     u: local.u + (Math.random() - 0.5) * 0.10,
                                     v: local.v + (Math.random() - 0.5) * 0.10,
                                     v0: local.v + (Math.random() - 0.5) * 0.10,
-                                    sizeU: 0.07 + Math.random() * 0.06,
-                                    sizeV: 0.06 + Math.random() * 0.06,
+                                    sizeU: su,
+                                    sizeV: sv,
                                     rotRad: (Math.random() * 2 - 1) * (Math.PI / 180) * 5,
                                     rxScale: 0.8 + Math.random() * 0.4,
                                     spreadT: 0,
@@ -3312,7 +3333,8 @@ const ang = Math.atan2(dvy, dvx);
                     if (pxy) {
                         const r = useBasis.faceW * 0.18 * s.sizeU * spread;
                         const ang = (useBasis.roll || 0) + (s.rollBias || 0) + (s.rotRad || 0);
-                        const stretchY = 1.0 + Math.max(0, (s.age - s.dripDelay) * 0.10);
+                        const baseStretch = (s.sizeV && s.sizeU) ? Math.min(3.0, Math.max(0.8, (s.sizeV / Math.max(1e-6, s.sizeU)))) : 1.0;
+                        const stretchY = baseStretch * (1.0 + Math.max(0, (s.age - s.dripDelay) * 0.10));
                         const rxScale = (s.rxScale || 1.0) * narrow;
                         creamOverlayCtx.globalAlpha = 0.75 * a;
                         drawCreamBlob(creamOverlayCtx, pxy.x, pxy.y, r, 1.0, ang, stretchY, rxScale);
