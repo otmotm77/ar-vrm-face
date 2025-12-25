@@ -783,8 +783,8 @@
     <script type="module">
         
 // ===== App Version (single source of truth) =====
-const APP_VERSION = "v6.01.07";
-const APP_VERSION_NOTE = "cream: lifetime slider + bezier shot";
+const APP_VERSION = "v6.01.08";
+const APP_VERSION_NOTE = "cream: flow taper (narrowing width)";
 function setAppVersionLabel() {
   const el = document.getElementById("app-version");
   if (!el) return;
@@ -3045,6 +3045,7 @@ const ang = Math.atan2(dvy, dvx);
                                 fadeStart: getCreamFadeStartSec(),
                                 u: local.u,
                                 v: local.v,
+                                v0: local.v,
                                 sizeU: patchSize,
                                 sizeV: patchSize * (0.75 + Math.random() * 0.30),
                                 spreadT: 0,
@@ -3064,6 +3065,7 @@ const ang = Math.atan2(dvy, dvx);
                                     fadeStart: 2.0,
                                     u: local.u + (Math.random() - 0.5) * 0.10,
                                     v: local.v + (Math.random() - 0.5) * 0.10,
+                                    v0: local.v + (Math.random() - 0.5) * 0.10,
                                     sizeU: 0.07 + Math.random() * 0.06,
                                     sizeV: 0.06 + Math.random() * 0.06,
                                     spreadT: 0,
@@ -3102,10 +3104,16 @@ const ang = Math.atan2(dvy, dvx);
                     s.v += s.flowVel * delta;
                 }
 
+
+                // As the patch flows downward, gradually narrow its width (rx) for a tapered look
+                if (typeof s.v0 !== 'number') s.v0 = s.v;
+                const flowDist = Math.max(0, s.v - s.v0);        // face-local v units moved downward
+                const narrowT  = Math.min(1, flowDist / 0.030);  // reach max narrowing after ~0.03v
+                const narrow   = Math.max(0.45, 1.0 - 0.55 * narrowT);
                 if (useBasis) {
                     const pxy = faceLocalToScreenPx(s.u, s.v, useBasis);
                     if (pxy) {
-                        const r = useBasis.faceW * 0.18 * s.sizeU * spread;
+                        const r = useBasis.faceW * 0.18 * s.sizeU * spread * narrow;
                         const ang = (useBasis.roll || 0) + (s.rollBias || 0);
                         const stretchY = 1.0 + Math.max(0, (s.age - s.dripDelay) * 0.10);
                         creamOverlayCtx.globalAlpha = 0.75 * a;
