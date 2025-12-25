@@ -71,7 +71,42 @@
             z-index: 2001;
         }
 
-        .icon-btn {
+        
+        /* Left-bottom action button: Cream splash */
+        .cream-shot-btn{
+            position: fixed;
+            left: 12px;
+            bottom: 12px;
+            width: 58px;
+            height: 58px;
+            border-radius: 999px;
+            border: 1px solid rgba(255,255,255,0.35);
+            background: rgba(255,255,255,0.18);
+            color: rgba(255,255,255,0.95);
+            font-size: 28px;
+            line-height: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 2600;
+            backdrop-filter: blur(6px);
+            -webkit-backdrop-filter: blur(6px);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.25);
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: manipulation;
+            pointer-events: auto;
+        }
+        .cream-shot-btn:active{
+            transform: scale(0.96);
+        }
+        .cream-shot-btn.on{
+            background: rgba(120,255,180,0.24);
+            border-color: rgba(120,255,180,0.75);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.25), 0 0 0 2px rgba(120,255,180,0.16) inset;
+        }
+
+.icon-btn {
             background: rgba(255, 255, 255, 0.8);
             border: none;
             border-radius: 50%;
@@ -388,6 +423,9 @@
             <button id="toggle-fullscreen-btn" class="icon-btn" title="全画面表示切替">⛶</button>
         </div>
 
+        <!-- Left-bottom toggle button: Auto cream shot -->
+        <button id="auto-cream-toggle-btn" class="cream-shot-btn" type="button" title="自動射出 ON/OFF">A</button>
+
         <!-- メイン設定パネル -->
         <div class="control-panel" id="control-panel" style="display:none;">
             <h1>モデル・トラッキング</h1>
@@ -464,6 +502,44 @@
 
             
             </div>
+
+<h2>クリーム射出</h2>
+            <div class="slider-container">
+                <label class="toggle-label">
+                    <input type="checkbox" id="cream-auto-toggle" class="toggle-checkbox">
+                    自動射出（左下ボタンでも切替）
+                </label>
+            </div>
+            <div class="slider-container">
+                <span class="slider-label">射出間隔秒数</span>
+                <input type="range" id="cream-auto-interval-slider" min="0.2" max="10" step="0.1" value="1.5">
+                <span id="cream-auto-interval-slider-val" class="val-display">1.5</span>
+            </div>
+
+            <div class="slider-container">
+                <span class="slider-label">クリームサイズ</span>
+                <input type="range" id="cream-size-mul-slider" min="0.5" max="2.0" step="0.05" value="1.0">
+                <span id="cream-size-mul-slider-val" class="val-display">1.0</span>
+            </div>
+            <div class="slider-container">
+                <span class="slider-label">同時射出個数</span>
+                <input type="range" id="cream-simul-count-slider" min="1" max="20" step="1" value="3">
+                <span id="cream-simul-count-slider-val" class="val-display">3</span>
+            </div>
+
+
+            
+                <div class="slider-container">
+                    <span class="slider-label">クリーム消滅時間<br>(Cream Lifetime)</span>
+                    <input type="range" id="cream-life-slider" min="1" max="30" step="1" value="10">
+                    <span id="cream-life-slider-val" class="val-display">10</span>
+                </div>
+            <div class="slider-container">
+                <span class="slider-label">最大クリーム数</span>
+                <input type="range" id="cream-max-count-slider" min="10" max="200" step="1" value="40">
+                <span id="cream-max-count-slider-val" class="val-display">40</span>
+            </div>
+
 <h2>表情設定</h2>
             <div class="slider-container">
                 <label class="toggle-label">
@@ -738,8 +814,7 @@
                     <input type="range" id="cam-softglow-slider" min="0" max="100" step="1" value="0">
                     <span id="cam-softglow-slider-val" class="val-display">0</span>
                 </div>
-
-            </div>
+</div>
         </div>
     </div>
 
@@ -748,8 +823,28 @@
     <script type="module">
         
 // ===== App Version (single source of truth) =====
-const APP_VERSION = "v6.00.06";
-const APP_VERSION_NOTE = "camera: add black level + color temperature; improve skin smooth (blur blend)";
+const APP_VERSION = "v6.01.15";
+const APP_VERSION_NOTE = "cream: auto target uses face-oval screen sampling + exclude lower 10% | note: cream is 2D overlay (no Z)";
+
+
+function getOverlayPixelRatio() {
+  // Must match resizeCreamOverlayCanvas()/resizeBreathOverlayCanvas() DPR clamp for performance.
+  return Math.min(window.devicePixelRatio || 1, 2);
+}
+
+
+function getHeadOverlayScale() {
+  // The VRM head overlay is scaled via adjustmentGroup.scale (scaleSlider).
+  // Use it to expand/contract the auto-shot sampling area, so shots still cover the visible head.
+  try {
+    if (typeof scaleSlider !== "undefined" && scaleSlider) {
+      const s = parseFloat(scaleSlider.value);
+      return (isFinite(s) && s > 0) ? s : 1;
+    }
+  } catch (e) {}
+  return 1;
+}
+
 function setAppVersionLabel() {
   const el = document.getElementById("app-version");
   if (!el) return;
@@ -910,7 +1005,107 @@ let latestCheekLVideoX = 0.35; // normalized in ORIGINAL video frame (0..1)
 
         // 2D overlay breath particles (more robust than 3D sprites across devices)
         let breathOverlayCanvas = null;
-        let breathOverlayCtx = null;
+        // 2D overlay cream effect (independent canvas above WebGL)
+        let creamOverlayCanvas = null;
+        let creamOverlayCtx = null;
+
+        // Cream VFX state
+        let creamProjectiles = [];
+        let creamPatches = [];
+        let creamLastFaceBasis = null; // cached basis for when tracking is lost
+        let creamLastFaceValid = false;
+                let creamLastShotMs = 0;
+        
+                
+                let creamNextPatchGroupId = 1;
+// Cream lifetime (seconds). Controlled via UI slider (1-30s).
+                var creamLifetimeSec = 10.0;
+                function getCreamFadeStartSec() {
+                    return Math.max(0.0, creamLifetimeSec * 0.7);
+                }
+
+
+                // Auto cream shot settings
+                let creamAutoEnabled = false;
+                var creamAutoIntervalSec = 1.5; // base interval (seconds)
+                var creamMaxCount = 40;         // max total (patches + projectiles)
+                var creamSizeMul = 1.0;      // size multiplier (0.5-2.0)
+                var creamSimulCount = 3;   // simultaneous shots per tap/auto (1-20)
+                let creamAutoElapsedSec = 0.0;
+                let creamNextAutoIntervalSec = null;
+
+                function scheduleNextAutoCream() {
+                    const base = Math.max(0.2, creamAutoIntervalSec || 1.5);
+                    // Add ±20% randomness to the interval
+                    creamNextAutoIntervalSec = base * (0.5 + Math.random() * 1.5);
+                    creamAutoElapsedSec = 0.0;
+                }
+
+                function enforceCreamLimit() {
+                    const maxGroups = Math.max(10, Math.min(200, (creamMaxCount | 0) || 40));
+
+                    // Keep projectiles from causing evictions (they are short-lived).
+                    const maxProjectiles = Math.max(10, Math.min(160, Math.floor(maxGroups * 1.2) + 20));
+                    while (creamProjectiles.length > maxProjectiles) {
+                        creamProjectiles.shift();
+                    }
+
+                    // 1) Cap splatter count first (keep main blobs stable).
+                    const maxSplatter = Math.max(20, Math.floor(maxGroups * 3.0));
+                    let splCount = 0;
+                    for (const p of creamPatches) if (p && p.isSplatter) splCount++;
+                    while (splCount > maxSplatter) {
+                        const idx = creamPatches.findIndex(p => p && p.isSplatter);
+                        if (idx >= 0) {
+                            creamPatches.splice(idx, 1);
+                            splCount--;
+                        } else break;
+                    }
+
+                    // 2) Enforce max "cream count" by GROUPS of main patches.
+                    //    This allows an auto-shot burst (2x shots) to still count as 1.
+                    const buildGroups = () => {
+                        const groups = new Map(); // gid -> { firstIndex, bornMs }
+                        for (let i = 0; i < creamPatches.length; i++) {
+                            const p = creamPatches[i];
+                            if (!p || p.isSplatter) continue;
+                            const gid = (p.groupId !== undefined && p.groupId !== null) ? p.groupId : ("__single_" + i);
+                            if (!groups.has(gid)) {
+                                groups.set(gid, { firstIndex: i, bornMs: (p.groupBornMs || 0) });
+                            }
+                        }
+                        return groups;
+                    };
+
+                    let groups = buildGroups();
+                    while (groups.size > maxGroups) {
+                        // Remove oldest group (by bornMs, then by firstIndex)
+                        let oldestGid = null;
+                        let oldestBorn = Infinity;
+                        let oldestIdx = Infinity;
+                        for (const [gid, info] of groups.entries()) {
+                            const b = (info.bornMs || 0);
+                            const fi = info.firstIndex || 0;
+                            if (b < oldestBorn || (b === oldestBorn && fi < oldestIdx)) {
+                                oldestBorn = b;
+                                oldestIdx = fi;
+                                oldestGid = gid;
+                            }
+                        }
+                        if (oldestGid === null) break;
+
+                        // Remove ALL patches that belong to that group (including splatter).
+                        creamPatches = creamPatches.filter(p => {
+                            if (!p) return false;
+                            if (p.groupId === undefined || p.groupId === null) return true;
+                            return p.groupId !== oldestGid;
+                        });
+
+                        groups = buildGroups();
+                    }
+                }
+
+                let breathOverlayCtx = null;
         let blush2DDebug = null; // debug snapshot for 2D blush mapping/rotation
 
         let breathParticles2D = [];
@@ -921,7 +1116,14 @@ let latestCheekLVideoX = 0.35; // normalized in ORIGINAL video frame (0..1)
         const breathTmpV = new THREE.Vector3(); // reuse for projection
         const breathTmpV2 = new THREE.Vector3(); // pivot projection
 
-        let breathEmitter = null;          // attached to adjustmentGroup (mouth position proxy)
+        let breathEmitter = null;
+                creamOverlayCanvas = null;
+                creamOverlayCtx = null;
+                creamProjectiles = [];
+                creamPatches = [];
+                creamLastFaceBasis = null;
+                creamLastFaceValid = false;
+          // attached to adjustmentGroup (mouth position proxy)
         let breathParticles = null;        // world-space particles group
         let breathTexture = null;          // shared texture
         let breathEmitAcc = 0;
@@ -1405,6 +1607,111 @@ const tabVrm = document.getElementById('tab-vrm');
                 updateOccluder();
             });
         });
+// Cream lifetime slider (1-30s)
+const creamLifeSlider = document.getElementById('cream-life-slider');
+if (creamLifeSlider) {
+    updateSliderDisplay(creamLifeSlider);
+    creamLifetimeSec = parseFloat(creamLifeSlider.value) || creamLifetimeSec;
+    creamLifeSlider.addEventListener('input', () => {
+        updateSliderDisplay(creamLifeSlider);
+        creamLifetimeSec = parseFloat(creamLifeSlider.value) || creamLifetimeSec;
+            saveSettings();
+    });
+}
+
+
+// Cream auto shot interval slider (seconds)
+const creamAutoIntervalSlider = document.getElementById('cream-auto-interval-slider');
+if (creamAutoIntervalSlider) {
+    updateSliderDisplay(creamAutoIntervalSlider);
+    creamAutoIntervalSec = parseFloat(creamAutoIntervalSlider.value) || creamAutoIntervalSec;
+    creamAutoIntervalSlider.addEventListener('input', () => {
+        updateSliderDisplay(creamAutoIntervalSlider);
+        creamAutoIntervalSec = parseFloat(creamAutoIntervalSlider.value) || creamAutoIntervalSec;
+        if (creamAutoEnabled) scheduleNextAutoCream(); // re-roll interval on change
+        saveSettings();
+    });
+}
+
+
+// Cream size multiplier slider (0.5-2.0)
+const creamSizeMulSlider = document.getElementById('cream-size-mul-slider');
+if (creamSizeMulSlider) {
+    updateSliderDisplay(creamSizeMulSlider);
+    creamSizeMul = parseFloat(creamSizeMulSlider.value) || creamSizeMul;
+    creamSizeMulSlider.addEventListener('input', () => {
+        updateSliderDisplay(creamSizeMulSlider);
+        creamSizeMul = parseFloat(creamSizeMulSlider.value) || creamSizeMul;
+        saveSettings();
+    });
+}
+
+// Cream simultaneous shot count slider (1-20)
+const creamSimulCountSlider = document.getElementById('cream-simul-count-slider');
+if (creamSimulCountSlider) {
+    updateSliderDisplay(creamSimulCountSlider);
+    creamSimulCount = parseInt(creamSimulCountSlider.value, 10) || creamSimulCount;
+    creamSimulCountSlider.addEventListener('input', () => {
+        updateSliderDisplay(creamSimulCountSlider);
+        creamSimulCount = parseInt(creamSimulCountSlider.value, 10) || creamSimulCount;
+        saveSettings();
+    });
+}
+
+// Max cream count slider (10-200)
+const creamMaxCountSlider = document.getElementById('cream-max-count-slider');
+if (creamMaxCountSlider) {
+    updateSliderDisplay(creamMaxCountSlider);
+    creamMaxCount = parseInt(creamMaxCountSlider.value, 10) || creamMaxCount;
+    creamMaxCountSlider.addEventListener('input', () => {
+        updateSliderDisplay(creamMaxCountSlider);
+        creamMaxCount = parseInt(creamMaxCountSlider.value, 10) || creamMaxCount;
+        enforceCreamLimit();
+        saveSettings();
+    });
+}
+
+const creamAutoToggle = document.getElementById('cream-auto-toggle');
+const autoCreamBtn = document.getElementById('auto-cream-toggle-btn');
+
+function syncCreamAutoUI() {
+    if (creamAutoToggle) creamAutoToggle.checked = !!creamAutoEnabled;
+    if (autoCreamBtn) {
+        autoCreamBtn.classList.toggle('on', !!creamAutoEnabled);
+        autoCreamBtn.setAttribute('aria-pressed', creamAutoEnabled ? 'true' : 'false');
+        autoCreamBtn.textContent = '💧';
+        autoCreamBtn.title = creamAutoEnabled ? '自動射出: ON' : '自動射出: OFF';
+    }
+}
+
+function setCreamAutoEnabled(v) {
+    creamAutoEnabled = !!v;
+    if (creamAutoEnabled) {
+        scheduleNextAutoCream();
+    } else {
+        creamNextAutoIntervalSec = null;
+    }
+    syncCreamAutoUI();
+    saveSettings();
+}
+
+if (creamAutoToggle) {
+    creamAutoToggle.addEventListener('change', () => {
+        setCreamAutoEnabled(creamAutoToggle.checked);
+    });
+}
+
+if (autoCreamBtn) {
+    autoCreamBtn.addEventListener('pointerdown', (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        setCreamAutoEnabled(!creamAutoEnabled);
+    }, { passive: false });
+}
+
+// Initial UI sync
+syncCreamAutoUI();
+
 
         // 個別のイベントリスナー (Transform用)
         [scaleSlider, ySlider, zSlider].forEach(el => el.addEventListener('input', updateTransform));
@@ -1447,7 +1754,40 @@ forceShadowToggle.addEventListener('change', () => {
         
         shadowDetails.style.display = forceShadowToggle.checked ? 'block' : 'none';
 
-        document.getElementById('toggle-menu-btn').addEventListener('click', () => {
+        
+        // --- Cream VFX trigger (tap anywhere on camera view) ---
+        // Tap on the camera/AR area to shoot cream toward the tapped point.
+        // This avoids UI buttons and works well on mobile.
+        const fireCreamAtTap = (ev) => {
+            // Ignore taps on UI elements (panels/buttons)
+            const t = ev.target;
+            if (t && (t.closest?.('.control-panel') || t.closest?.('.icon-buttons') || t.closest?.('.panel') || t.id === 'auto-cream-toggle-btn' || t.closest?.('#auto-cream-toggle-btn'))) return;
+            if (!creamOverlayCanvas) return;
+            const rect = creamOverlayCanvas.getBoundingClientRect();
+            let x = ev.clientX - rect.left;
+            const y = ev.clientY - rect.top;
+            // If the camera/view is mirrored, screen-left corresponds to larger X in the unmirrored overlay.
+            if (typeof mirrorEnabled === "boolean" && mirrorEnabled) {
+                x = rect.width - x;
+            }
+            // 2-3 shots per tap with slight randomized hit offsets (mostly vertical)
+            const now = performance.now();
+            if (now - creamLastShotMs < CREAM_SHOT_COOLDOWN_MS) return;
+            creamLastShotMs = now;
+
+            const shotCount = Math.max(1, Math.min(20, (creamSimulCount | 0) || 1));
+            for (let i = 0; i < shotCount; i++) {
+                // Keep horizontal jitter tiny, vertical jitter a bit larger (slightly biased downward)
+                const dx = (Math.random() * 2 - 1) * 5.0;                 // ±5px
+                const dy = (Math.random() * 2 - 1) * 14.0 + 6.0;          // mostly vertical, slight down-bias
+                spawnCreamBurst(x + dx, y + dy, true);
+            }
+        };
+        if (arContainer) {
+            arContainer.addEventListener('pointerdown', fireCreamAtTap, { passive: true });
+        }
+
+document.getElementById('toggle-menu-btn').addEventListener('click', () => {
             // close the other panel first
             lightPanel.style.display = 'none';
             const isHidden = getComputedStyle(controlPanel).display === 'none';
@@ -1490,38 +1830,236 @@ forceShadowToggle.addEventListener('change', () => {
         const switchCameraFacing = async (wantFacing) => {
             if (!videoEl) return;
             if (wantFacing !== 'user' && wantFacing !== 'environment') return;
-            if (currentFacingMode === wantFacing && stream) return;
 
-            currentFacingMode = wantFacing;
-            showToast(currentFacingMode === 'user' ? "インカメラに切り替えます" : "アウトカメラに切り替えます");
-
-            // Default mirror behavior when not explicitly overridden
-            if (!mirrorUserOverride) {
-                mirrorEnabled = (currentFacingMode === 'user');
-                if (mirrorToggle) mirrorToggle.checked = mirrorEnabled;
+            // If already on requested facing and stream exists, do nothing
+            if (currentFacingMode === wantFacing && stream) {
+                syncTrackingTogglesFromState();
+                return;
             }
-            applyMirrorToRenderer();
+
+            const prevFacing = currentFacingMode;
+            const prevStream = stream;
+
+            const stopStream = (st) => {
+                try {
+                    if (!st) return;
+                    st.getTracks().forEach(t => {
+                        try { t.stop(); } catch (_) {}
+                    });
+                } catch (_) {}
+            };
+
+            const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+            const waitForVideoEvent = (el, evName, timeoutMs=1500) => new Promise(resolve => {
+                try {
+                    if (!el) return resolve(false);
+                    const done = (ok) => {
+                        try { clearTimeout(t); } catch (_) {}
+                        try { el.removeEventListener(evName, onEv); } catch (_) {}
+                        resolve(!!ok);
+                    };
+                    const onEv = () => done(true);
+                    if ((evName === 'loadedmetadata' && el.readyState >= 1) || (evName !== 'loadedmetadata' && el.readyState >= 2)) {
+                        return done(true);
+                    }
+                    const t = setTimeout(() => done(false), timeoutMs);
+                    el.addEventListener(evName, onEv, { once: true });
+                } catch (_) { resolve(false); }
+            });
+
+            const waitForFirstFrame = async (el, timeoutMs=1500) => {
+                try {
+                    if (!el) return false;
+                    if (el.readyState >= 2) return true;
+                    const start = performance.now();
+                    return await new Promise(resolve => {
+                        const tick = () => {
+                            if (el.readyState >= 2) return resolve(true);
+                            if (performance.now() - start > timeoutMs) return resolve(false);
+                            if (typeof el.requestVideoFrameCallback === 'function') {
+                                el.requestVideoFrameCallback(() => tick());
+                            } else {
+                                requestAnimationFrame(tick);
+                            }
+                        };
+                        tick();
+                    });
+                } catch (_) { return false; }
+            };
+
+
+            const buildFacingConstraints = (includeResFps) => {
+                const v = { facingMode: { ideal: wantFacing } };
+
+                // Some builds referenced currentCamWidth/currentCamHeight which may not exist.
+                // Use the current video track dimensions (if available) as a soft hint instead.
+                const vwHint = (videoEl && videoEl.videoWidth) ? videoEl.videoWidth : 0;
+                const vhHint = (videoEl && videoEl.videoHeight) ? videoEl.videoHeight : 0;
+
+                if (includeResFps && vwHint && vhHint) {
+                    v.width  = { ideal: vwHint };
+                    v.height = { ideal: vhHint };
+                } else {
+                    // Use a reasonable default hint only
+                    v.width  = { ideal: 1280 };
+                    v.height = { ideal: 720 };
+                }
+                return { video: v, audio: false };
+            };
+
+            const pickDeviceIdForFacing = async () => {
+                try {
+                    const devices = await navigator.mediaDevices.enumerateDevices();
+                    const cams = devices.filter(d => d.kind === 'videoinput');
+                    if (!cams.length) return null;
+
+                    const label = (s) => (s || '').toLowerCase();
+                    const isBack = (d) => /back|rear|environment|アウト|背面/.test(label(d.label));
+                    const isFront = (d) => /front|user|face|イン|前面/.test(label(d.label));
+
+                    let candidates = [];
+                    if (wantFacing === 'environment') {
+                        candidates = cams.filter(isBack);
+                        if (!candidates.length) candidates = cams; // fallback
+                    } else {
+                        candidates = cams.filter(isFront);
+                        if (!candidates.length) candidates = cams; // fallback
+                    }
+
+                    // Prefer the last one (often the primary/back on some Androids), but try a few.
+                    const ids = [];
+                    for (let i = candidates.length - 1; i >= 0; i--) ids.push(candidates[i].deviceId);
+                    // Ensure uniqueness
+                    return Array.from(new Set(ids)).slice(0, 3);
+                } catch (_) {
+                    return null;
+                }
+            };
+
+            const tryGetUserMedia = async (attempts) => {
+                let lastErr = null;
+                for (const a of attempts) {
+                    try {
+                        const st = await navigator.mediaDevices.getUserMedia(a);
+                        return { stream: st, err: null };
+                    } catch (e) {
+                        lastErr = e;
+                    }
+                }
+                return { stream: null, err: lastErr };
+            };
+
+            const showFail = (err) => {
+                const name = err && err.name ? err.name : 'UnknownError';
+                showToast('カメラ切替に失敗しました (' + name + ')');
+            };
 
             try {
-                if (stream) {
-                    stream.getTracks().forEach(t => t.stop());
+                // 1) Try switching without stopping previous stream (works on many devices)
+                const attempts = [
+                    buildFacingConstraints(true),
+                    buildFacingConstraints(false),
+                    { video: { facingMode: { exact: wantFacing } }, audio: false },
+                ];
+
+                // 2) Add deviceId-based attempts (more reliable on some browsers)
+                const ids = await pickDeviceIdForFacing();
+                if (ids && ids.length) {
+                    for (const id of ids) {
+                        attempts.push({ video: { deviceId: { exact: id } }, audio: false });
+                        attempts.push({ video: { deviceId: { exact: id }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
+                    }
                 }
-                stream = await navigator.mediaDevices.getUserMedia({
-                    video: {
-                        facingMode: { ideal: currentFacingMode },
-                        width: { ideal: currentCamWidth || 1280 },
-                        height: { ideal: currentCamHeight || 720 },
-                        frameRate: { ideal: currentCamFps || 30 }
-                    },
-                    audio: false
-                });
-                videoEl.srcObject = stream;
-                await videoEl.play();
-                lastVideoRect = null;
+
+                let { stream: newStream, err: err1 } = await tryGetUserMedia(attempts);
+
+                // Some devices can't open the other camera while the first is active.
+                // If we get NotReadable/TrackStart-like errors, stop previous stream and retry once.
+                const errName = err1 && err1.name ? err1.name : '';
+                const needsStopRetry = (errName === 'NotReadableError' || errName === 'TrackStartError' || errName === 'AbortError');
+
+                if (!newStream && needsStopRetry) {
+                    stopStream(prevStream);
+                    if (videoEl) videoEl.srcObject = null;
+                    await sleep(80);
+                    ({ stream: newStream, err: err1 } = await tryGetUserMedia(attempts));
+                }
+
+                if (!newStream) {
+                    console.error('Camera switch failed:', err1);
+                    showFail(err1);
+                    currentFacingMode = prevFacing;
+                    stream = prevStream;
+                    syncTrackingTogglesFromState();
+                    return;
+                }
+
+                // Apply new stream
+                const oldStreamToStop = prevStream;
+                stream = newStream;
+                currentFacingMode = wantFacing;
+
+                try {
+                    // Attach new stream (avoid overwriting global handlers by using addEventListener)
+                    try { videoEl.pause(); } catch (_) {}
+                    videoEl.srcObject = newStream;
+
+                    // Wait for metadata / canplay (best-effort)
+                    await waitForVideoEvent(videoEl, 'loadedmetadata', 2000);
+                    try { await videoEl.play(); } catch (_) {}
+
+                    // Ensure at least one frame becomes available so drawVideoToDisplayCanvas can update
+                    await waitForFirstFrame(videoEl, 2000);
+
+                    // Force an immediate refresh of the background once after switching
+                    try {
+                        ensureDisplayCanvasSize();
+                        drawVideoToDisplayCanvas();
+                    } catch (_) {}
+                } catch (applyErr) {
+                    console.error('Camera switch apply failed:', applyErr);
+                    showFail(applyErr);
+                    // rollback
+                    stopStream(newStream);
+                    stream = prevStream;
+                    currentFacingMode = prevFacing;
+                    if (videoEl && prevStream) videoEl.srcObject = prevStream;
+                    syncTrackingTogglesFromState();
+                    return;
+                }
+
+                // Now stop old stream after successful apply (if still alive)
+                stopStream(oldStreamToStop);
+
+                // Update current capture size hints (best-effort)
+                try {
+                    const track = newStream.getVideoTracks()[0];
+                    const st = track && track.getSettings ? track.getSettings() : null;
+                    if (st && st.width) currentCamWidth = st.width;
+                    if (st && st.height) currentCamHeight = st.height;
+                } catch (_) {}
+
                 syncTrackingTogglesFromState();
+                showToast(currentFacingMode === 'user' ? "インカメラに切り替えました" : "アウトカメラに切り替えました");
+
+                // Resize overlays after camera swap (some devices change capture aspect)
+                setTimeout(() => {
+                    try { handleViewportResize(); } catch (_) {}
+                }, 80);
+
+                // Persist (if available)
+                try { if (typeof saveSettings === 'function') saveSettings(); } catch (_) {}
+
             } catch (err) {
-                console.error('Camera switch failed:', err);
-                showToast('カメラ切替に失敗しました');
+                console.error('Camera switch unexpected error:', err);
+                showFail(err);
+
+                // Restore previous state + UI
+                currentFacingMode = prevFacing;
+                stream = prevStream;
+                try { if (videoEl && prevStream) videoEl.srcObject = prevStream; } catch (_) {}
+                syncTrackingTogglesFromState();
             }
         };
 
@@ -1564,6 +2102,7 @@ forceShadowToggle.addEventListener('change', () => {
             }
             // 2D overlay canvas used by breath/blush must match viewport, especially on orientation change.
             try { resizeBreathOverlayCanvas(); } catch (_) {}
+            try { resizeCreamOverlayCanvas(); } catch (_) {}
         }
 
         window.addEventListener('resize', () => {
@@ -1611,7 +2150,12 @@ forceShadowToggle.addEventListener('change', () => {
                 breathOverlayCanvas.style.transform = `scaleX(${sx})`;
                 breathOverlayCanvas.style.transformOrigin = 'center center';
             }
-        }
+        
+            if (creamOverlayCanvas) {
+                creamOverlayCanvas.style.transform = `scaleX(${sx})`;
+                creamOverlayCanvas.style.transformOrigin = 'center center';
+            }
+}
 
         function getViewportSizeAtDepth(depth) {
             if (!camera) return { width: 1, height: 1 };
@@ -1702,6 +2246,15 @@ forceShadowToggle.addEventListener('change', () => {
                 blushSpread: (typeof blushSpreadSlider !== 'undefined' && blushSpreadSlider) ? blushSpreadSlider.value : '1.00',
                 blushFront: (typeof blushFrontToggle !== 'undefined' && blushFrontToggle) ? !!blushFrontToggle.checked : true,
                 blushColor: (typeof blushColorPicker !== 'undefined' && blushColorPicker) ? blushColorPicker.value : '#ff5fa0',
+                // Cream shooting
+                creamLife: (typeof creamLifeSlider !== 'undefined' && creamLifeSlider) ? creamLifeSlider.value : String(creamLifetimeSec),
+                creamAuto: (typeof creamAutoEnabled !== 'undefined') ? !!creamAutoEnabled : false,
+                creamInterval: (typeof creamAutoIntervalSlider !== 'undefined' && creamAutoIntervalSlider) ? creamAutoIntervalSlider.value : String(creamAutoIntervalSec),
+                creamMax: (typeof creamMaxCountSlider !== 'undefined' && creamMaxCountSlider) ? creamMaxCountSlider.value : String(creamMaxCount),
+                creamSizeMul: (typeof creamSizeMulSlider !== 'undefined' && creamSizeMulSlider) ? creamSizeMulSlider.value : String(creamSizeMul),
+                creamSimul: (typeof creamSimulCountSlider !== 'undefined' && creamSimulCountSlider) ? creamSimulCountSlider.value : String(creamSimulCount),
+                trackingFacing: currentFacingMode,
+                trackingMirror: !!mirrorEnabled,
             };
 
 
@@ -1784,7 +2337,61 @@ forceShadowToggle.addEventListener('change', () => {
 
                     if (typeof updateBlushUI === 'function') updateBlushUI(true);
 
-                    if (typeof updateBreathUI === 'function') updateBreathUI(true);
+ 
+                    // Cream shooting
+                    if (Object.prototype.hasOwnProperty.call(s, 'creamLife') && typeof creamLifeSlider !== 'undefined' && creamLifeSlider) {
+                        creamLifeSlider.value = s.creamLife;
+                        updateSliderDisplay(creamLifeSlider);
+                        creamLifetimeSec = parseFloat(creamLifeSlider.value) || creamLifetimeSec;
+                    }
+                    if (Object.prototype.hasOwnProperty.call(s, 'creamInterval') && typeof creamAutoIntervalSlider !== 'undefined' && creamAutoIntervalSlider) {
+                        creamAutoIntervalSlider.value = s.creamInterval;
+                        updateSliderDisplay(creamAutoIntervalSlider);
+                        creamAutoIntervalSec = parseFloat(creamAutoIntervalSlider.value) || creamAutoIntervalSec;
+                    }
+                    if (Object.prototype.hasOwnProperty.call(s, 'creamMax') && typeof creamMaxCountSlider !== 'undefined' && creamMaxCountSlider) {
+                        creamMaxCountSlider.value = s.creamMax;
+                        updateSliderDisplay(creamMaxCountSlider);
+                        creamMaxCount = parseInt(creamMaxCountSlider.value, 10) || creamMaxCount;
+                        enforceCreamLimit();
+                    }
+                    if (Object.prototype.hasOwnProperty.call(s, 'creamSizeMul') && typeof creamSizeMulSlider !== 'undefined' && creamSizeMulSlider) {
+                        creamSizeMulSlider.value = s.creamSizeMul;
+                        updateSliderDisplay(creamSizeMulSlider);
+                        creamSizeMul = parseFloat(creamSizeMulSlider.value) || creamSizeMul;
+                    }
+                    if (Object.prototype.hasOwnProperty.call(s, 'creamSimul') && typeof creamSimulCountSlider !== 'undefined' && creamSimulCountSlider) {
+                        creamSimulCountSlider.value = s.creamSimul;
+                        updateSliderDisplay(creamSimulCountSlider);
+                        creamSimulCount = parseInt(creamSimulCountSlider.value, 10) || creamSimulCount;
+                    }
+
+                    if (Object.prototype.hasOwnProperty.call(s, 'creamAuto')) {
+                        setCreamAutoEnabled(!!s.creamAuto);
+                    } else {
+                        syncCreamAutoUI();
+                    }
+
+                    // Tracking (camera + mirror)
+                    if (Object.prototype.hasOwnProperty.call(s, 'trackingMirror')) {
+                        mirrorEnabled = !!s.trackingMirror;
+                        mirrorUserOverride = true;
+                        try { if (mirrorToggle) mirrorToggle.checked = mirrorEnabled; } catch (_) {}
+                        try { applyMirrorToRenderer(); } catch (_) {}
+                    }
+                    if (Object.prototype.hasOwnProperty.call(s, 'trackingFacing')) {
+                        const want = s.trackingFacing;
+                        if (want === 'user' || want === 'environment') {
+                            currentFacingMode = want;
+                            try { if (facingToggle) facingToggle.checked = (want === 'environment'); } catch (_) {}
+                            // If camera already running, switch now (non-blocking)
+                            try {
+                                if (videoEl && stream) setTimeout(() => { try { switchCameraFacing(want); } catch (_) {} }, 0);
+                            } catch (_) {}
+                        }
+                    }
+
+                   if (typeof updateBreathUI === 'function') updateBreathUI(true);
 // 値の表示を更新
                     allSliders.forEach(el => updateSliderDisplay(el));
 
@@ -2274,6 +2881,19 @@ const ox = blushOffX * unit;
             breathOverlayCanvas.style.height = '100%';
         }
 
+        function resizeCreamOverlayCanvas() {
+            if (!creamOverlayCanvas) return;
+            const pr = Math.min(window.devicePixelRatio || 1, 2);
+            const w = Math.max(1, Math.floor(window.innerWidth * pr));
+            const h = Math.max(1, Math.floor(window.innerHeight * pr));
+            if (creamOverlayCanvas.width !== w || creamOverlayCanvas.height !== h) {
+                creamOverlayCanvas.width = w;
+                creamOverlayCanvas.height = h;
+            }
+            creamOverlayCanvas.style.width = '100%';
+            creamOverlayCanvas.style.height = '100%';
+   }
+
 function updateBreathEffect(delta) {
             let shiftX = 0, shiftY = 0;
             // 2D overlay "breath" effect drawn on breathOverlayCanvas.
@@ -2644,6 +3264,536 @@ function updateBreathEffect(delta) {
             breathOverlayCtx.globalCompositeOperation = 'source-over';
 
         }
+
+        // =========================
+        // Cream VFX (2D overlay)
+        // =========================
+        // Cream lifetime is controlled by slider (creamLifetimeSec)
+const CREAM_SHOT_COOLDOWN_MS = 320;
+
+        function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
+
+        function getCreamVideoRect(cssW, cssH) {
+            if (!videoEl) return null;
+            const vw = videoEl.videoWidth || 0;
+            const vh = videoEl.videoHeight || 0;
+            if (vw <= 0 || vh <= 0) return null;
+            return computeContainRect(cssW, cssH, vw, vh);
+        }
+
+        function mapMpLandmarkToScreenPx(p, cssW, cssH, rect) {
+            if (!p || !videoEl || !rect) return null;
+            const vw = videoEl.videoWidth || 0;
+            const vh = videoEl.videoHeight || 0;
+            if (vw <= 0 || vh <= 0) return null;
+
+            const mpW = (inputRotationDeg !== 0) ? (mpOffscreenCanvas.width || vw) : vw;
+            const mpH = (inputRotationDeg !== 0) ? (mpOffscreenCanvas.height || vh) : vh;
+            const vv = mpLandmarkNormToVideoNorm(p.x, p.y, vw, vh, inputRotationDeg, mpW, mpH);
+            if (!vv || !vv.ok) return null;
+
+            return { x: rect.x + vv.x * rect.w, y: rect.y + vv.y * rect.h, vx: vv.x, vy: vv.y };
+        }
+
+        function computeCreamFaceBasis(cssW, cssH) {
+            if (!latestFaceLandmarks0 || !videoEl) return null;
+            const rect = getCreamVideoRect(cssW, cssH);
+            if (!rect) return null;
+            const lm = latestFaceLandmarks0;
+            const le0 = lm[33];
+            const re0 = lm[263];
+            const lm0 = lm[61];
+            const rm0 = lm[291];
+            if (!le0 || !re0 || !lm0 || !rm0) return null;
+
+            const le = mapMpLandmarkToScreenPx(le0, cssW, cssH, rect);
+            const re = mapMpLandmarkToScreenPx(re0, cssW, cssH, rect);
+            const ml = mapMpLandmarkToScreenPx(lm0, cssW, cssH, rect);
+            const mr = mapMpLandmarkToScreenPx(rm0, cssW, cssH, rect);
+            if (!le || !re || !ml || !mr) return null;
+
+            const eyeMid = { x: (le.x + re.x) * 0.5, y: (le.y + re.y) * 0.5 };
+            const mouthMid = { x: (ml.x + mr.x) * 0.5, y: (ml.y + mr.y) * 0.5 };
+
+            const dx = (re.x - le.x);
+            const dy = (re.y - le.y);
+            const faceW = Math.max(12, Math.hypot(dx, dy));
+            let ux = dx / faceW;
+            let uy = dy / faceW;
+
+            let vx = -uy;
+            let vy = ux;
+
+            const mdx = (mouthMid.x - eyeMid.x);
+            const mdy = (mouthMid.y - eyeMid.y);
+            if (mdx * vx + mdy * vy < 0) { vx = -vx; vy = -vy; }
+
+// Ensure +V always points downward in screen space (fixes top/bottom inversion on some rotations).
+if (vy < 0) { vx = -vx; vy = -vy; }
+
+            const roll = Math.atan2(uy, ux);
+            return { rect, le, re, eyeMid, mouthMid, faceW, ux, uy, vx, vy, roll };
+        }
+
+        function screenPxToFaceLocal(px, py, basis) {
+            if (!basis) return null;
+            const dx = px - basis.eyeMid.x;
+            const dy = py - basis.eyeMid.y;
+            const u = (dx * basis.ux + dy * basis.uy) / basis.faceW;
+            const v = (dx * basis.vx + dy * basis.vy) / basis.faceW;
+            return { u, v };
+        }
+
+        function faceLocalToScreenPx(localU, localV, basis) {
+            if (!basis) return null;
+            return {
+                x: basis.eyeMid.x + (basis.ux * localU + basis.vx * localV) * basis.faceW,
+                y: basis.eyeMid.y + (basis.uy * localU + basis.vy * localV) * basis.faceW
+            };
+        }
+
+        function getCreamButtonCenterPx() {
+            const btn = null;
+            if (!btn) return { x: 60, y: window.innerHeight - 80 };
+            const r = btn.getBoundingClientRect();
+            return { x: r.left + r.width * 0.5, y: r.top + r.height * 0.5 };
+        }
+        function sampleAutoCreamTargetPx(basis, cssW, cssH) {
+            if (!basis) return null;
+
+            // Prefer sampling in SCREEN space using face-oval landmarks so auto shots stay within the VRM face region.
+            // Also excludes the lower 10% region (near the chin/neck) by clamping Y.
+            const lm = latestFaceLandmarks0;
+            const rect = basis.rect;
+            const idxForehead = 10;   // upper forehead
+            const idxChin = 152;      // chin
+            const idxCheekL = 234;    // left cheek (face oval)
+            const idxCheekR = 454;    // right cheek (face oval)
+
+            if (lm && rect && lm[idxForehead] && lm[idxChin] && lm[idxCheekL] && lm[idxCheekR]) {
+                const pf = mapMpLandmarkToScreenPx(lm[idxForehead], cssW, cssH, rect);
+                const pc = mapMpLandmarkToScreenPx(lm[idxChin], cssW, cssH, rect);
+                const pl = mapMpLandmarkToScreenPx(lm[idxCheekL], cssW, cssH, rect);
+                const pr = mapMpLandmarkToScreenPx(lm[idxCheekR], cssW, cssH, rect);
+
+                if (pf && pc && pl && pr) {
+                    const centerX = (pl.x + pr.x) * 0.5;
+                    const centerY = (pf.y + pc.y) * 0.5;
+
+                    const faceH = Math.max(12, Math.hypot(pc.x - pf.x, pc.y - pf.y));
+                    const faceW = Math.max(12, Math.hypot(pr.x - pl.x, pr.y - pl.y));
+
+                    // Mildly follow the VRM head-scale slider (avoid expanding too far outside face).
+                    const s = Math.min(Math.max(getHeadOverlayScale(), 0.6), 1.35);
+
+                    // Ellipse that roughly fits the face oval in screen space.
+                    const aPx = (faceW * 0.55) * s;
+                    const bPx = (faceH * 0.55) * s;
+
+                    const yTop = Math.min(pf.y, pc.y);
+                    const yBot = Math.max(pf.y, pc.y);
+                    const yMaxAllowed = yTop + (yBot - yTop) * 0.90; // exclude lower 10%
+
+                    let x = centerX, y = centerY;
+                    let tries = 0;
+                    do {
+                        const theta = Math.random() * Math.PI * 2;
+                        const rr = Math.sqrt(Math.random()); // uniform area
+                        x = centerX + aPx * rr * Math.cos(theta);
+                        y = centerY + bPx * rr * Math.sin(theta);
+                        tries++;
+                    } while (y > yMaxAllowed && tries < 18);
+
+                    y = Math.min(y, yMaxAllowed);
+                    x = Math.min(Math.max(x, 0), cssW);
+                    y = Math.min(Math.max(y, 0), cssH);
+                    return { x, y };
+                }
+            }
+
+            // Fallback (older face-local sampling)
+            const centerX = (basis.eyeMid.x * 0.55 + basis.mouthMid.x * 0.45);
+            const centerY = (basis.eyeMid.y * 0.55 + basis.mouthMid.y * 0.45);
+
+            const headS = getHeadOverlayScale();
+            const a = 0.50 * headS;
+            const b = 0.75 * headS;
+            const vCenter = 0.02;
+            const vMaxAllowed = vCenter + b * 0.90;
+
+            let u = 0, v = 0;
+            let tries = 0;
+            do {
+                const theta = Math.random() * Math.PI * 2;
+                const rr = Math.sqrt(Math.random());
+                u = a * rr * Math.cos(theta);
+                v = vCenter + (b * rr * Math.sin(theta));
+                tries++;
+            } while (v > vMaxAllowed && tries < 12);
+
+            v = Math.min(v, vMaxAllowed);
+            const pt = faceLocalToScreenPx(u, v, basis);
+            return pt ? { x: pt.x, y: pt.y } : { x: centerX, y: centerY };
+        }
+
+function spawnCreamBurst(targetX = null, targetY = null, ignoreCooldown = false, groupId = null) {
+            const now = performance.now();
+            const gid = (groupId !== null && groupId !== undefined) ? groupId : (creamNextPatchGroupId++);
+            const bornMs = now;
+
+            if (!ignoreCooldown) {
+                if (now - creamLastShotMs < CREAM_SHOT_COOLDOWN_MS) return;
+                creamLastShotMs = now;
+            }
+
+            const pr = getOverlayPixelRatio();
+            const cssW = (creamOverlayCanvas ? creamOverlayCanvas.width / pr : window.innerWidth);
+            const cssH = (creamOverlayCanvas ? creamOverlayCanvas.height / pr : window.innerHeight);
+            const basis = computeCreamFaceBasis(cssW, cssH) || creamLastFaceBasis;
+            if (!basis) return;
+
+            const centerX = (basis.eyeMid.x * 0.55 + basis.mouthMid.x * 0.45);
+            const centerY = (basis.eyeMid.y * 0.55 + basis.mouthMid.y * 0.45);
+
+            // Shot start point: bottom-center relative to the face (screen space).
+            // Place the nozzle under the face center, clamped near the bottom of the viewport.
+            let start = { x: centerX, y: centerY + basis.faceW * 1.35 };
+            start.y = Math.max(24, Math.min(cssH - 24, start.y));// If user tapped, aim at that screen point. Otherwise aim around face center.
+            let tx = (targetX !== null ? targetX : null);
+            let ty = (targetY !== null ? targetY : null);
+
+            if (tx === null || ty === null) {
+                // Auto/random: pick a point inside the head/face area (face-local UV), then convert to CSS pixels.
+                // U: left(-) to right(+), V: up(-) to down(+)
+                let u = 0, v = 0;
+                // Sample uniformly inside an ellipse so it doesn't bias toward the center.
+// Expand/contract sampling with the VRM head overlay scale.
+const headS = getHeadOverlayScale();
+const a = 0.50 * headS;     // half-width in face-local units
+const b = 0.95 * headS;     // half-height in face-local units
+const vCenter = 0.08;       // shift slightly toward forehead
+const vMaxAllowed = vCenter + b * 0.90; // auto: exclude bottom 10%
+let tries = 0;
+do {
+  const theta = Math.random() * Math.PI * 2;
+  const rr = Math.sqrt(Math.random()); // sqrt => uniform area
+  u = a * rr * Math.cos(theta);
+  v = vCenter + (b * rr * Math.sin(theta));
+  tries++;
+} while (v > vMaxAllowed && tries < 10);
+v = Math.min(v, vMaxAllowed);
+// Keep within a reasonable face-local range to avoid going outside the head too often
+u = Math.max(-0.85, Math.min(0.85, u));
+v = Math.max(-0.70, Math.min(vMaxAllowed, v));
+
+const pt = faceLocalToScreenPx(u, v, basis);
+                tx = (pt ? pt.x : centerX);
+                ty = (pt ? pt.y : centerY);
+            } else {
+                // User tap: keep the exact tapped point (no target jitter).
+            }
+
+            const dur = 0.13 + Math.random() * 0.12;
+            const size = (8 + Math.random() * 6) * (creamSizeMul || 1.0);
+
+            const dx = tx - start.x;
+const dy = ty - start.y;
+const dist = Math.max(1.0, Math.hypot(dx, dy));
+const baseAng = Math.atan2(dy, dx);
+
+// Add slight randomness to the shot angle (±5°) while keeping the endpoint fixed.
+const deltaAng = (Math.random() * 2 - 1) * (5.0 * Math.PI / 180.0);
+const cpDist = dist * (0.45 + Math.random() * 0.15);
+const cx = start.x + Math.cos(baseAng + deltaAng) * cpDist;
+const cy = start.y + Math.sin(baseAng + deltaAng) * cpDist;
+
+const uvTap = screenPxToFaceLocal(tx, ty, basis);
+
+            creamProjectiles.push({
+                t: 0,
+                groupId: gid,
+                groupBornMs: bornMs,
+                dur,
+                x0: start.x,
+                y0: start.y,
+                cx,
+                cy,
+                x1: tx,
+                y1: ty,
+                // Fix hit offset drift: lock face-local coordinates at tap time.
+                tapU: (uvTap ? uvTap.u : null),
+                tapV: (uvTap ? uvTap.v : null),
+                size,
+                a0: 0.78
+            });
+            enforceCreamLimit();
+
+}
+
+        function drawCreamBlob(ctx, x, y, r, opacity, angleRad = 0, stretchY = 1.0, rxScale = 1.0) {
+            ctx.save();
+            ctx.translate(x, y);
+            ctx.rotate(angleRad);
+
+            const rx = r * 1.00 * rxScale;
+            const ry = r * 1.18 * stretchY;
+
+            const g = ctx.createRadialGradient(-rx * 0.15, -ry * 0.20, 0, 0, 0, Math.max(rx, ry));
+            g.addColorStop(0.0, `rgba(255, 252, 242, ${0.85 * opacity})`);
+            g.addColorStop(0.55, `rgba(255, 248, 232, ${0.55 * opacity})`);
+            g.addColorStop(1.0, `rgba(255, 248, 232, 0)`);
+            ctx.fillStyle = g;
+
+            ctx.beginPath();
+            ctx.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            const h = ctx.createRadialGradient(-rx * 0.25, -ry * 0.28, 0, -rx * 0.25, -ry * 0.28, Math.max(2, r * 0.55));
+            h.addColorStop(0.0, `rgba(255, 255, 255, ${0.35 * opacity})`);
+            h.addColorStop(1.0, `rgba(255, 255, 255, 0)`);
+            ctx.fillStyle = h;
+            ctx.beginPath();
+            ctx.ellipse(-rx * 0.22, -ry * 0.22, r * 0.40, r * 0.30, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.restore();
+        }
+
+        
+        // Teardrop-like droplet (slightly vertical), for more "liquid" look
+        function drawCreamDroplet(ctx, x, y, w, h, opacity, angleRad) {
+            ctx.save();
+            ctx.translate(x, y);
+            ctx.rotate(angleRad);
+
+            // Body gradient (warm creamy white)
+            const g = ctx.createRadialGradient(-w * 0.12, -h * 0.18, 0, 0, 0, Math.max(w, h) * 0.65);
+            g.addColorStop(0.0, `rgba(255, 255, 248, ${0.80 * opacity})`);
+            g.addColorStop(0.55, `rgba(255, 248, 232, ${0.55 * opacity})`);
+            g.addColorStop(1.0, `rgba(255, 248, 232, 0)`);
+            ctx.fillStyle = g;
+
+            // Teardrop path: round top, slightly pointy bottom
+            const topY = -h * 0.42;
+            const botY =  h * 0.58;
+            const sideX =  w * 0.52;
+
+            ctx.beginPath();
+            ctx.moveTo(0, topY);
+            ctx.bezierCurveTo(sideX, topY * 0.75, sideX * 1.05, h * 0.10, 0, botY);
+            ctx.bezierCurveTo(-sideX * 1.05, h * 0.10, -sideX, topY * 0.75, 0, topY);
+            ctx.closePath();
+            ctx.fill();
+
+            // Highlight
+            ctx.fillStyle = `rgba(255,255,255,${0.22 * opacity})`;
+            ctx.beginPath();
+            ctx.ellipse(-w * 0.14, -h * 0.18, w * 0.12, h * 0.10, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.restore();
+        }
+
+function drawCreamDrip(ctx, x, y, w, h, opacity, angleRad) {
+            // Slightly more elongated than projectile
+            drawCreamDroplet(ctx, x, y, w, h * 1.15, opacity, angleRad);
+        }
+
+        function updateCreamVfx(delta) {
+            if (!creamOverlayCanvas || !creamOverlayCtx) return;
+
+            const pr = getOverlayPixelRatio();
+            const cssW = creamOverlayCanvas.width / pr;
+            const cssH = creamOverlayCanvas.height / pr;
+            if (cssW <= 0 || cssH <= 0) return;
+
+            const basis = computeCreamFaceBasis(cssW, cssH);
+            if (basis) { creamLastFaceBasis = basis; creamLastFaceValid = true; }
+            else { creamLastFaceValid = !!creamLastFaceBasis; }
+            const useBasis = basis || creamLastFaceBasis;
+
+
+            // Auto cream shots (random targets within head/face)
+            if (creamAutoEnabled) {
+                if (creamNextAutoIntervalSec === null) scheduleNextAutoCream();
+                // Only fire when we have some face basis (current or cached)
+                if (useBasis) {
+                    creamAutoElapsedSec += delta;
+                    if (creamAutoElapsedSec >= creamNextAutoIntervalSec) {
+                        // Fire "double" the current simultaneous count, but treat them as ONE cream count group.
+                        const baseCount = Math.max(1, Math.min(20, (creamSimulCount | 0) || 1));
+                        const shotCount = baseCount * 2;
+
+                        const pr = getOverlayPixelRatio();
+                        const cssW = (creamOverlayCanvas ? creamOverlayCanvas.width / pr : window.innerWidth);
+                        const cssH = (creamOverlayCanvas ? creamOverlayCanvas.height / pr : window.innerHeight);
+                        const tgt = sampleAutoCreamTargetPx(useBasis, cssW, cssH);
+                        if (tgt) {
+                            const gid = (creamNextPatchGroupId++);
+                            for (let i = 0; i < shotCount; i++) {
+                                // Same hit randomness as manual tap: tiny horizontal, mostly vertical (slight down-bias)
+                                const dx = (Math.random() * 2 - 1) * 5.0;        // ±5px
+                                const dy = (Math.random() * 2 - 1) * 14.0 + 6.0; // mostly vertical
+                                spawnCreamBurst(tgt.x + dx, tgt.y + dy, true, gid);
+                            }
+                            scheduleNextAutoCream();
+                        } else {
+                            scheduleNextAutoCream();
+                        }
+                    }
+                }
+            }
+
+            creamOverlayCtx.setTransform(pr, 0, 0, pr, 0, 0);
+            creamOverlayCtx.clearRect(0, 0, cssW, cssH);
+            creamOverlayCtx.globalCompositeOperation = 'source-over';
+            creamOverlayCtx.filter = 'none';
+
+            // Projectiles
+            const keepProj = [];
+            for (const p of creamProjectiles) {
+                p.t += delta;
+                const tt = Math.min(1, p.t / Math.max(1e-3, p.dur));
+                const e = easeOutCubic(tt);
+                const tB = e;
+const omt = 1.0 - tB;
+
+// Quadratic Bezier position (curved shot path)
+const x = (omt * omt * p.x0) + (2 * omt * tB * p.cx) + (tB * tB * p.x1);
+const y = (omt * omt * p.y0) + (2 * omt * tB * p.cy) + (tB * tB * p.y1);
+
+// Bezier derivative for direction
+const dvx = (2 * omt * (p.cx - p.x0)) + (2 * tB * (p.x1 - p.cx));
+const dvy = (2 * omt * (p.cy - p.y0)) + (2 * tB * (p.y1 - p.cy));
+const ang = Math.atan2(dvy, dvx);
+                // drawCreamDroplet is oriented along +Y (down). Rotate so +Y aligns with the motion direction.
+                const angY = ang - Math.PI * 0.5;
+                const stretch = 1.0 + Math.min(1.6, Math.hypot(dvx, dvy) / 430);
+
+                creamOverlayCtx.save();
+                creamOverlayCtx.globalAlpha = p.a0 * (1 - tt * 0.15);
+                creamOverlayCtx.translate(x, y);
+                creamOverlayCtx.rotate(angY);
+                creamOverlayCtx.scale(1.0, stretch);
+                drawCreamDroplet(creamOverlayCtx, 0, 0, p.size * 0.70, p.size * 1.05, 1.0, 0);
+                creamOverlayCtx.restore();
+
+                if (tt >= 1.0) {
+                    if (useBasis) {
+                        const local = (p.tapU !== null && p.tapU !== undefined && p.tapV !== null && p.tapV !== undefined)
+                            ? { u: p.tapU, v: p.tapV }
+                            : screenPxToFaceLocal(p.x1, p.y1, useBasis);
+                        if (local) {
+                            const patchSize = (0.12 + Math.random() * 0.16) * (creamSizeMul || 1.0); // patch size (face-local), random
+                            // Smaller blobs should slide faster
+                            const _flowBase = 0.09 + Math.random() * 0.05;
+                            const _flowVelBySize = _flowBase * Math.pow(0.16 / Math.max(0.06, patchSize), 0.8);
+                            const _flowVel = Math.max(0.03, Math.min(0.18, _flowVelBySize));
+                            creamPatches.push({
+                                isSplatter: false,
+                                groupId: p.groupId,
+                                groupBornMs: p.groupBornMs,
+                                age: 0,
+                                life: creamLifetimeSec,
+                                fadeStart: getCreamFadeStartSec(),
+                                u: local.u,
+                                v: local.v,
+                                v0: local.v,
+                                sizeU: patchSize,
+                                sizeV: patchSize * (1.40 + Math.random() * 0.85), // more vertical (liquid-like)
+                                rotRad: (Math.random() * 2 - 1) * (Math.PI / 180) * 5,
+                                rxScale: 0.8 + Math.random() * 0.4,
+                                spreadT: 0,
+                                dripDelay: 1.4 + Math.random() * 1.4,
+                                dripRate: 1.0 / (1.4 + Math.random() * 1.8),
+                                dripAcc: 0,
+                                rollBias: (Math.random() - 0.5) * 0.15,
+                                // face-local v units per second (scaled by faceW in projection). keep it subtle.
+                                flowVel: _flowVel
+                            });
+
+                            const n = 2 + Math.floor(Math.random() * 3);
+                            for (let i = 0; i < n; i++) {
+                                const su = (0.07 + Math.random() * 0.06) * (creamSizeMul || 1.0);
+                                const sv = su * (1.20 + Math.random() * 0.70); // vertical splashes
+                                creamPatches.push({
+                                    isSplatter: true,
+                                    groupId: p.groupId,
+                                    groupBornMs: p.groupBornMs,
+                                    age: 0,
+                                    life: 3.2 + Math.random() * 2.0,
+                                    fadeStart: 2.0,
+                                    u: local.u + (Math.random() - 0.5) * 0.10,
+                                    v: local.v + (Math.random() - 0.5) * 0.10,
+                                    v0: local.v + (Math.random() - 0.5) * 0.10,
+                                    sizeU: su,
+                                    sizeV: sv,
+                                    // Smaller splashes slide faster
+                                    flowVel: Math.max(0.05, Math.min(0.25, (0.11 + Math.random() * 0.06) * Math.pow(0.10 / Math.max(0.04, su), 0.85))),
+                                    rotRad: (Math.random() * 2 - 1) * (Math.PI / 180) * 5,
+                                    rxScale: 0.8 + Math.random() * 0.4,
+                                    spreadT: 0,
+                                    dripDelay: 999,
+                                    dripAcc: 0,
+                                    rollBias: (Math.random() - 0.5) * 0.25,
+                                    flowVel: 0.006 + Math.random() * 0.008
+                                });
+                            }
+                        }
+                    }
+                } else {
+                    keepProj.push(p);
+                }
+            }
+            creamProjectiles = keepProj;
+            enforceCreamLimit();
+
+            // Patches
+            const keepP = [];
+            for (const s of creamPatches) {
+                s.age += delta;
+                const t = s.age / Math.max(1e-3, s.life);
+                if (t >= 1) continue;
+
+                let a = 1.0;
+                if (s.age >= s.fadeStart) {
+                    const ft = (s.age - s.fadeStart) / Math.max(1e-3, (s.life - s.fadeStart));
+                    a = Math.max(0, 1 - ft);
+                }
+
+                s.spreadT = Math.min(1, s.spreadT + delta / 0.18);
+                const spread = 1.0 + 0.25 * s.spreadT;
+
+                // Let the attached cream itself slowly flow down along the face v-axis (no separate drip objects)
+                if (typeof s.flowVel === 'number') {
+                    s.v += s.flowVel * delta;
+                }
+
+
+                // As the patch flows downward, gradually narrow its width (rx) for a tapered look
+                if (typeof s.v0 !== 'number') s.v0 = s.v;
+                const flowDist = Math.max(0, s.v - s.v0);        // face-local v units moved downward
+                const narrowT  = Math.min(1, flowDist / 0.060);  // reach max narrowing after ~0.03v
+                const narrow   = Math.max(0.45, 1.0 - 0.55 * narrowT);
+                if (useBasis) {
+                    const pxy = faceLocalToScreenPx(s.u, s.v, useBasis);
+                    if (pxy) {
+                        const r = useBasis.faceW * 0.18 * s.sizeU * spread;
+                        const ang = (useBasis.roll || 0) + (s.rollBias || 0) + (s.rotRad || 0);
+                        const baseStretch = (s.sizeV && s.sizeU) ? Math.min(3.0, Math.max(0.8, (s.sizeV / Math.max(1e-6, s.sizeU)))) : 1.0;
+                        const stretchY = baseStretch * (1.0 + Math.max(0, (s.age - s.dripDelay) * 0.10));
+                        const rxScale = (s.rxScale || 1.0) * narrow;
+                        creamOverlayCtx.globalAlpha = 0.75 * a;
+                        drawCreamBlob(creamOverlayCtx, pxy.x, pxy.y, r, 1.0, ang, stretchY, rxScale);
+                        creamOverlayCtx.globalAlpha = 1.0;
+                    }
+                }
+
+                keepP.push(s);
+            }
+            creamPatches = keepP;
+        }
+
 
 
         function updateBlushDebug() {
@@ -3085,7 +4235,7 @@ if (videoTexture) videoTexture.needsUpdate = true;
                 stream = await navigator.mediaDevices.getUserMedia({
                     audio: false,
                     video: {
-                        facingMode: currentFacingMode,
+                        facingMode: { ideal: currentFacingMode },
                         width: { ideal: 1280 },
                         height: { ideal: 720 }
                     }
@@ -3133,6 +4283,22 @@ if (videoTexture) videoTexture.needsUpdate = true;
                 arContainer.appendChild(breathOverlayCanvas);
                 resizeBreathOverlayCanvas();
                 breathOverlayCtx = breathOverlayCanvas.getContext('2d');
+
+                // Cream overlay canvas (2D VFX above WebGL & above breath)
+                creamOverlayCanvas = document.createElement('canvas');
+                creamOverlayCanvas.id = 'cream-overlay';
+                creamOverlayCanvas.style.position = 'absolute';
+                creamOverlayCanvas.style.top = '0';
+                creamOverlayCanvas.style.left = '0';
+                creamOverlayCanvas.style.width = '100%';
+                creamOverlayCanvas.style.height = '100%';
+                creamOverlayCanvas.style.pointerEvents = 'none';
+                creamOverlayCanvas.style.zIndex = '110';
+                creamOverlayCanvas.style.transformOrigin = '50% 50%';
+                arContainer.appendChild(creamOverlayCanvas);
+                resizeCreamOverlayCanvas();
+                creamOverlayCtx = creamOverlayCanvas.getContext('2d');
+
 
                 applyMirrorToRenderer();
 
@@ -3450,6 +4616,7 @@ const tms = res && res.facialTransformationMatrixes;
                     }
 
                     updateBreathEffect(delta);
+                    updateCreamVfx(delta);
                     updateBlushDebug();
                     renderer.render(scene, camera);
                 });
