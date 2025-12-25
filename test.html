@@ -1744,38 +1744,109 @@ document.getElementById('toggle-menu-btn').addEventListener('click', () => {
         const switchCameraFacing = async (wantFacing) => {
             if (!videoEl) return;
             if (wantFacing !== 'user' && wantFacing !== 'environment') return;
-            if (currentFacingMode === wantFacing && stream) return;
 
-            currentFacingMode = wantFacing;
-            showToast(currentFacingMode === 'user' ? "インカメラに切り替えます" : "アウトカメラに切り替えます");
-
-            // Default mirror behavior when not explicitly overridden
-            if (!mirrorUserOverride) {
-                mirrorEnabled = (currentFacingMode === 'user');
-                if (mirrorToggle) mirrorToggle.checked = mirrorEnabled;
+            // If already on requested facing and stream exists, do nothing
+            if (currentFacingMode === wantFacing && stream) {
+                syncTrackingTogglesFromState();
+                return;
             }
-            applyMirrorToRenderer();
 
-            try {
-                if (stream) {
-                    stream.getTracks().forEach(t => t.stop());
+            // Keep previous state in case the switch fails
+            const prevFacing = currentFacingMode;
+            const prevStream = stream;
+
+            // Build constraints. Some devices fail when you keep the same resolution/fps across cameras,
+            // so we retry with relaxed constraints.
+            const buildConstraints = (includeResFps) => {
+                const v = { facingMode: { ideal: wantFacing } };
+                if (includeResFps) {
+                    if (currentCamWidth)  v.width  = { ideal: currentCamWidth };
+                    if (currentCamHeight) v.height = { ideal: currentCamHeight };
+                    if (currentCamFps)    v.frameRate = { ideal: currentCamFps };
                 }
-                stream = await navigator.mediaDevices.getUserMedia({
-                    video: {
-                        facingMode: { ideal: currentFacingMode },
-                        width: { ideal: currentCamWidth || 1280 },
-                        height: { ideal: currentCamHeight || 720 },
-                        frameRate: { ideal: currentCamFps || 30 }
-                    },
-                    audio: false
+                return { video: v, audio: false };
+            };
+
+            let newStream = null;
+            try {
+                // 1) Try with resolution/fps
+                newStream = await navigator.mediaDevices.getUserMedia(buildConstraints(true));
+            } catch (e1) {
+                try {
+                    // 2) Retry with only facingMode (most compatible)
+                    newStream = await navigator.mediaDevices.getUserMedia(buildConstraints(false));
+                } catch (e2) {
+                    try {
+                        // 3) Last resort: exact facingMode (can still fail on some devices/browsers)
+                        newStream = await navigator.mediaDevices.getUserMedia({
+                            video: { facingMode: { exact: wantFacing } },
+                            audio: false
+                        });
+                    } catch (e3) {
+                        console.error('Camera switch failed:', e1, e2, e3);
+                        showToast('カメラ切替に失敗しました');
+                        // Restore state + UI
+                        currentFacingMode = prevFacing;
+                        stream = prevStream;
+                        syncTrackingTogglesFromState();
+                        return;
+                    }
+                }
+            }
+
+            // Success: swap streams safely (stop old AFTER new is playing)
+            try {
+                videoEl.srcObject = newStream;
+
+                // Wait metadata so videoWidth/Height become valid
+                await new Promise(resolve => {
+                    const done = () => { videoEl.onloadedmetadata = null; resolve(); };
+                    videoEl.onloadedmetadata = done;
+                    // In some browsers metadata is already ready
+                    if (videoEl.readyState >= 1) done();
                 });
-                videoEl.srcObject = stream;
+
                 await videoEl.play();
+
+                // Commit facing mode now that we have a working stream
+                currentFacingMode = wantFacing;
+
+                // Default mirror behavior when not explicitly overridden
+                if (!mirrorUserOverride) {
+                    mirrorEnabled = (currentFacingMode === 'user');
+                    if (mirrorToggle) mirrorToggle.checked = mirrorEnabled;
+                }
+                applyMirrorToRenderer();
+
+                // Stop old tracks after new stream is live
+                if (prevStream && prevStream !== newStream) {
+                    try { prevStream.getTracks().forEach(t => t.stop()); } catch (_) {}
+                }
+                stream = newStream;
+
                 lastVideoRect = null;
                 syncTrackingTogglesFromState();
+                showToast(currentFacingMode === 'user' ? "インカメラに切り替えました" : "アウトカメラに切り替えました");
+
+                // Resize overlays after camera swap (some devices change capture aspect)
+                setTimeout(() => {
+                    try { handleViewportResize(); } catch (_) {}
+                }, 80);
+
+                // Persist (if available)
+                try { if (typeof saveSettings === 'function') saveSettings(); } catch (_) {}
             } catch (err) {
-                console.error('Camera switch failed:', err);
+                console.error('Camera switch apply failed:', err);
                 showToast('カメラ切替に失敗しました');
+
+                // Cleanup new stream and restore previous if possible
+                try { if (newStream) newStream.getTracks().forEach(t => t.stop()); } catch (_) {}
+                currentFacingMode = prevFacing;
+                stream = prevStream;
+                if (videoEl && prevStream) {
+                    try { videoEl.srcObject = prevStream; await videoEl.play(); } catch (_) {}
+                }
+                syncTrackingTogglesFromState();
             }
         };
 
