@@ -71,7 +71,35 @@
             z-index: 2001;
         }
 
-        .icon-btn {
+        
+        /* Left-bottom action button: Cream splash */
+        .cream-shot-btn{
+            position: fixed;
+            left: 12px;
+            bottom: 12px;
+            width: 58px;
+            height: 58px;
+            border-radius: 999px;
+            border: 1px solid rgba(255,255,255,0.35);
+            background: rgba(255,255,255,0.18);
+            color: rgba(255,255,255,0.95);
+            font-size: 28px;
+            line-height: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 2600;
+            backdrop-filter: blur(6px);
+            -webkit-backdrop-filter: blur(6px);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.25);
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: manipulation;
+        }
+        .cream-shot-btn:active{
+            transform: scale(0.96);
+        }
+.icon-btn {
             background: rgba(255, 255, 255, 0.8);
             border: none;
             border-radius: 50%;
@@ -387,6 +415,8 @@
             <button id="toggle-menu-btn" class="icon-btn" title="モデル・トラッキング設定">⚙️</button>
             <button id="toggle-fullscreen-btn" class="icon-btn" title="全画面表示切替">⛶</button>
         </div>
+
+        <button id="cream-shot-btn" class="cream-shot-btn" title="クリームを発射">🥛</button>
 
         <!-- メイン設定パネル -->
         <div class="control-panel" id="control-panel" style="display:none;">
@@ -748,8 +778,8 @@
     <script type="module">
         
 // ===== App Version (single source of truth) =====
-const APP_VERSION = "v6.00.06";
-const APP_VERSION_NOTE = "camera: add black level + color temperature; improve skin smooth (blur blend)";
+const APP_VERSION = "v6.01.00";
+const APP_VERSION_NOTE = "vfx: add cream splash/drip button (2D overlay)";
 function setAppVersionLabel() {
   const el = document.getElementById("app-version");
   if (!el) return;
@@ -910,6 +940,18 @@ let latestCheekLVideoX = 0.35; // normalized in ORIGINAL video frame (0..1)
 
         // 2D overlay breath particles (more robust than 3D sprites across devices)
         let breathOverlayCanvas = null;
+        // 2D overlay cream effect (independent canvas above WebGL)
+        let creamOverlayCanvas = null;
+        let creamOverlayCtx = null;
+
+        // Cream VFX state
+        let creamProjectiles = [];
+        let creamPatches = [];
+        let creamDrips = [];
+        let creamLastFaceBasis = null; // cached basis for when tracking is lost
+        let creamLastFaceValid = false;
+        let creamLastShotMs = 0;
+
         let breathOverlayCtx = null;
         let blush2DDebug = null; // debug snapshot for 2D blush mapping/rotation
 
@@ -921,7 +963,15 @@ let latestCheekLVideoX = 0.35; // normalized in ORIGINAL video frame (0..1)
         const breathTmpV = new THREE.Vector3(); // reuse for projection
         const breathTmpV2 = new THREE.Vector3(); // pivot projection
 
-        let breathEmitter = null;          // attached to adjustmentGroup (mouth position proxy)
+        let breathEmitter = null;
+                creamOverlayCanvas = null;
+                creamOverlayCtx = null;
+                creamProjectiles = [];
+                creamPatches = [];
+                creamDrips = [];
+                creamLastFaceBasis = null;
+                creamLastFaceValid = false;
+          // attached to adjustmentGroup (mouth position proxy)
         let breathParticles = null;        // world-space particles group
         let breathTexture = null;          // shared texture
         let breathEmitAcc = 0;
@@ -1447,7 +1497,19 @@ forceShadowToggle.addEventListener('change', () => {
         
         shadowDetails.style.display = forceShadowToggle.checked ? 'block' : 'none';
 
-        document.getElementById('toggle-menu-btn').addEventListener('click', () => {
+        
+        // --- Cream VFX button (left-bottom) ---
+        const creamShotBtn = document.getElementById('cream-shot-btn');
+        const fireCreamOnce = (ev) => {
+            if (ev) ev.preventDefault();
+            spawnCreamBurst();
+        };
+        if (creamShotBtn) {
+            creamShotBtn.addEventListener('pointerdown', fireCreamOnce, { passive: false });
+            creamShotBtn.addEventListener('click', fireCreamOnce);
+        }
+
+document.getElementById('toggle-menu-btn').addEventListener('click', () => {
             // close the other panel first
             lightPanel.style.display = 'none';
             const isHidden = getComputedStyle(controlPanel).display === 'none';
@@ -1564,6 +1626,7 @@ forceShadowToggle.addEventListener('change', () => {
             }
             // 2D overlay canvas used by breath/blush must match viewport, especially on orientation change.
             try { resizeBreathOverlayCanvas(); } catch (_) {}
+            try { resizeCreamOverlayCanvas(); } catch (_) {}
         }
 
         window.addEventListener('resize', () => {
@@ -1611,7 +1674,12 @@ forceShadowToggle.addEventListener('change', () => {
                 breathOverlayCanvas.style.transform = `scaleX(${sx})`;
                 breathOverlayCanvas.style.transformOrigin = 'center center';
             }
-        }
+        
+            if (creamOverlayCanvas) {
+                creamOverlayCanvas.style.transform = `scaleX(${sx})`;
+                creamOverlayCanvas.style.transformOrigin = 'center center';
+            }
+}
 
         function getViewportSizeAtDepth(depth) {
             if (!camera) return { width: 1, height: 1 };
@@ -2269,6 +2337,20 @@ const ox = blushOffX * unit;
                 breathOverlayCanvas.width = w;
                 breathOverlayCanvas.height = h;
             }
+
+        function resizeCreamOverlayCanvas() {
+            if (!creamOverlayCanvas) return;
+            const pr = Math.min(window.devicePixelRatio || 1, 2);
+            const w = Math.max(1, Math.floor(window.innerWidth * pr));
+            const h = Math.max(1, Math.floor(window.innerHeight * pr));
+            if (creamOverlayCanvas.width !== w || creamOverlayCanvas.height !== h) {
+                creamOverlayCanvas.width = w;
+                creamOverlayCanvas.height = h;
+            }
+            creamOverlayCanvas.style.width = '100%';
+            creamOverlayCanvas.style.height = '100%';
+        }
+
             // Keep CSS sizing to cover the viewport
             breathOverlayCanvas.style.width = '100%';
             breathOverlayCanvas.style.height = '100%';
@@ -2644,6 +2726,362 @@ function updateBreathEffect(delta) {
             breathOverlayCtx.globalCompositeOperation = 'source-over';
 
         }
+
+        // =========================
+        // Cream VFX (2D overlay)
+        // =========================
+        const CREAM_LIFETIME = 10.0;     // seconds
+        const CREAM_FADE_START = 7.0;    // seconds
+        const CREAM_SHOT_COOLDOWN_MS = 320;
+
+        function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
+
+        function getCreamVideoRect(cssW, cssH) {
+            if (!videoEl) return null;
+            const vw = videoEl.videoWidth || 0;
+            const vh = videoEl.videoHeight || 0;
+            if (vw <= 0 || vh <= 0) return null;
+            return computeContainRect(cssW, cssH, vw, vh);
+        }
+
+        function mapMpLandmarkToScreenPx(p, cssW, cssH, rect) {
+            if (!p || !videoEl || !rect) return null;
+            const vw = videoEl.videoWidth || 0;
+            const vh = videoEl.videoHeight || 0;
+            if (vw <= 0 || vh <= 0) return null;
+
+            const mpW = (inputRotationDeg !== 0) ? (mpOffscreenCanvas.width || vw) : vw;
+            const mpH = (inputRotationDeg !== 0) ? (mpOffscreenCanvas.height || vh) : vh;
+            const vv = mpLandmarkNormToVideoNorm(p.x, p.y, vw, vh, inputRotationDeg, mpW, mpH);
+            if (!vv || !vv.ok) return null;
+
+            return { x: rect.x + vv.x * rect.w, y: rect.y + vv.y * rect.h, vx: vv.x, vy: vv.y };
+        }
+
+        function computeCreamFaceBasis(cssW, cssH) {
+            if (!latestFaceLandmarks0 || !videoEl) return null;
+            const rect = getCreamVideoRect(cssW, cssH);
+            if (!rect) return null;
+            const lm = latestFaceLandmarks0;
+            const le0 = lm[33];
+            const re0 = lm[263];
+            const lm0 = lm[61];
+            const rm0 = lm[291];
+            if (!le0 || !re0 || !lm0 || !rm0) return null;
+
+            const le = mapMpLandmarkToScreenPx(le0, cssW, cssH, rect);
+            const re = mapMpLandmarkToScreenPx(re0, cssW, cssH, rect);
+            const ml = mapMpLandmarkToScreenPx(lm0, cssW, cssH, rect);
+            const mr = mapMpLandmarkToScreenPx(rm0, cssW, cssH, rect);
+            if (!le || !re || !ml || !mr) return null;
+
+            const eyeMid = { x: (le.x + re.x) * 0.5, y: (le.y + re.y) * 0.5 };
+            const mouthMid = { x: (ml.x + mr.x) * 0.5, y: (ml.y + mr.y) * 0.5 };
+
+            const dx = (re.x - le.x);
+            const dy = (re.y - le.y);
+            const faceW = Math.max(12, Math.hypot(dx, dy));
+            let ux = dx / faceW;
+            let uy = dy / faceW;
+
+            let vx = -uy;
+            let vy = ux;
+
+            const mdx = (mouthMid.x - eyeMid.x);
+            const mdy = (mouthMid.y - eyeMid.y);
+            if (mdx * vx + mdy * vy < 0) { vx = -vx; vy = -vy; }
+
+            const roll = Math.atan2(uy, ux);
+            return { rect, le, re, eyeMid, mouthMid, faceW, ux, uy, vx, vy, roll };
+        }
+
+        function screenPxToFaceLocal(px, py, basis) {
+            if (!basis) return null;
+            const dx = px - basis.eyeMid.x;
+            const dy = py - basis.eyeMid.y;
+            const u = (dx * basis.ux + dy * basis.uy) / basis.faceW;
+            const v = (dx * basis.vx + dy * basis.vy) / basis.faceW;
+            return { u, v };
+        }
+
+        function faceLocalToScreenPx(localU, localV, basis) {
+            if (!basis) return null;
+            return {
+                x: basis.eyeMid.x + (basis.ux * localU + basis.vx * localV) * basis.faceW,
+                y: basis.eyeMid.y + (basis.uy * localU + basis.vy * localV) * basis.faceW
+            };
+        }
+
+        function getCreamButtonCenterPx() {
+            const btn = document.getElementById('cream-shot-btn');
+            if (!btn) return { x: 60, y: window.innerHeight - 80 };
+            const r = btn.getBoundingClientRect();
+            return { x: r.left + r.width * 0.5, y: r.top + r.height * 0.5 };
+        }
+
+        function spawnCreamBurst() {
+            const now = performance.now();
+            if (now - creamLastShotMs < CREAM_SHOT_COOLDOWN_MS) return;
+            creamLastShotMs = now;
+
+            const pr = window.devicePixelRatio || 1;
+            const cssW = (creamOverlayCanvas ? creamOverlayCanvas.width / pr : window.innerWidth);
+            const cssH = (creamOverlayCanvas ? creamOverlayCanvas.height / pr : window.innerHeight);
+            const basis = computeCreamFaceBasis(cssW, cssH) || creamLastFaceBasis;
+            if (!basis) return;
+
+            const start = getCreamButtonCenterPx();
+
+            const centerX = (basis.eyeMid.x * 0.55 + basis.mouthMid.x * 0.45);
+            const centerY = (basis.eyeMid.y * 0.55 + basis.mouthMid.y * 0.45);
+
+            const randU = (Math.random() - 0.5) * 0.30;
+            const randV = (Math.random() - 0.15) * 0.30;
+            const jitter = faceLocalToScreenPx(randU, randV, basis);
+            const tx = (jitter ? jitter.x : centerX);
+            const ty = (jitter ? jitter.y : centerY);
+
+            const dur = 0.13 + Math.random() * 0.12;
+            const size = 8 + Math.random() * 6;
+
+            creamProjectiles.push({ t: 0, dur, x0: start.x, y0: start.y, x1: tx, y1: ty, size, a0: 0.78 });
+        }
+
+        function drawCreamBlob(ctx, x, y, r, opacity, angleRad = 0, stretchY = 1.0) {
+            ctx.save();
+            ctx.translate(x, y);
+            ctx.rotate(angleRad);
+
+            const rx = r * 1.15;
+            const ry = r * 0.92 * stretchY;
+
+            const g = ctx.createRadialGradient(-rx * 0.15, -ry * 0.20, 0, 0, 0, Math.max(rx, ry));
+            g.addColorStop(0.0, `rgba(255, 252, 242, ${0.85 * opacity})`);
+            g.addColorStop(0.55, `rgba(255, 248, 232, ${0.55 * opacity})`);
+            g.addColorStop(1.0, `rgba(255, 248, 232, 0)`);
+            ctx.fillStyle = g;
+
+            ctx.beginPath();
+            ctx.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            const h = ctx.createRadialGradient(-rx * 0.25, -ry * 0.28, 0, -rx * 0.25, -ry * 0.28, Math.max(2, r * 0.55));
+            h.addColorStop(0.0, `rgba(255, 255, 255, ${0.35 * opacity})`);
+            h.addColorStop(1.0, `rgba(255, 255, 255, 0)`);
+            ctx.fillStyle = h;
+            ctx.beginPath();
+            ctx.ellipse(-rx * 0.22, -ry * 0.22, r * 0.40, r * 0.30, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.restore();
+        }
+
+        function drawCreamDrip(ctx, x, y, w, h, opacity, angleRad) {
+            ctx.save();
+            ctx.translate(x, y);
+            ctx.rotate(angleRad);
+
+            const g = ctx.createLinearGradient(0, -h * 0.5, 0, h * 0.5);
+            g.addColorStop(0.0, `rgba(255, 252, 242, ${0.65 * opacity})`);
+            g.addColorStop(1.0, `rgba(255, 248, 232, ${0.15 * opacity})`);
+            ctx.fillStyle = g;
+
+            ctx.beginPath();
+            ctx.ellipse(0, 0, w * 0.5, h * 0.5, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.fillStyle = `rgba(255,255,255,${0.20 * opacity})`;
+            ctx.beginPath();
+            ctx.ellipse(-w * 0.12, -h * 0.18, w * 0.16, h * 0.12, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.restore();
+        }
+
+        function updateCreamVfx(delta) {
+            if (!creamOverlayCanvas || !creamOverlayCtx) return;
+
+            const pr = window.devicePixelRatio || 1;
+            const cssW = creamOverlayCanvas.width / pr;
+            const cssH = creamOverlayCanvas.height / pr;
+            if (cssW <= 0 || cssH <= 0) return;
+
+            const basis = computeCreamFaceBasis(cssW, cssH);
+            if (basis) { creamLastFaceBasis = basis; creamLastFaceValid = true; }
+            else { creamLastFaceValid = !!creamLastFaceBasis; }
+            const useBasis = basis || creamLastFaceBasis;
+
+            creamOverlayCtx.setTransform(pr, 0, 0, pr, 0, 0);
+            creamOverlayCtx.clearRect(0, 0, cssW, cssH);
+            creamOverlayCtx.globalCompositeOperation = 'source-over';
+            creamOverlayCtx.filter = 'none';
+
+            // Projectiles
+            const keepProj = [];
+            for (const p of creamProjectiles) {
+                p.t += delta;
+                const tt = Math.min(1, p.t / Math.max(1e-3, p.dur));
+                const e = easeOutCubic(tt);
+                const x = p.x0 + (p.x1 - p.x0) * e;
+                const y = p.y0 + (p.y1 - p.y0) * e;
+
+                const vx = (p.x1 - p.x0);
+                const vy = (p.y1 - p.y0);
+                const ang = Math.atan2(vy, vx);
+                const stretch = 1.0 + Math.min(1.6, Math.hypot(vx, vy) / 380);
+
+                creamOverlayCtx.save();
+                creamOverlayCtx.globalAlpha = p.a0 * (1 - tt * 0.15);
+                creamOverlayCtx.translate(x, y);
+                creamOverlayCtx.rotate(ang);
+                creamOverlayCtx.scale(stretch, 1.0);
+                drawCreamBlob(creamOverlayCtx, 0, 0, p.size * 0.55, 1.0, 0, 0.9);
+                creamOverlayCtx.restore();
+
+                if (tt >= 1.0) {
+                    if (useBasis) {
+                        const local = screenPxToFaceLocal(p.x1, p.y1, useBasis);
+                        if (local) {
+                            const patchSize = 0.18 + Math.random() * 0.18;
+                            creamPatches.push({
+                                age: 0,
+                                life: CREAM_LIFETIME,
+                                fadeStart: CREAM_FADE_START,
+                                u: local.u,
+                                v: local.v,
+                                sizeU: patchSize,
+                                sizeV: patchSize * (0.75 + Math.random() * 0.30),
+                                spreadT: 0,
+                                dripDelay: 0.8 + Math.random() * 0.8,
+                                dripAcc: 0,
+                                rollBias: (Math.random() - 0.5) * 0.15
+                            });
+
+                            const n = 2 + Math.floor(Math.random() * 3);
+                            for (let i = 0; i < n; i++) {
+                                creamPatches.push({
+                                    age: 0,
+                                    life: 3.2 + Math.random() * 2.0,
+                                    fadeStart: 2.0,
+                                    u: local.u + (Math.random() - 0.5) * 0.10,
+                                    v: local.v + (Math.random() - 0.5) * 0.10,
+                                    sizeU: 0.07 + Math.random() * 0.06,
+                                    sizeV: 0.06 + Math.random() * 0.06,
+                                    spreadT: 0,
+                                    dripDelay: 999,
+                                    dripAcc: 0,
+                                    rollBias: (Math.random() - 0.5) * 0.25
+                                });
+                            }
+                        }
+                    }
+                } else {
+                    keepProj.push(p);
+                }
+            }
+            creamProjectiles = keepProj;
+
+            // Patches
+            const keepP = [];
+            for (const s of creamPatches) {
+                s.age += delta;
+                const t = s.age / Math.max(1e-3, s.life);
+                if (t >= 1) continue;
+
+                let a = 1.0;
+                if (s.age >= s.fadeStart) {
+                    const ft = (s.age - s.fadeStart) / Math.max(1e-3, (s.life - s.fadeStart));
+                    a = Math.max(0, 1 - ft);
+                }
+
+                s.spreadT = Math.min(1, s.spreadT + delta / 0.18);
+                const spread = 1.0 + 0.25 * s.spreadT;
+
+                if (s.age >= s.dripDelay) {
+                    const rate = 1.0 / (0.35 + Math.random() * 0.35);
+                    s.dripAcc += rate * delta;
+                    let made = 0;
+                    while (s.dripAcc >= 1.0 && made < 2) {
+                        s.dripAcc -= 1.0;
+                        made++;
+                        creamDrips.push({
+                            age: 0,
+                            life: Math.min(3.8, s.life - s.age),
+                            u: s.u + (Math.random() - 0.5) * 0.05,
+                            v: s.v + (Math.random() * 0.02),
+                            vel: 0.10 + Math.random() * 0.10,
+                            acc: 0.60 + Math.random() * 0.30,
+                            w: 0.055 + Math.random() * 0.035,
+                            h: 0.11 + Math.random() * 0.07,
+                            rollBias: (Math.random() - 0.5) * 0.18
+                        });
+                    }
+                }
+
+                if (useBasis) {
+                    const pxy = faceLocalToScreenPx(s.u, s.v, useBasis);
+                    if (pxy) {
+                        const r = useBasis.faceW * 0.18 * s.sizeU * spread;
+                        const ang = (useBasis.roll || 0) + (s.rollBias || 0);
+                        const stretchY = 1.0 + Math.max(0, (s.age - s.dripDelay) * 0.18);
+                        creamOverlayCtx.globalAlpha = 0.75 * a;
+                        drawCreamBlob(creamOverlayCtx, pxy.x, pxy.y, r, 1.0, ang, stretchY);
+                        creamOverlayCtx.globalAlpha = 1.0;
+                    }
+                }
+
+                keepP.push(s);
+            }
+            creamPatches = keepP;
+
+            // Drips
+            const keepD = [];
+            for (const d of creamDrips) {
+                d.age += delta;
+                const t = d.age / Math.max(1e-3, d.life);
+                if (t >= 1) continue;
+
+                d.v += d.vel * delta;
+                d.vel += d.acc * delta;
+
+                let a = 1.0;
+                if (t > 0.65) a = Math.max(0, 1 - (t - 0.65) / 0.35);
+
+                if (useBasis) {
+                    const pxy = faceLocalToScreenPx(d.u, d.v, useBasis);
+                    if (pxy) {
+                        const angV = Math.atan2(useBasis.vy, useBasis.vx);
+                        const ang = angV + (d.rollBias || 0);
+
+                        creamOverlayCtx.save();
+                        creamOverlayCtx.globalAlpha = 0.18 * a;
+                        creamOverlayCtx.strokeStyle = 'rgba(255,248,232,1)';
+                        creamOverlayCtx.lineWidth = Math.max(1, useBasis.faceW * 0.004);
+                        creamOverlayCtx.beginPath();
+                        const back = faceLocalToScreenPx(d.u, d.v - Math.min(0.20, d.vel * 0.10), useBasis);
+                        if (back) {
+                            creamOverlayCtx.moveTo(back.x, back.y);
+                            creamOverlayCtx.lineTo(pxy.x, pxy.y);
+                            creamOverlayCtx.stroke();
+                        }
+                        creamOverlayCtx.restore();
+
+                        const ww = useBasis.faceW * d.w;
+                        const hh = useBasis.faceW * d.h * (0.9 + 0.35 * t);
+                        creamOverlayCtx.globalAlpha = 0.80 * a;
+                        drawCreamDrip(creamOverlayCtx, pxy.x, pxy.y, ww, hh, 1.0, ang);
+                        creamOverlayCtx.globalAlpha = 1.0;
+                    }
+                }
+
+                keepD.push(d);
+            }
+            creamDrips = keepD;
+
+            if (creamPatches.length > 60) creamPatches = creamPatches.slice(-60);
+            if (creamDrips.length > 80) creamDrips = creamDrips.slice(-80);
+        }
+
 
 
         function updateBlushDebug() {
@@ -3134,6 +3572,22 @@ if (videoTexture) videoTexture.needsUpdate = true;
                 resizeBreathOverlayCanvas();
                 breathOverlayCtx = breathOverlayCanvas.getContext('2d');
 
+                // Cream overlay canvas (2D VFX above WebGL & above breath)
+                creamOverlayCanvas = document.createElement('canvas');
+                creamOverlayCanvas.id = 'cream-overlay';
+                creamOverlayCanvas.style.position = 'absolute';
+                creamOverlayCanvas.style.top = '0';
+                creamOverlayCanvas.style.left = '0';
+                creamOverlayCanvas.style.width = '100%';
+                creamOverlayCanvas.style.height = '100%';
+                creamOverlayCanvas.style.pointerEvents = 'none';
+                creamOverlayCanvas.style.zIndex = '110';
+                creamOverlayCanvas.style.transformOrigin = '50% 50%';
+                arContainer.appendChild(creamOverlayCanvas);
+                resizeCreamOverlayCanvas();
+                creamOverlayCtx = creamOverlayCanvas.getContext('2d');
+
+
                 applyMirrorToRenderer();
 
                 // Video background plane
@@ -3450,6 +3904,7 @@ const tms = res && res.facialTransformationMatrixes;
                     }
 
                     updateBreathEffect(delta);
+                    updateCreamVfx(delta);
                     updateBlushDebug();
                     renderer.render(scene, camera);
                 });
