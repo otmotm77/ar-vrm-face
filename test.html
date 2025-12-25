@@ -810,8 +810,8 @@
     <script type="module">
         
 // ===== App Version (single source of truth) =====
-const APP_VERSION = "v6.01.09";
-const APP_VERSION_NOTE = "cream: shot start = face bottom-center | auto-shot uniform ellipse w/ head scale | patches: vertical + taper + randomness";
+const APP_VERSION = "v6.01.10";
+const APP_VERSION_NOTE = "cream: keep attached patches up to max (projectiles capped separately; splatter evicted first) | cream settings persist";
 
 
 function getOverlayPixelRatio() {
@@ -1025,13 +1025,24 @@ let latestCheekLVideoX = 0.35; // normalized in ORIGINAL video frame (0..1)
                 }
 
                 function enforceCreamLimit() {
-                    const max = Math.max(10, Math.min(200, (creamMaxCount | 0) || 40));
-                    while ((creamPatches.length + creamProjectiles.length) > max) {
-                        if (creamPatches.length > 0) creamPatches.shift();
-                        else if (creamProjectiles.length > 0) creamProjectiles.shift();
-                        else break;
+                    const maxPatches = Math.max(10, Math.min(200, (creamMaxCount | 0) || 40));
+
+                    // Keep projectiles from evicting attached patches.
+                    // Projectiles are short-lived; cap them separately to avoid spikes.
+                    const maxProjectiles = Math.max(10, Math.min(120, Math.floor(maxPatches * 0.6) + 10));
+
+                    while (creamProjectiles.length > maxProjectiles) {
+                        creamProjectiles.shift();
+                    }
+
+                    // Prefer removing splatter patches first (so main blobs survive up to the max).
+                    while (creamPatches.length > maxPatches) {
+                        const splIdx = creamPatches.findIndex(p => p && p.isSplatter);
+                        if (splIdx >= 0) creamPatches.splice(splIdx, 1);
+                        else creamPatches.shift();
                     }
                 }
+}
         
                 let breathOverlayCtx = null;
         let blush2DDebug = null; // debug snapshot for 2D blush mapping/rotation
@@ -1543,6 +1554,7 @@ if (creamLifeSlider) {
     creamLifeSlider.addEventListener('input', () => {
         updateSliderDisplay(creamLifeSlider);
         creamLifetimeSec = parseFloat(creamLifeSlider.value) || creamLifetimeSec;
+            saveSettings();
     });
 }
 
@@ -1556,6 +1568,7 @@ if (creamAutoIntervalSlider) {
         updateSliderDisplay(creamAutoIntervalSlider);
         creamAutoIntervalSec = parseFloat(creamAutoIntervalSlider.value) || creamAutoIntervalSec;
         if (creamAutoEnabled) scheduleNextAutoCream(); // re-roll interval on change
+        saveSettings();
     });
 }
 
@@ -1568,6 +1581,7 @@ if (creamMaxCountSlider) {
         updateSliderDisplay(creamMaxCountSlider);
         creamMaxCount = parseInt(creamMaxCountSlider.value, 10) || creamMaxCount;
         enforceCreamLimit();
+        saveSettings();
     });
 }
 
@@ -1592,6 +1606,7 @@ function setCreamAutoEnabled(v) {
         creamNextAutoIntervalSec = null;
     }
     syncCreamAutoUI();
+    saveSettings();
 }
 
 if (creamAutoToggle) {
@@ -3248,6 +3263,7 @@ const ang = Math.atan2(dvy, dvx);
                         if (local) {
                             const patchSize = 0.18 + Math.random() * 0.18;
                             creamPatches.push({
+                                isSplatter: false,
                                 age: 0,
                                 life: creamLifetimeSec,
                                 fadeStart: getCreamFadeStartSec(),
@@ -3272,6 +3288,7 @@ const ang = Math.atan2(dvy, dvx);
                                 const su = 0.07 + Math.random() * 0.06;
                                 const sv = su * (1.20 + Math.random() * 0.70); // vertical splashes
                                 creamPatches.push({
+                                    isSplatter: true,
                                     age: 0,
                                     life: 3.2 + Math.random() * 2.0,
                                     fadeStart: 2.0,
