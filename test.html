@@ -1806,10 +1806,15 @@ document.getElementById('toggle-menu-btn').addEventListener('click', () => {
 
             const buildFacingConstraints = (includeResFps) => {
                 const v = { facingMode: { ideal: wantFacing } };
-                if (includeResFps) {
-                    // Keep current capture size as a hint, but allow device to choose.
-                    if (currentCamWidth)  v.width  = { ideal: currentCamWidth };
-                    if (currentCamHeight) v.height = { ideal: currentCamHeight };
+
+                // Some builds referenced currentCamWidth/currentCamHeight which may not exist.
+                // Use the current video track dimensions (if available) as a soft hint instead.
+                const vwHint = (videoEl && videoEl.videoWidth) ? videoEl.videoWidth : 0;
+                const vhHint = (videoEl && videoEl.videoHeight) ? videoEl.videoHeight : 0;
+
+                if (includeResFps && vwHint && vhHint) {
+                    v.width  = { ideal: vwHint };
+                    v.height = { ideal: vhHint };
                 } else {
                     // Use a reasonable default hint only
                     v.width  = { ideal: 1280 };
