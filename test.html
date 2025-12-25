@@ -777,7 +777,7 @@
     <script type="module">
         
 // ===== App Version (single source of truth) =====
-const APP_VERSION = "v6.01.03";
+const APP_VERSION = "v6.01.04";
 const APP_VERSION_NOTE = "fix: cream button clickable (pointer-events)";
 function setAppVersionLabel() {
   const el = document.getElementById("app-version");
@@ -2990,7 +2990,8 @@ function drawCreamDrip(ctx, x, y, w, h, opacity, angleRad) {
                                 sizeU: patchSize,
                                 sizeV: patchSize * (0.75 + Math.random() * 0.30),
                                 spreadT: 0,
-                                dripDelay: 0.8 + Math.random() * 0.8,
+                                dripDelay: 1.4 + Math.random() * 1.4,
+                                dripRate: 1.0 / (1.4 + Math.random() * 1.8),
                                 dripAcc: 0,
                                 rollBias: (Math.random() - 0.5) * 0.15
                             });
@@ -3036,21 +3037,22 @@ function drawCreamDrip(ctx, x, y, w, h, opacity, angleRad) {
                 const spread = 1.0 + 0.25 * s.spreadT;
 
                 if (s.age >= s.dripDelay) {
-                    const rate = 1.0 / (0.35 + Math.random() * 0.35);
+                    const rate = (s.dripRate != null) ? s.dripRate : (1.0 / (1.4 + Math.random() * 1.8));
                     s.dripAcc += rate * delta;
                     let made = 0;
-                    while (s.dripAcc >= 1.0 && made < 2) {
+                    while (s.dripAcc >= 1.0 && made < 1) {
                         s.dripAcc -= 1.0;
                         made++;
+                        const speedMul = 0.7 + Math.random() * 0.9;
                         creamDrips.push({
                             age: 0,
-                            life: Math.min(3.8, s.life - s.age),
+                            life: Math.min(6.5, s.life - s.age),
                             u: s.u + (Math.random() - 0.5) * 0.05,
                             v: s.v + (Math.random() * 0.02),
-                            vel: 0.10 + Math.random() * 0.10,
-                            acc: 0.60 + Math.random() * 0.30,
-                            w: 0.055 + Math.random() * 0.035,
-                            h: 0.11 + Math.random() * 0.07,
+                            vel: (0.030 + Math.random() * 0.055) * speedMul,
+                            acc: (0.10 + Math.random() * 0.20) * speedMul,
+                            w: 0.045 + Math.random() * 0.030,
+                            h: 0.13 + Math.random() * 0.09,
                             rollBias: (Math.random() - 0.5) * 0.18
                         });
                     }
@@ -3061,7 +3063,7 @@ function drawCreamDrip(ctx, x, y, w, h, opacity, angleRad) {
                     if (pxy) {
                         const r = useBasis.faceW * 0.18 * s.sizeU * spread;
                         const ang = (useBasis.roll || 0) + (s.rollBias || 0);
-                        const stretchY = 1.0 + Math.max(0, (s.age - s.dripDelay) * 0.18);
+                        const stretchY = 1.0 + Math.max(0, (s.age - s.dripDelay) * 0.10);
                         creamOverlayCtx.globalAlpha = 0.75 * a;
                         drawCreamBlob(creamOverlayCtx, pxy.x, pxy.y, r, 1.0, ang, stretchY);
                         creamOverlayCtx.globalAlpha = 1.0;
@@ -3093,7 +3095,7 @@ function drawCreamDrip(ctx, x, y, w, h, opacity, angleRad) {
                         const ang = (angV - Math.PI * 0.5) + (d.rollBias || 0);
 
                         // Syrupy trail (tapered look using 2 strokes)
-                        const trailLen = Math.min(0.28, 0.10 + d.vel * 0.18);
+                        const trailLen = Math.min(0.32, 0.12 + d.vel * 0.26);
                         const back = faceLocalToScreenPx(d.u, d.v - trailLen, useBasis);
                         if (back) {
                             // wide faint
