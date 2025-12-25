@@ -1506,8 +1506,12 @@ forceShadowToggle.addEventListener('change', () => {
             if (t && (t.closest?.('.control-panel') || t.closest?.('.icon-buttons') || t.closest?.('.panel'))) return;
             if (!creamOverlayCanvas) return;
             const rect = creamOverlayCanvas.getBoundingClientRect();
-            const x = ev.clientX - rect.left;
+            let x = ev.clientX - rect.left;
             const y = ev.clientY - rect.top;
+            // If the camera/view is mirrored, screen-left corresponds to larger X in the unmirrored overlay.
+            if (typeof mirrorEnabled === "boolean" && mirrorEnabled) {
+                x = rect.width - x;
+            }
             spawnCreamBurst(x, y);
         };
         if (arContainer) {
@@ -2960,12 +2964,14 @@ function drawCreamDrip(ctx, x, y, w, h, opacity, angleRad) {
                 const vx = (p.x1 - p.x0);
                 const vy = (p.y1 - p.y0);
                 const ang = Math.atan2(vy, vx);
+                // drawCreamDroplet is oriented along +Y (down). Rotate so +Y aligns with the motion direction.
+                const angY = ang - Math.PI * 0.5;
                 const stretch = 1.0 + Math.min(1.6, Math.hypot(vx, vy) / 380);
 
                 creamOverlayCtx.save();
                 creamOverlayCtx.globalAlpha = p.a0 * (1 - tt * 0.15);
                 creamOverlayCtx.translate(x, y);
-                creamOverlayCtx.rotate(ang);
+                creamOverlayCtx.rotate(angY);
                 creamOverlayCtx.scale(1.0, stretch);
                 drawCreamDroplet(creamOverlayCtx, 0, 0, p.size * 0.70, p.size * 1.05, 1.0, 0);
                 creamOverlayCtx.restore();
@@ -3083,7 +3089,8 @@ function drawCreamDrip(ctx, x, y, w, h, opacity, angleRad) {
                     const pxy = faceLocalToScreenPx(d.u, d.v, useBasis);
                     if (pxy) {
                         const angV = Math.atan2(useBasis.vy, useBasis.vx);
-                        const ang = angV + (d.rollBias || 0);
+                        // drawCreamDrip is oriented along +Y (down). Align it with the face "down" direction (v-axis).
+                        const ang = (angV - Math.PI * 0.5) + (d.rollBias || 0);
 
                         // Syrupy trail (tapered look using 2 strokes)
                         const trailLen = Math.min(0.28, 0.10 + d.vel * 0.18);
