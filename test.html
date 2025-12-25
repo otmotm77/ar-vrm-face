@@ -768,7 +768,13 @@
                     <span id="cam-softglow-slider-val" class="val-display">0</span>
                 </div>
 
-            </div>
+            
+                <div class="slider-container">
+                    <span class="slider-label">クリーム消滅時間<br>(Cream Lifetime)</span>
+                    <input type="range" id="cream-life-slider" min="1" max="30" step="1" value="10">
+                    <span id="cream-life-slider-val" class="val-display">10</span>
+                </div>
+</div>
         </div>
     </div>
 
@@ -777,8 +783,8 @@
     <script type="module">
         
 // ===== App Version (single source of truth) =====
-const APP_VERSION = "v6.01.05";
-const APP_VERSION_NOTE = "cream: remove drips; patches flow down";
+const APP_VERSION = "v6.01.06";
+const APP_VERSION_NOTE = "cream: lifetime slider + bezier shot";
 function setAppVersionLabel() {
   const el = document.getElementById("app-version");
   if (!el) return;
@@ -948,9 +954,15 @@ let latestCheekLVideoX = 0.35; // normalized in ORIGINAL video frame (0..1)
         let creamPatches = [];
         let creamLastFaceBasis = null; // cached basis for when tracking is lost
         let creamLastFaceValid = false;
-        let creamLastShotMs = 0;
-
-        let breathOverlayCtx = null;
+                let creamLastShotMs = 0;
+        
+                // Cream lifetime (seconds). Controlled via UI slider (1-30s).
+                var creamLifetimeSec = 10.0;
+                function getCreamFadeStartSec() {
+                    return Math.max(0.0, creamLifetimeSec * 0.7);
+                }
+        
+                let breathOverlayCtx = null;
         let blush2DDebug = null; // debug snapshot for 2D blush mapping/rotation
 
         let breathParticles2D = [];
@@ -1452,6 +1464,17 @@ const tabVrm = document.getElementById('tab-vrm');
                 updateOccluder();
             });
         });
+// Cream lifetime slider (1-30s)
+const creamLifeSlider = document.getElementById('cream-life-slider');
+if (creamLifeSlider) {
+    updateSliderDisplay(creamLifeSlider);
+    creamLifetimeSec = parseFloat(creamLifeSlider.value) || creamLifetimeSec;
+    creamLifeSlider.addEventListener('input', () => {
+        updateSliderDisplay(creamLifeSlider);
+        creamLifetimeSec = parseFloat(creamLifeSlider.value) || creamLifetimeSec;
+    });
+}
+
 
         // 個別のイベントリスナー (Transform用)
         [scaleSlider, ySlider, zSlider].forEach(el => el.addEventListener('input', updateTransform));
@@ -2736,9 +2759,8 @@ function updateBreathEffect(delta) {
         // =========================
         // Cream VFX (2D overlay)
         // =========================
-        const CREAM_LIFETIME = 10.0;     // seconds
-        const CREAM_FADE_START = 7.0;    // seconds
-        const CREAM_SHOT_COOLDOWN_MS = 320;
+        // Cream lifetime is controlled by slider (creamLifetimeSec)
+const CREAM_SHOT_COOLDOWN_MS = 320;
 
         function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
 
@@ -2860,8 +2882,19 @@ function updateBreathEffect(delta) {
             const dur = 0.13 + Math.random() * 0.12;
             const size = 8 + Math.random() * 6;
 
-            creamProjectiles.push({ t: 0, dur, x0: start.x, y0: start.y, x1: tx, y1: ty, size, a0: 0.78 });
-        }
+            const dx = tx - start.x;
+const dy = ty - start.y;
+const dist = Math.max(1.0, Math.hypot(dx, dy));
+const baseAng = Math.atan2(dy, dx);
+
+// Add slight randomness to the shot angle (±5°) while keeping the endpoint fixed.
+const deltaAng = (Math.random() * 2 - 1) * (5.0 * Math.PI / 180.0);
+const cpDist = dist * (0.45 + Math.random() * 0.15);
+const cx = start.x + Math.cos(baseAng + deltaAng) * cpDist;
+const cy = start.y + Math.sin(baseAng + deltaAng) * cpDist;
+
+creamProjectiles.push({ t: 0, dur, x0: start.x, y0: start.y, cx, cy, x1: tx, y1: ty, size, a0: 0.78 });
+}
 
         function drawCreamBlob(ctx, x, y, r, opacity, angleRad = 0, stretchY = 1.0) {
             ctx.save();
@@ -2956,15 +2989,20 @@ function drawCreamDrip(ctx, x, y, w, h, opacity, angleRad) {
                 p.t += delta;
                 const tt = Math.min(1, p.t / Math.max(1e-3, p.dur));
                 const e = easeOutCubic(tt);
-                const x = p.x0 + (p.x1 - p.x0) * e;
-                const y = p.y0 + (p.y1 - p.y0) * e;
+                const tB = e;
+const omt = 1.0 - tB;
 
-                const vx = (p.x1 - p.x0);
-                const vy = (p.y1 - p.y0);
-                const ang = Math.atan2(vy, vx);
+// Quadratic Bezier position (curved shot path)
+const x = (omt * omt * p.x0) + (2 * omt * tB * p.cx) + (tB * tB * p.x1);
+const y = (omt * omt * p.y0) + (2 * omt * tB * p.cy) + (tB * tB * p.y1);
+
+// Bezier derivative for direction
+const dvx = (2 * omt * (p.cx - p.x0)) + (2 * tB * (p.x1 - p.cx));
+const dvy = (2 * omt * (p.cy - p.y0)) + (2 * tB * (p.y1 - p.cy));
+const ang = Math.atan2(dvy, dvx);
                 // drawCreamDroplet is oriented along +Y (down). Rotate so +Y aligns with the motion direction.
                 const angY = ang - Math.PI * 0.5;
-                const stretch = 1.0 + Math.min(1.6, Math.hypot(vx, vy) / 380);
+                const stretch = 1.0 + Math.min(1.6, Math.hypot(dvx, dvy) / 430);
 
                 creamOverlayCtx.save();
                 creamOverlayCtx.globalAlpha = p.a0 * (1 - tt * 0.15);
@@ -2981,8 +3019,8 @@ function drawCreamDrip(ctx, x, y, w, h, opacity, angleRad) {
                             const patchSize = 0.18 + Math.random() * 0.18;
                             creamPatches.push({
                                 age: 0,
-                                life: CREAM_LIFETIME,
-                                fadeStart: CREAM_FADE_START,
+                                life: creamLifetimeSec,
+                                fadeStart: getCreamFadeStartSec(),
                                 u: local.u,
                                 v: local.v,
                                 sizeU: patchSize,
