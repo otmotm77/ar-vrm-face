@@ -784,7 +784,7 @@
         
 // ===== App Version (single source of truth) =====
 const APP_VERSION = "v6.01.08";
-const APP_VERSION_NOTE = "cream: flow taper (narrowing width)";
+const APP_VERSION_NOTE = "cream: flow taper (narrowing width) | multi-shot tap + stronger flow";
 
 
 function getOverlayPixelRatio() {
@@ -1540,7 +1540,18 @@ forceShadowToggle.addEventListener('change', () => {
             if (typeof mirrorEnabled === "boolean" && mirrorEnabled) {
                 x = rect.width - x;
             }
-            spawnCreamBurst(x, y);
+            // 2-3 shots per tap with slight randomized hit offsets (mostly vertical)
+            const now = performance.now();
+            if (now - creamLastShotMs < CREAM_SHOT_COOLDOWN_MS) return;
+            creamLastShotMs = now;
+
+            const shotCount = 2 + (Math.random() < 0.55 ? 0 : 1); // 2 or 3
+            for (let i = 0; i < shotCount; i++) {
+                // Keep horizontal jitter tiny, vertical jitter a bit larger (slightly biased downward)
+                const dx = (Math.random() * 2 - 1) * 5.0;                 // ±5px
+                const dy = (Math.random() * 2 - 1) * 14.0 + 6.0;          // mostly vertical, slight down-bias
+                spawnCreamBurst(x + dx, y + dy, true);
+            }
         };
         if (arContainer) {
             arContainer.addEventListener('pointerdown', fireCreamAtTap, { passive: true });
@@ -2854,10 +2865,12 @@ const CREAM_SHOT_COOLDOWN_MS = 320;
             return { x: r.left + r.width * 0.5, y: r.top + r.height * 0.5 };
         }
 
-        function spawnCreamBurst(targetX = null, targetY = null) {
+        function spawnCreamBurst(targetX = null, targetY = null, ignoreCooldown = false) {
             const now = performance.now();
-            if (now - creamLastShotMs < CREAM_SHOT_COOLDOWN_MS) return;
-            creamLastShotMs = now;
+            if (!ignoreCooldown) {
+                if (now - creamLastShotMs < CREAM_SHOT_COOLDOWN_MS) return;
+                creamLastShotMs = now;
+            }
 
             const pr = getOverlayPixelRatio();
             const cssW = (creamOverlayCanvas ? creamOverlayCanvas.width / pr : window.innerWidth);
@@ -3061,7 +3074,7 @@ const ang = Math.atan2(dvy, dvx);
                                 dripAcc: 0,
                                 rollBias: (Math.random() - 0.5) * 0.15,
                                 // face-local v units per second (scaled by faceW in projection). keep it subtle.
-                                flowVel: 0.0015 + Math.random() * 0.0035
+                                flowVel: 0.012 + Math.random() * 0.012
                             });
 
                             const n = 2 + Math.floor(Math.random() * 3);
@@ -3081,7 +3094,7 @@ const ang = Math.atan2(dvy, dvx);
                                     dripDelay: 999,
                                     dripAcc: 0,
                                     rollBias: (Math.random() - 0.5) * 0.25,
-                                    flowVel: 0.0008 + Math.random() * 0.0020
+                                    flowVel: 0.006 + Math.random() * 0.008
                                 });
                             }
                         }
@@ -3117,7 +3130,7 @@ const ang = Math.atan2(dvy, dvx);
                 // As the patch flows downward, gradually narrow its width (rx) for a tapered look
                 if (typeof s.v0 !== 'number') s.v0 = s.v;
                 const flowDist = Math.max(0, s.v - s.v0);        // face-local v units moved downward
-                const narrowT  = Math.min(1, flowDist / 0.030);  // reach max narrowing after ~0.03v
+                const narrowT  = Math.min(1, flowDist / 0.060);  // reach max narrowing after ~0.03v
                 const narrow   = Math.max(0.45, 1.0 - 0.55 * narrowT);
                 if (useBasis) {
                     const pxy = faceLocalToScreenPx(s.u, s.v, useBasis);
