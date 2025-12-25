@@ -100,6 +100,12 @@
         .cream-shot-btn:active{
             transform: scale(0.96);
         }
+        .cream-shot-btn.on{
+            background: rgba(120,255,180,0.24);
+            border-color: rgba(120,255,180,0.75);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.25), 0 0 0 2px rgba(120,255,180,0.16) inset;
+        }
+
 .icon-btn {
             background: rgba(255, 255, 255, 0.8);
             border: none;
@@ -417,6 +423,9 @@
             <button id="toggle-fullscreen-btn" class="icon-btn" title="全画面表示切替">⛶</button>
         </div>
 
+        <!-- Left-bottom toggle button: Auto cream shot -->
+        <button id="auto-cream-toggle-btn" class="cream-shot-btn" type="button" title="自動射出 ON/OFF">A</button>
+
         <!-- メイン設定パネル -->
         <div class="control-panel" id="control-panel" style="display:none;">
             <h1>モデル・トラッキング</h1>
@@ -493,6 +502,31 @@
 
             
             </div>
+
+<h2>クリーム射出</h2>
+            <div class="slider-container">
+                <label class="toggle-label">
+                    <input type="checkbox" id="cream-auto-toggle" class="toggle-checkbox">
+                    自動射出（左下ボタンでも切替）
+                </label>
+            </div>
+            <div class="slider-container">
+                <span class="slider-label">射出間隔秒数</span>
+                <input type="range" id="cream-auto-interval-slider" min="0.2" max="10" step="0.1" value="1.5">
+                <span id="cream-auto-interval-slider-val" class="val-display">1.5</span>
+            </div>
+            
+                <div class="slider-container">
+                    <span class="slider-label">クリーム消滅時間<br>(Cream Lifetime)</span>
+                    <input type="range" id="cream-life-slider" min="1" max="30" step="1" value="10">
+                    <span id="cream-life-slider-val" class="val-display">10</span>
+                </div>
+            <div class="slider-container">
+                <span class="slider-label">最大クリーム数</span>
+                <input type="range" id="cream-max-count-slider" min="10" max="200" step="1" value="40">
+                <span id="cream-max-count-slider-val" class="val-display">40</span>
+            </div>
+
 <h2>表情設定</h2>
             <div class="slider-container">
                 <label class="toggle-label">
@@ -767,13 +801,6 @@
                     <input type="range" id="cam-softglow-slider" min="0" max="100" step="1" value="0">
                     <span id="cam-softglow-slider-val" class="val-display">0</span>
                 </div>
-
-            
-                <div class="slider-container">
-                    <span class="slider-label">クリーム消滅時間<br>(Cream Lifetime)</span>
-                    <input type="range" id="cream-life-slider" min="1" max="30" step="1" value="10">
-                    <span id="cream-life-slider-val" class="val-display">10</span>
-                </div>
 </div>
         </div>
     </div>
@@ -967,6 +994,30 @@ let latestCheekLVideoX = 0.35; // normalized in ORIGINAL video frame (0..1)
                 var creamLifetimeSec = 10.0;
                 function getCreamFadeStartSec() {
                     return Math.max(0.0, creamLifetimeSec * 0.7);
+                }
+
+
+                // Auto cream shot settings
+                let creamAutoEnabled = false;
+                var creamAutoIntervalSec = 1.5; // base interval (seconds)
+                var creamMaxCount = 40;         // max total (patches + projectiles)
+                let creamAutoElapsedSec = 0.0;
+                let creamNextAutoIntervalSec = null;
+
+                function scheduleNextAutoCream() {
+                    const base = Math.max(0.2, creamAutoIntervalSec || 1.5);
+                    // Add ±20% randomness to the interval
+                    creamNextAutoIntervalSec = base * (0.8 + Math.random() * 0.4);
+                    creamAutoElapsedSec = 0.0;
+                }
+
+                function enforceCreamLimit() {
+                    const max = Math.max(10, Math.min(200, (creamMaxCount | 0) || 40));
+                    while ((creamPatches.length + creamProjectiles.length) > max) {
+                        if (creamPatches.length > 0) creamPatches.shift();
+                        else if (creamProjectiles.length > 0) creamProjectiles.shift();
+                        else break;
+                    }
                 }
         
                 let breathOverlayCtx = null;
@@ -1483,6 +1534,71 @@ if (creamLifeSlider) {
 }
 
 
+// Cream auto shot interval slider (seconds)
+const creamAutoIntervalSlider = document.getElementById('cream-auto-interval-slider');
+if (creamAutoIntervalSlider) {
+    updateSliderDisplay(creamAutoIntervalSlider);
+    creamAutoIntervalSec = parseFloat(creamAutoIntervalSlider.value) || creamAutoIntervalSec;
+    creamAutoIntervalSlider.addEventListener('input', () => {
+        updateSliderDisplay(creamAutoIntervalSlider);
+        creamAutoIntervalSec = parseFloat(creamAutoIntervalSlider.value) || creamAutoIntervalSec;
+        if (creamAutoEnabled) scheduleNextAutoCream(); // re-roll interval on change
+    });
+}
+
+// Max cream count slider (10-200)
+const creamMaxCountSlider = document.getElementById('cream-max-count-slider');
+if (creamMaxCountSlider) {
+    updateSliderDisplay(creamMaxCountSlider);
+    creamMaxCount = parseInt(creamMaxCountSlider.value, 10) || creamMaxCount;
+    creamMaxCountSlider.addEventListener('input', () => {
+        updateSliderDisplay(creamMaxCountSlider);
+        creamMaxCount = parseInt(creamMaxCountSlider.value, 10) || creamMaxCount;
+        enforceCreamLimit();
+    });
+}
+
+const creamAutoToggle = document.getElementById('cream-auto-toggle');
+const autoCreamBtn = document.getElementById('auto-cream-toggle-btn');
+
+function syncCreamAutoUI() {
+    if (creamAutoToggle) creamAutoToggle.checked = !!creamAutoEnabled;
+    if (autoCreamBtn) {
+        autoCreamBtn.classList.toggle('on', !!creamAutoEnabled);
+        autoCreamBtn.setAttribute('aria-pressed', creamAutoEnabled ? 'true' : 'false');
+        autoCreamBtn.textContent = creamAutoEnabled ? 'AUTO' : 'A';
+        autoCreamBtn.title = creamAutoEnabled ? '自動射出: ON' : '自動射出: OFF';
+    }
+}
+
+function setCreamAutoEnabled(v) {
+    creamAutoEnabled = !!v;
+    if (creamAutoEnabled) {
+        scheduleNextAutoCream();
+    } else {
+        creamNextAutoIntervalSec = null;
+    }
+    syncCreamAutoUI();
+}
+
+if (creamAutoToggle) {
+    creamAutoToggle.addEventListener('change', () => {
+        setCreamAutoEnabled(creamAutoToggle.checked);
+    });
+}
+
+if (autoCreamBtn) {
+    autoCreamBtn.addEventListener('pointerdown', (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        setCreamAutoEnabled(!creamAutoEnabled);
+    }, { passive: false });
+}
+
+// Initial UI sync
+syncCreamAutoUI();
+
+
         // 個別のイベントリスナー (Transform用)
         [scaleSlider, ySlider, zSlider].forEach(el => el.addEventListener('input', updateTransform));
 
@@ -1531,7 +1647,7 @@ forceShadowToggle.addEventListener('change', () => {
         const fireCreamAtTap = (ev) => {
             // Ignore taps on UI elements (panels/buttons)
             const t = ev.target;
-            if (t && (t.closest?.('.control-panel') || t.closest?.('.icon-buttons') || t.closest?.('.panel'))) return;
+            if (t && (t.closest?.('.control-panel') || t.closest?.('.icon-buttons') || t.closest?.('.panel') || t.id === 'auto-cream-toggle-btn' || t.closest?.('#auto-cream-toggle-btn'))) return;
             if (!creamOverlayCanvas) return;
             const rect = creamOverlayCanvas.getBoundingClientRect();
             let x = ev.clientX - rect.left;
@@ -1818,6 +1934,11 @@ document.getElementById('toggle-menu-btn').addEventListener('click', () => {
                 blushSpread: (typeof blushSpreadSlider !== 'undefined' && blushSpreadSlider) ? blushSpreadSlider.value : '1.00',
                 blushFront: (typeof blushFrontToggle !== 'undefined' && blushFrontToggle) ? !!blushFrontToggle.checked : true,
                 blushColor: (typeof blushColorPicker !== 'undefined' && blushColorPicker) ? blushColorPicker.value : '#ff5fa0',
+                // Cream shooting
+                creamLife: (typeof creamLifeSlider !== 'undefined' && creamLifeSlider) ? creamLifeSlider.value : String(creamLifetimeSec),
+                creamAuto: (typeof creamAutoEnabled !== 'undefined') ? !!creamAutoEnabled : false,
+                creamInterval: (typeof creamAutoIntervalSlider !== 'undefined' && creamAutoIntervalSlider) ? creamAutoIntervalSlider.value : String(creamAutoIntervalSec),
+                creamMax: (typeof creamMaxCountSlider !== 'undefined' && creamMaxCountSlider) ? creamMaxCountSlider.value : String(creamMaxCount),
             };
 
 
@@ -1900,7 +2021,31 @@ document.getElementById('toggle-menu-btn').addEventListener('click', () => {
 
                     if (typeof updateBlushUI === 'function') updateBlushUI(true);
 
-                    if (typeof updateBreathUI === 'function') updateBreathUI(true);
+ 
+                    // Cream shooting
+                    if (Object.prototype.hasOwnProperty.call(s, 'creamLife') && typeof creamLifeSlider !== 'undefined' && creamLifeSlider) {
+                        creamLifeSlider.value = s.creamLife;
+                        updateSliderDisplay(creamLifeSlider);
+                        creamLifetimeSec = parseFloat(creamLifeSlider.value) || creamLifetimeSec;
+                    }
+                    if (Object.prototype.hasOwnProperty.call(s, 'creamInterval') && typeof creamAutoIntervalSlider !== 'undefined' && creamAutoIntervalSlider) {
+                        creamAutoIntervalSlider.value = s.creamInterval;
+                        updateSliderDisplay(creamAutoIntervalSlider);
+                        creamAutoIntervalSec = parseFloat(creamAutoIntervalSlider.value) || creamAutoIntervalSec;
+                    }
+                    if (Object.prototype.hasOwnProperty.call(s, 'creamMax') && typeof creamMaxCountSlider !== 'undefined' && creamMaxCountSlider) {
+                        creamMaxCountSlider.value = s.creamMax;
+                        updateSliderDisplay(creamMaxCountSlider);
+                        creamMaxCount = parseInt(creamMaxCountSlider.value, 10) || creamMaxCount;
+                        enforceCreamLimit();
+                    }
+                    if (Object.prototype.hasOwnProperty.call(s, 'creamAuto')) {
+                        setCreamAutoEnabled(!!s.creamAuto);
+                    } else {
+                        syncCreamAutoUI();
+                    }
+
+                   if (typeof updateBreathUI === 'function') updateBreathUI(true);
 // 値の表示を更新
                     allSliders.forEach(el => updateSliderDisplay(el));
 
@@ -2892,11 +3037,21 @@ const CREAM_SHOT_COOLDOWN_MS = 320;
             let ty = (targetY !== null ? targetY : null);
 
             if (tx === null || ty === null) {
-                const randU = (Math.random() - 0.5) * 0.30;
-                const randV = (Math.random() - 0.15) * 0.30;
-                const jitter = faceLocalToScreenPx(randU, randV, basis);
-                tx = (jitter ? jitter.x : centerX);
-                ty = (jitter ? jitter.y : centerY);
+                // Auto/random: pick a point inside the head/face area (face-local UV), then convert to CSS pixels.
+                // U: left(-) to right(+), V: up(-) to down(+)
+                let u = 0, v = 0;
+                // Sample inside an ellipse to stay roughly within the face silhouette.
+                for (let k = 0; k < 8; k++) {
+                    const uu = (Math.random() * 2 - 1) * 0.46;   // ~±0.46 face widths
+                    const vv = -0.35 + Math.random() * 1.25;     // forehead..chin (biased range)
+                    const eu = uu / 0.46;
+                    const ev = (vv - 0.22) / 0.70;
+                    if ((eu * eu + ev * ev) <= 1.0) { u = uu; v = vv; break; }
+                    u = uu; v = vv;
+                }
+                const pt = faceLocalToScreenPx(u, v, basis);
+                tx = (pt ? pt.x : centerX);
+                ty = (pt ? pt.y : centerY);
             } else {
                 // User tap: keep the exact tapped point (no target jitter).
             }
@@ -2932,6 +3087,8 @@ const uvTap = screenPxToFaceLocal(tx, ty, basis);
                 size,
                 a0: 0.78
             });
+            enforceCreamLimit();
+
 }
 
         function drawCreamBlob(ctx, x, y, r, opacity, angleRad = 0, stretchY = 1.0, rxScale = 1.0) {
@@ -3015,6 +3172,23 @@ function drawCreamDrip(ctx, x, y, w, h, opacity, angleRad) {
             if (basis) { creamLastFaceBasis = basis; creamLastFaceValid = true; }
             else { creamLastFaceValid = !!creamLastFaceBasis; }
             const useBasis = basis || creamLastFaceBasis;
+
+
+            // Auto cream shots (random targets within head/face)
+            if (creamAutoEnabled) {
+                if (creamNextAutoIntervalSec === null) scheduleNextAutoCream();
+                // Only fire when we have some face basis (current or cached)
+                if (useBasis) {
+                    creamAutoElapsedSec += delta;
+                    if (creamAutoElapsedSec >= creamNextAutoIntervalSec) {
+                        const shotCount = 2 + (Math.random() < 0.55 ? 0 : 1); // 2 or 3
+                        for (let i = 0; i < shotCount; i++) {
+                            spawnCreamBurst(null, null, true);
+                        }
+                        scheduleNextAutoCream();
+                    }
+                }
+            }
 
             creamOverlayCtx.setTransform(pr, 0, 0, pr, 0, 0);
             creamOverlayCtx.clearRect(0, 0, cssW, cssH);
@@ -3104,6 +3278,7 @@ const ang = Math.atan2(dvy, dvx);
                 }
             }
             creamProjectiles = keepProj;
+            enforceCreamLimit();
 
             // Patches
             const keepP = [];
