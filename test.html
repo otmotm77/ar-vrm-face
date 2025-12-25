@@ -783,7 +783,7 @@
     <script type="module">
         
 // ===== App Version (single source of truth) =====
-const APP_VERSION = "v6.01.06";
+const APP_VERSION = "v6.01.07";
 const APP_VERSION_NOTE = "cream: lifetime slider + bezier shot";
 function setAppVersionLabel() {
   const el = document.getElementById("app-version");
@@ -2858,7 +2858,11 @@ const CREAM_SHOT_COOLDOWN_MS = 320;
             const basis = computeCreamFaceBasis(cssW, cssH) || creamLastFaceBasis;
             if (!basis) return;
 
-            const start = getCreamButtonCenterPx();
+            let start = getCreamButtonCenterPx();
+            // Mirror compensation for the shot start point: keep it on the visual left even when mirrored.
+            if (typeof mirrorEnabled === "boolean" && mirrorEnabled) {
+                start = { x: cssW - start.x, y: start.y };
+            }
 
             const centerX = (basis.eyeMid.x * 0.55 + basis.mouthMid.x * 0.45);
             const centerY = (basis.eyeMid.y * 0.55 + basis.mouthMid.y * 0.45);
@@ -2893,7 +2897,23 @@ const cpDist = dist * (0.45 + Math.random() * 0.15);
 const cx = start.x + Math.cos(baseAng + deltaAng) * cpDist;
 const cy = start.y + Math.sin(baseAng + deltaAng) * cpDist;
 
-creamProjectiles.push({ t: 0, dur, x0: start.x, y0: start.y, cx, cy, x1: tx, y1: ty, size, a0: 0.78 });
+const uvTap = screenPxToFaceLocal(tx, ty, basis);
+
+            creamProjectiles.push({
+                t: 0,
+                dur,
+                x0: start.x,
+                y0: start.y,
+                cx,
+                cy,
+                x1: tx,
+                y1: ty,
+                // Fix hit offset drift: lock face-local coordinates at tap time.
+                tapU: (uvTap ? uvTap.u : null),
+                tapV: (uvTap ? uvTap.v : null),
+                size,
+                a0: 0.78
+            });
 }
 
         function drawCreamBlob(ctx, x, y, r, opacity, angleRad = 0, stretchY = 1.0) {
@@ -3014,7 +3034,9 @@ const ang = Math.atan2(dvy, dvx);
 
                 if (tt >= 1.0) {
                     if (useBasis) {
-                        const local = screenPxToFaceLocal(p.x1, p.y1, useBasis);
+                        const local = (p.tapU !== null && p.tapU !== undefined && p.tapV !== null && p.tapV !== undefined)
+                            ? { u: p.tapU, v: p.tapV }
+                            : screenPxToFaceLocal(p.x1, p.y1, useBasis);
                         if (local) {
                             const patchSize = 0.18 + Math.random() * 0.18;
                             creamPatches.push({
