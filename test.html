@@ -778,7 +778,7 @@
     <script type="module">
         
 // ===== App Version (single source of truth) =====
-const APP_VERSION = "v6.01.00";
+const APP_VERSION = "v6.01.01";
 const APP_VERSION_NOTE = "vfx: add cream splash/drip button (2D overlay)";
 function setAppVersionLabel() {
   const el = document.getElementById("app-version");
@@ -2337,6 +2337,10 @@ const ox = blushOffX * unit;
                 breathOverlayCanvas.width = w;
                 breathOverlayCanvas.height = h;
             }
+            // Keep CSS sizing to cover the viewport
+            breathOverlayCanvas.style.width = '100%';
+            breathOverlayCanvas.style.height = '100%';
+        }
 
         function resizeCreamOverlayCanvas() {
             if (!creamOverlayCanvas) return;
@@ -2349,11 +2353,6 @@ const ox = blushOffX * unit;
             }
             creamOverlayCanvas.style.width = '100%';
             creamOverlayCanvas.style.height = '100%';
-        }
-
-            // Keep CSS sizing to cover the viewport
-            breathOverlayCanvas.style.width = '100%';
-            breathOverlayCanvas.style.height = '100%';
         }
 
 function updateBreathEffect(delta) {
