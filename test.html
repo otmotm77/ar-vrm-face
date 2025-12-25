@@ -417,8 +417,6 @@
             <button id="toggle-fullscreen-btn" class="icon-btn" title="全画面表示切替">⛶</button>
         </div>
 
-        <button id="cream-shot-btn" class="cream-shot-btn" title="クリームを発射">🥛</button>
-
         <!-- メイン設定パネル -->
         <div class="control-panel" id="control-panel" style="display:none;">
             <h1>モデル・トラッキング</h1>
@@ -779,7 +777,7 @@
     <script type="module">
         
 // ===== App Version (single source of truth) =====
-const APP_VERSION = "v6.01.02";
+const APP_VERSION = "v6.01.03";
 const APP_VERSION_NOTE = "fix: cream button clickable (pointer-events)";
 function setAppVersionLabel() {
   const el = document.getElementById("app-version");
@@ -1499,15 +1497,21 @@ forceShadowToggle.addEventListener('change', () => {
         shadowDetails.style.display = forceShadowToggle.checked ? 'block' : 'none';
 
         
-        // --- Cream VFX button (left-bottom) ---
-        const creamShotBtn = document.getElementById('cream-shot-btn');
-        const fireCreamOnce = (ev) => {
-            if (ev) ev.preventDefault();
-            spawnCreamBurst();
+        // --- Cream VFX trigger (tap anywhere on camera view) ---
+        // Tap on the camera/AR area to shoot cream toward the tapped point.
+        // This avoids UI buttons and works well on mobile.
+        const fireCreamAtTap = (ev) => {
+            // Ignore taps on UI elements (panels/buttons)
+            const t = ev.target;
+            if (t && (t.closest?.('.control-panel') || t.closest?.('.icon-buttons') || t.closest?.('.panel'))) return;
+            if (!creamOverlayCanvas) return;
+            const rect = creamOverlayCanvas.getBoundingClientRect();
+            const x = ev.clientX - rect.left;
+            const y = ev.clientY - rect.top;
+            spawnCreamBurst(x, y);
         };
-        if (creamShotBtn) {
-            creamShotBtn.addEventListener('pointerdown', fireCreamOnce, { passive: false });
-            creamShotBtn.addEventListener('click', fireCreamOnce);
+        if (arContainer) {
+            arContainer.addEventListener('pointerdown', fireCreamAtTap, { passive: true });
         }
 
 document.getElementById('toggle-menu-btn').addEventListener('click', () => {
@@ -2813,13 +2817,13 @@ function updateBreathEffect(delta) {
         }
 
         function getCreamButtonCenterPx() {
-            const btn = document.getElementById('cream-shot-btn');
+            const btn = null;
             if (!btn) return { x: 60, y: window.innerHeight - 80 };
             const r = btn.getBoundingClientRect();
             return { x: r.left + r.width * 0.5, y: r.top + r.height * 0.5 };
         }
 
-        function spawnCreamBurst() {
+        function spawnCreamBurst(targetX = null, targetY = null) {
             const now = performance.now();
             if (now - creamLastShotMs < CREAM_SHOT_COOLDOWN_MS) return;
             creamLastShotMs = now;
@@ -2835,11 +2839,21 @@ function updateBreathEffect(delta) {
             const centerX = (basis.eyeMid.x * 0.55 + basis.mouthMid.x * 0.45);
             const centerY = (basis.eyeMid.y * 0.55 + basis.mouthMid.y * 0.45);
 
-            const randU = (Math.random() - 0.5) * 0.30;
-            const randV = (Math.random() - 0.15) * 0.30;
-            const jitter = faceLocalToScreenPx(randU, randV, basis);
-            const tx = (jitter ? jitter.x : centerX);
-            const ty = (jitter ? jitter.y : centerY);
+            // If user tapped, aim at that screen point. Otherwise aim around face center.
+            let tx = (targetX !== null ? targetX : null);
+            let ty = (targetY !== null ? targetY : null);
+
+            if (tx === null || ty === null) {
+                const randU = (Math.random() - 0.5) * 0.30;
+                const randV = (Math.random() - 0.15) * 0.30;
+                const jitter = faceLocalToScreenPx(randU, randV, basis);
+                tx = (jitter ? jitter.x : centerX);
+                ty = (jitter ? jitter.y : centerY);
+            } else {
+                // Tiny jitter so repeated taps feel organic
+                tx += (Math.random() - 0.5) * 6.0;
+                ty += (Math.random() - 0.5) * 6.0;
+            }
 
             const dur = 0.13 + Math.random() * 0.12;
             const size = 8 + Math.random() * 6;
@@ -2852,8 +2866,8 @@ function updateBreathEffect(delta) {
             ctx.translate(x, y);
             ctx.rotate(angleRad);
 
-            const rx = r * 1.15;
-            const ry = r * 0.92 * stretchY;
+            const rx = r * 1.00;
+            const ry = r * 1.18 * stretchY;
 
             const g = ctx.createRadialGradient(-rx * 0.15, -ry * 0.20, 0, 0, 0, Math.max(rx, ry));
             g.addColorStop(0.0, `rgba(255, 252, 242, ${0.85 * opacity})`);
@@ -2876,26 +2890,44 @@ function updateBreathEffect(delta) {
             ctx.restore();
         }
 
-        function drawCreamDrip(ctx, x, y, w, h, opacity, angleRad) {
+        
+        // Teardrop-like droplet (slightly vertical), for more "liquid" look
+        function drawCreamDroplet(ctx, x, y, w, h, opacity, angleRad) {
             ctx.save();
             ctx.translate(x, y);
             ctx.rotate(angleRad);
 
-            const g = ctx.createLinearGradient(0, -h * 0.5, 0, h * 0.5);
-            g.addColorStop(0.0, `rgba(255, 252, 242, ${0.65 * opacity})`);
-            g.addColorStop(1.0, `rgba(255, 248, 232, ${0.15 * opacity})`);
+            // Body gradient (warm creamy white)
+            const g = ctx.createRadialGradient(-w * 0.12, -h * 0.18, 0, 0, 0, Math.max(w, h) * 0.65);
+            g.addColorStop(0.0, `rgba(255, 255, 248, ${0.80 * opacity})`);
+            g.addColorStop(0.55, `rgba(255, 248, 232, ${0.55 * opacity})`);
+            g.addColorStop(1.0, `rgba(255, 248, 232, 0)`);
             ctx.fillStyle = g;
 
+            // Teardrop path: round top, slightly pointy bottom
+            const topY = -h * 0.42;
+            const botY =  h * 0.58;
+            const sideX =  w * 0.52;
+
             ctx.beginPath();
-            ctx.ellipse(0, 0, w * 0.5, h * 0.5, 0, 0, Math.PI * 2);
+            ctx.moveTo(0, topY);
+            ctx.bezierCurveTo(sideX, topY * 0.75, sideX * 1.05, h * 0.10, 0, botY);
+            ctx.bezierCurveTo(-sideX * 1.05, h * 0.10, -sideX, topY * 0.75, 0, topY);
+            ctx.closePath();
             ctx.fill();
 
-            ctx.fillStyle = `rgba(255,255,255,${0.20 * opacity})`;
+            // Highlight
+            ctx.fillStyle = `rgba(255,255,255,${0.22 * opacity})`;
             ctx.beginPath();
-            ctx.ellipse(-w * 0.12, -h * 0.18, w * 0.16, h * 0.12, 0, 0, Math.PI * 2);
+            ctx.ellipse(-w * 0.14, -h * 0.18, w * 0.12, h * 0.10, 0, 0, Math.PI * 2);
             ctx.fill();
 
             ctx.restore();
+        }
+
+function drawCreamDrip(ctx, x, y, w, h, opacity, angleRad) {
+            // Slightly more elongated than projectile
+            drawCreamDroplet(ctx, x, y, w, h * 1.15, opacity, angleRad);
         }
 
         function updateCreamVfx(delta) {
@@ -2934,8 +2966,8 @@ function updateBreathEffect(delta) {
                 creamOverlayCtx.globalAlpha = p.a0 * (1 - tt * 0.15);
                 creamOverlayCtx.translate(x, y);
                 creamOverlayCtx.rotate(ang);
-                creamOverlayCtx.scale(stretch, 1.0);
-                drawCreamBlob(creamOverlayCtx, 0, 0, p.size * 0.55, 1.0, 0, 0.9);
+                creamOverlayCtx.scale(1.0, stretch);
+                drawCreamDroplet(creamOverlayCtx, 0, 0, p.size * 0.70, p.size * 1.05, 1.0, 0);
                 creamOverlayCtx.restore();
 
                 if (tt >= 1.0) {
@@ -3053,21 +3085,37 @@ function updateBreathEffect(delta) {
                         const angV = Math.atan2(useBasis.vy, useBasis.vx);
                         const ang = angV + (d.rollBias || 0);
 
-                        creamOverlayCtx.save();
-                        creamOverlayCtx.globalAlpha = 0.18 * a;
-                        creamOverlayCtx.strokeStyle = 'rgba(255,248,232,1)';
-                        creamOverlayCtx.lineWidth = Math.max(1, useBasis.faceW * 0.004);
-                        creamOverlayCtx.beginPath();
-                        const back = faceLocalToScreenPx(d.u, d.v - Math.min(0.20, d.vel * 0.10), useBasis);
+                        // Syrupy trail (tapered look using 2 strokes)
+                        const trailLen = Math.min(0.28, 0.10 + d.vel * 0.18);
+                        const back = faceLocalToScreenPx(d.u, d.v - trailLen, useBasis);
                         if (back) {
+                            // wide faint
+                            creamOverlayCtx.save();
+                            creamOverlayCtx.globalAlpha = 0.14 * a;
+                            creamOverlayCtx.strokeStyle = 'rgba(255,248,232,1)';
+                            creamOverlayCtx.lineCap = 'round';
+                            creamOverlayCtx.lineWidth = Math.max(1, useBasis.faceW * 0.010);
+                            creamOverlayCtx.beginPath();
                             creamOverlayCtx.moveTo(back.x, back.y);
                             creamOverlayCtx.lineTo(pxy.x, pxy.y);
                             creamOverlayCtx.stroke();
-                        }
-                        creamOverlayCtx.restore();
+                            creamOverlayCtx.restore();
 
-                        const ww = useBasis.faceW * d.w;
-                        const hh = useBasis.faceW * d.h * (0.9 + 0.35 * t);
+                            // thin brighter
+                            creamOverlayCtx.save();
+                            creamOverlayCtx.globalAlpha = 0.22 * a;
+                            creamOverlayCtx.strokeStyle = 'rgba(255,255,255,1)';
+                            creamOverlayCtx.lineCap = 'round';
+                            creamOverlayCtx.lineWidth = Math.max(1, useBasis.faceW * 0.006);
+                            creamOverlayCtx.beginPath();
+                            creamOverlayCtx.moveTo(back.x, back.y);
+                            creamOverlayCtx.lineTo(pxy.x, pxy.y);
+                            creamOverlayCtx.stroke();
+                            creamOverlayCtx.restore();
+                        }
+
+                        const ww = useBasis.faceW * d.w * (1.0 - Math.min(0.25, d.vel * 0.18));
+                        const hh = useBasis.faceW * d.h * (0.95 + 0.45 * t) * (1.0 + Math.min(1.2, d.vel * 0.9));
                         creamOverlayCtx.globalAlpha = 0.80 * a;
                         drawCreamDrip(creamOverlayCtx, pxy.x, pxy.y, ww, hh, 1.0, ang);
                         creamOverlayCtx.globalAlpha = 1.0;
