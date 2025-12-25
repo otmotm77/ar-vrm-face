@@ -785,6 +785,13 @@
 // ===== App Version (single source of truth) =====
 const APP_VERSION = "v6.01.08";
 const APP_VERSION_NOTE = "cream: flow taper (narrowing width)";
+
+
+function getOverlayPixelRatio() {
+  // Must match resizeCreamOverlayCanvas()/resizeBreathOverlayCanvas() DPR clamp for performance.
+  return Math.min(window.devicePixelRatio || 1, 2);
+}
+
 function setAppVersionLabel() {
   const el = document.getElementById("app-version");
   if (!el) return;
@@ -2383,12 +2390,6 @@ const ox = blushOffX * unit;
             }
             creamOverlayCanvas.style.width = '100%';
             creamOverlayCanvas.style.height = '100%';
-     
-        // Use the same pixel ratio for the 2D overlay canvases everywhere.
-        // IMPORTANT: must match resizeCreamOverlayCanvas() which clamps DPR to 2 for performance.
-        function getOverlayPixelRatio() {
-            return Math.min(window.devicePixelRatio || 1, 2);
-        }
    }
 
 function updateBreathEffect(delta) {
