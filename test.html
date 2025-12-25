@@ -515,6 +515,19 @@
                 <input type="range" id="cream-auto-interval-slider" min="0.2" max="10" step="0.1" value="1.5">
                 <span id="cream-auto-interval-slider-val" class="val-display">1.5</span>
             </div>
+
+            <div class="slider-container">
+                <span class="slider-label">クリームサイズ</span>
+                <input type="range" id="cream-size-mul-slider" min="0.5" max="2.0" step="0.05" value="1.0">
+                <span id="cream-size-mul-slider-val" class="val-display">1.0</span>
+            </div>
+            <div class="slider-container">
+                <span class="slider-label">同時射出個数</span>
+                <input type="range" id="cream-simul-count-slider" min="1" max="20" step="1" value="3">
+                <span id="cream-simul-count-slider-val" class="val-display">3</span>
+            </div>
+
+
             
                 <div class="slider-container">
                     <span class="slider-label">クリーム消滅時間<br>(Cream Lifetime)</span>
@@ -810,8 +823,8 @@
     <script type="module">
         
 // ===== App Version (single source of truth) =====
-const APP_VERSION = "v6.01.10";
-const APP_VERSION_NOTE = "cream: keep attached patches up to max (projectiles capped separately; splatter evicted first) | cream settings persist";
+const APP_VERSION = "v6.01.12";
+const APP_VERSION_NOTE = "cream: auto aim excludes bottom 10% | cream size & simultaneous count sliders | version bump";
 
 
 function getOverlayPixelRatio() {
@@ -1014,6 +1027,8 @@ let latestCheekLVideoX = 0.35; // normalized in ORIGINAL video frame (0..1)
                 let creamAutoEnabled = false;
                 var creamAutoIntervalSec = 1.5; // base interval (seconds)
                 var creamMaxCount = 40;         // max total (patches + projectiles)
+                var creamSizeMul = 1.0;      // size multiplier (0.5-2.0)
+                var creamSimulCount = 3;   // simultaneous shots per tap/auto (1-20)
                 let creamAutoElapsedSec = 0.0;
                 let creamNextAutoIntervalSec = null;
 
@@ -1571,6 +1586,31 @@ if (creamAutoIntervalSlider) {
     });
 }
 
+
+// Cream size multiplier slider (0.5-2.0)
+const creamSizeMulSlider = document.getElementById('cream-size-mul-slider');
+if (creamSizeMulSlider) {
+    updateSliderDisplay(creamSizeMulSlider);
+    creamSizeMul = parseFloat(creamSizeMulSlider.value) || creamSizeMul;
+    creamSizeMulSlider.addEventListener('input', () => {
+        updateSliderDisplay(creamSizeMulSlider);
+        creamSizeMul = parseFloat(creamSizeMulSlider.value) || creamSizeMul;
+        saveSettings();
+    });
+}
+
+// Cream simultaneous shot count slider (1-20)
+const creamSimulCountSlider = document.getElementById('cream-simul-count-slider');
+if (creamSimulCountSlider) {
+    updateSliderDisplay(creamSimulCountSlider);
+    creamSimulCount = parseInt(creamSimulCountSlider.value, 10) || creamSimulCount;
+    creamSimulCountSlider.addEventListener('input', () => {
+        updateSliderDisplay(creamSimulCountSlider);
+        creamSimulCount = parseInt(creamSimulCountSlider.value, 10) || creamSimulCount;
+        saveSettings();
+    });
+}
+
 // Max cream count slider (10-200)
 const creamMaxCountSlider = document.getElementById('cream-max-count-slider');
 if (creamMaxCountSlider) {
@@ -1688,7 +1728,7 @@ forceShadowToggle.addEventListener('change', () => {
             if (now - creamLastShotMs < CREAM_SHOT_COOLDOWN_MS) return;
             creamLastShotMs = now;
 
-            const shotCount = 2 + (Math.random() < 0.55 ? 0 : 1); // 2 or 3
+            const shotCount = Math.max(1, Math.min(20, (creamSimulCount | 0) || 1));
             for (let i = 0; i < shotCount; i++) {
                 // Keep horizontal jitter tiny, vertical jitter a bit larger (slightly biased downward)
                 const dx = (Math.random() * 2 - 1) * 5.0;                 // ±5px
@@ -2108,6 +2148,8 @@ document.getElementById('toggle-menu-btn').addEventListener('click', () => {
                 creamAuto: (typeof creamAutoEnabled !== 'undefined') ? !!creamAutoEnabled : false,
                 creamInterval: (typeof creamAutoIntervalSlider !== 'undefined' && creamAutoIntervalSlider) ? creamAutoIntervalSlider.value : String(creamAutoIntervalSec),
                 creamMax: (typeof creamMaxCountSlider !== 'undefined' && creamMaxCountSlider) ? creamMaxCountSlider.value : String(creamMaxCount),
+                creamSizeMul: (typeof creamSizeMulSlider !== 'undefined' && creamSizeMulSlider) ? creamSizeMulSlider.value : String(creamSizeMul),
+                creamSimul: (typeof creamSimulCountSlider !== 'undefined' && creamSimulCountSlider) ? creamSimulCountSlider.value : String(creamSimulCount),
                 trackingFacing: currentFacingMode,
                 trackingMirror: !!mirrorEnabled,
             };
@@ -2210,6 +2252,17 @@ document.getElementById('toggle-menu-btn').addEventListener('click', () => {
                         creamMaxCount = parseInt(creamMaxCountSlider.value, 10) || creamMaxCount;
                         enforceCreamLimit();
                     }
+                    if (Object.prototype.hasOwnProperty.call(s, 'creamSizeMul') && typeof creamSizeMulSlider !== 'undefined' && creamSizeMulSlider) {
+                        creamSizeMulSlider.value = s.creamSizeMul;
+                        updateSliderDisplay(creamSizeMulSlider);
+                        creamSizeMul = parseFloat(creamSizeMulSlider.value) || creamSizeMul;
+                    }
+                    if (Object.prototype.hasOwnProperty.call(s, 'creamSimul') && typeof creamSimulCountSlider !== 'undefined' && creamSimulCountSlider) {
+                        creamSimulCountSlider.value = s.creamSimul;
+                        updateSliderDisplay(creamSimulCountSlider);
+                        creamSimulCount = parseInt(creamSimulCountSlider.value, 10) || creamSimulCount;
+                    }
+
                     if (Object.prototype.hasOwnProperty.call(s, 'creamAuto')) {
                         setCreamAutoEnabled(!!s.creamAuto);
                     } else {
@@ -3233,14 +3286,19 @@ const headS = getHeadOverlayScale();
 const a = 0.50 * headS;     // half-width in face-local units
 const b = 0.95 * headS;     // half-height in face-local units
 const vCenter = 0.08;       // shift slightly toward forehead
-const theta = Math.random() * Math.PI * 2;
-const rr = Math.sqrt(Math.random()); // sqrt => uniform area
-u = a * rr * Math.cos(theta);
-v = vCenter + (b * rr * Math.sin(theta));
-
+const vMaxAllowed = vCenter + b * 0.90; // auto: exclude bottom 10%
+let tries = 0;
+do {
+  const theta = Math.random() * Math.PI * 2;
+  const rr = Math.sqrt(Math.random()); // sqrt => uniform area
+  u = a * rr * Math.cos(theta);
+  v = vCenter + (b * rr * Math.sin(theta));
+  tries++;
+} while (v > vMaxAllowed && tries < 10);
+v = Math.min(v, vMaxAllowed);
 // Keep within a reasonable face-local range to avoid going outside the head too often
 u = Math.max(-0.85, Math.min(0.85, u));
-v = Math.max(-0.70, Math.min(1.35, v));
+v = Math.max(-0.70, Math.min(vMaxAllowed, v));
 
 const pt = faceLocalToScreenPx(u, v, basis);
                 tx = (pt ? pt.x : centerX);
@@ -3250,7 +3308,7 @@ const pt = faceLocalToScreenPx(u, v, basis);
             }
 
             const dur = 0.13 + Math.random() * 0.12;
-            const size = 8 + Math.random() * 6;
+            const size = (8 + Math.random() * 6) * (creamSizeMul || 1.0);
 
             const dx = tx - start.x;
 const dy = ty - start.y;
@@ -3374,7 +3432,7 @@ function drawCreamDrip(ctx, x, y, w, h, opacity, angleRad) {
                 if (useBasis) {
                     creamAutoElapsedSec += delta;
                     if (creamAutoElapsedSec >= creamNextAutoIntervalSec) {
-                        const shotCount = 2 + (Math.random() < 0.55 ? 0 : 1); // 2 or 3
+                        const shotCount = Math.max(1, Math.min(20, (creamSimulCount | 0) || 1));
                         for (let i = 0; i < shotCount; i++) {
                             spawnCreamBurst(null, null, true);
                         }
@@ -3423,7 +3481,7 @@ const ang = Math.atan2(dvy, dvx);
                             ? { u: p.tapU, v: p.tapV }
                             : screenPxToFaceLocal(p.x1, p.y1, useBasis);
                         if (local) {
-                            const patchSize = 0.12 + Math.random() * 0.16; // patch size (face-local), random
+                            const patchSize = (0.12 + Math.random() * 0.16) * (creamSizeMul || 1.0); // patch size (face-local), random
                             // Smaller blobs should slide faster
                             const _flowBase = 0.09 + Math.random() * 0.05;
                             const _flowVelBySize = _flowBase * Math.pow(0.16 / Math.max(0.06, patchSize), 0.8);
@@ -3451,7 +3509,7 @@ const ang = Math.atan2(dvy, dvx);
 
                             const n = 2 + Math.floor(Math.random() * 3);
                             for (let i = 0; i < n; i++) {
-                                const su = 0.07 + Math.random() * 0.06;
+                                const su = (0.07 + Math.random() * 0.06) * (creamSizeMul || 1.0);
                                 const sv = su * (1.20 + Math.random() * 0.70); // vertical splashes
                                 creamPatches.push({
                                     isSplatter: true,
