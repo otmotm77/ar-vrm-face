@@ -2383,7 +2383,13 @@ const ox = blushOffX * unit;
             }
             creamOverlayCanvas.style.width = '100%';
             creamOverlayCanvas.style.height = '100%';
+     
+        // Use the same pixel ratio for the 2D overlay canvases everywhere.
+        // IMPORTANT: must match resizeCreamOverlayCanvas() which clamps DPR to 2 for performance.
+        function getOverlayPixelRatio() {
+            return Math.min(window.devicePixelRatio || 1, 2);
         }
+   }
 
 function updateBreathEffect(delta) {
             let shiftX = 0, shiftY = 0;
@@ -2852,7 +2858,7 @@ const CREAM_SHOT_COOLDOWN_MS = 320;
             if (now - creamLastShotMs < CREAM_SHOT_COOLDOWN_MS) return;
             creamLastShotMs = now;
 
-            const pr = window.devicePixelRatio || 1;
+            const pr = getOverlayPixelRatio();
             const cssW = (creamOverlayCanvas ? creamOverlayCanvas.width / pr : window.innerWidth);
             const cssH = (creamOverlayCanvas ? creamOverlayCanvas.height / pr : window.innerHeight);
             const basis = computeCreamFaceBasis(cssW, cssH) || creamLastFaceBasis;
@@ -2878,9 +2884,7 @@ const CREAM_SHOT_COOLDOWN_MS = 320;
                 tx = (jitter ? jitter.x : centerX);
                 ty = (jitter ? jitter.y : centerY);
             } else {
-                // Tiny jitter so repeated taps feel organic
-                tx += (Math.random() - 0.5) * 6.0;
-                ty += (Math.random() - 0.5) * 6.0;
+                // User tap: keep the exact tapped point (no target jitter).
             }
 
             const dur = 0.13 + Math.random() * 0.12;
@@ -2988,7 +2992,7 @@ function drawCreamDrip(ctx, x, y, w, h, opacity, angleRad) {
         function updateCreamVfx(delta) {
             if (!creamOverlayCanvas || !creamOverlayCtx) return;
 
-            const pr = window.devicePixelRatio || 1;
+            const pr = getOverlayPixelRatio();
             const cssW = creamOverlayCanvas.width / pr;
             const cssH = creamOverlayCanvas.height / pr;
             if (cssW <= 0 || cssH <= 0) return;
