@@ -2326,6 +2326,10 @@ document.getElementById('toggle-menu-btn').addEventListener('click', () => {
             startBtn.disabled = true;
             statusMsg.textContent = "カメラを起動中...";
             try { await requestDeviceOrientationPermissionIfNeeded(); } catch(_) {}
+
+            // Apply saved default options BEFORE starting the camera (startup defaults)
+            try { loadSettings('default', { silent: true, label: 'デフォルト' }); } catch(_) {}
+
             await startAR();
         });
 
@@ -2399,6 +2403,7 @@ document.getElementById('toggle-menu-btn').addEventListener('click', () => {
         }
 
         function saveSettings(forceName) {
+            if (window.__suppressAutoSave) return;
             const fname = (forceName && String(forceName)) ? String(forceName) : (currentFileName || "default");
             if (!fname) return;
             const settings = {
@@ -2480,6 +2485,8 @@ document.getElementById('toggle-menu-btn').addEventListener('click', () => {
         function loadSettings(fname, opts = {}) {
             const silent = !!(opts && opts.silent);
             const label = (opts && opts.label) ? String(opts.label) : String(fname);
+            window.__suppressAutoSave = true;
+            try {
             try {
                 const data = localStorage.getItem("vrm_settings_" + fname);
                 if (data) {
@@ -2549,7 +2556,7 @@ document.getElementById('toggle-menu-btn').addEventListener('click', () => {
                     if (Object.prototype.hasOwnProperty.call(s, 'blushFront') && blushFrontToggle) blushFrontToggle.checked = !!s.blushFront;
                     if (Object.prototype.hasOwnProperty.call(s, 'blushColor') && typeof blushColorPicker !== 'undefined' && blushColorPicker) blushColorPicker.value = s.blushColor;
 
-                    if (typeof updateBlushUI === 'function') updateBlushUI(true);
+                    if (typeof updateBlushUI === 'function') try { updateBlushUI(true) } catch(_) {};
 
  
                     // Cream shooting
@@ -2589,7 +2596,7 @@ document.getElementById('toggle-menu-btn').addEventListener('click', () => {
                     if (Object.prototype.hasOwnProperty.call(s, 'creamAuto')) {
                         setCreamAutoEnabled(!!s.creamAuto);
                     } else {
-                        syncCreamAutoUI();
+                        try { syncCreamAutoUI() } catch(_) {};
                     }
 
                     // Tracking (camera + mirror)
@@ -2597,7 +2604,7 @@ document.getElementById('toggle-menu-btn').addEventListener('click', () => {
                         mirrorEnabled = !!s.trackingMirror;
                         mirrorUserOverride = true;
                         try { if (mirrorToggle) mirrorToggle.checked = mirrorEnabled; } catch (_) {}
-                        try { applyMirrorToRenderer(); } catch (_) {}
+                        try { try { applyMirrorToRenderer() } catch(_) {}; } catch (_) {}
                     }
                     if (Object.prototype.hasOwnProperty.call(s, 'trackingFacing')) {
                         const want = s.trackingFacing;
@@ -2611,14 +2618,14 @@ document.getElementById('toggle-menu-btn').addEventListener('click', () => {
                         }
                     }
 
-                   if (typeof updateBreathUI === 'function') updateBreathUI(true);
+                   if (typeof updateBreathUI === 'function') try { updateBreathUI(true) } catch(_) {};
 // 値の表示を更新
                     allSliders.forEach(el => updateSliderDisplay(el));
 
-                    updateLight(); 
-                    updateCameraFilter();
-                    updateVRMFilter();
-                    updateOccluder();
+                    try { updateLight() } catch(_) {}; 
+                    try { updateCameraFilter() } catch(_) {};
+                    try { updateVRMFilter() } catch(_) {};
+                    try { updateOccluder() } catch(_) {};
                     if (!silent) showToast(`設定を復元しました:\n${label}`);
                     return true;
                 }
@@ -2626,6 +2633,9 @@ document.getElementById('toggle-menu-btn').addEventListener('click', () => {
                 console.error("Load failed:", e);
             }
             return false;
+            } finally {
+                window.__suppressAutoSave = false;
+            }
         }
 
         [scaleSlider, ySlider, zSlider, minCfSlider, betaSlider, mouthSensSlider, eyeSensSlider, 
