@@ -474,7 +474,7 @@
     <div id="ui-container" style="display:none;">
         <div class="icon-buttons">
             <button id="toggle-light-btn" class="icon-btn" title="照明・画質設定">💡</button>
-            <button id="toggle-menu-btn" class="icon-btn" title="モデル・トラッキング設定">⚙️</button>
+            <button id="toggle-menu-btn" class="icon-btn" title="全般オプション">⚙️</button>
             <button id="toggle-fullscreen-btn" class="icon-btn" title="全画面表示切替">⛶</button>
         </div>
 
@@ -483,9 +483,9 @@
 
         <!-- メイン設定パネル -->
         <div class="control-panel" id="control-panel" style="display:none;">
-            <h1>モデル・トラッキング</h1>
+            <h1>全般オプション</h1>
             <details class="acc-section" data-acc="basic" open>
-                <summary>基本</summary>
+                <summary>モデル</summary>
 
             
             <label for="vrm-upload" class="custom-file-upload">
@@ -881,8 +881,8 @@
             <details class="acc-section" data-acc="light_cam">
                 <summary>カメラ画質</summary>
             <div id="camera-settings" style="display:block;">
-                <div class="slider-container" style="background: #e8f0fe; padding: 5px; border-radius: 8px; border: 1px solid #4a90e2;">
-                    <span class="slider-label" style="color: #4a90e2;">✨美肌補正<br>(Skin Smooth)</span>
+                <div class="slider-container">
+                    <span class="slider-label">美肌補正</span>
                     <input type="range" id="skin-smooth-slider" min="0" max="100" step="1" value="0">
                     <span id="skin-smooth-slider-val" class="val-display">0</span>
                 </div>
@@ -1471,7 +1471,7 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
         function _saveAccordionState(panel, suffix) {
             try {
                 const openIds = Array.from(panel.querySelectorAll('details.acc-section'))
-                    .filter(d => d.open)
+                    .filter(d => d.open && (d.dataset.acc || '') !== 'basic')
                     .map(d => d.dataset.acc || '');
                 localStorage.setItem(_uiKey(suffix + '_acc'), JSON.stringify(openIds));
             } catch(e) {}
@@ -1479,14 +1479,22 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
         function _restoreAccordionState(panel, suffix) {
             try {
                 const raw = localStorage.getItem(_uiKey(suffix + '_acc'));
-                if (!raw) return;
+                if (raw === null) {
+                    // No saved state yet: still ensure 'basic' stays open
+                    const fixed = panel.querySelector('details.acc-section[data-acc="basic"]');
+                    if (fixed) fixed.open = true;
+                    return;
+                }
                 const openIds = new Set(JSON.parse(raw));
                 Array.from(panel.querySelectorAll('details.acc-section')).forEach(d => {
                     const id = d.dataset.acc || '';
-                    if (openIds.has(id)) d.open = true;
-                    else if (openIds.size > 0) d.open = false;
+                    if (id === 'basic') { d.open = true; return; }
+                    d.open = openIds.has(id);
                 });
-            } catch(e) {}
+            } catch(e) {
+                const fixed = panel.querySelector('details.acc-section[data-acc="basic"]');
+                if (fixed) fixed.open = true;
+            }
         }
 
         function _attachPanelState(panel, suffix) {
@@ -1498,9 +1506,15 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
                 t = setTimeout(() => _savePanelScroll(panel, suffix), 120);
             }, { passive: true });
 
-            // Accordion open-state save
+            // Accordion open-state save (and keep 'basic' always open)
             Array.from(panel.querySelectorAll('details.acc-section')).forEach(d => {
-                d.addEventListener('toggle', () => _saveAccordionState(panel, suffix));
+                d.addEventListener('toggle', () => {
+                    if ((d.dataset.acc || '') === 'basic' && !d.open) {
+                        d.open = true;
+                        return;
+                    }
+                    _saveAccordionState(panel, suffix);
+                });
             });
         }
 
@@ -4198,10 +4212,6 @@ const ang = Math.atan2(dvy, dvx);
             displayCtx.drawImage(videoEl, 0, 0, vw, vh);
             displayCtx.restore();
 
-            
-
-
-            // Skin Smooth (beauty) - blur-blend pass (camera only)
             const skinS = (typeof camSkinSmoothStrength === 'number') ? camSkinSmoothStrength : 0;
             if (skinS > 0.001) {
                 if (smoothCanvas.width !== vw || smoothCanvas.height !== vh) {
