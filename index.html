@@ -80,10 +80,10 @@
             width: 58px;
             height: 58px;
             border-radius: 999px;
-            border: 1px solid rgba(255,255,255,0.35);
-            background: rgba(255,255,255,0.18);
+            border: 1px solid rgba(255,255,255,0.40);
+            background: rgba(0,0,0,0.25);
             color: rgba(255,255,255,0.95);
-            font-size: 28px;
+            font-size: 30px;
             line-height: 1;
             display: flex;
             align-items: center;
@@ -91,19 +91,37 @@
             z-index: 2600;
             backdrop-filter: blur(6px);
             -webkit-backdrop-filter: blur(6px);
-            box-shadow: 0 10px 25px rgba(0,0,0,0.25);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.35);
             user-select: none;
             -webkit-user-select: none;
             touch-action: manipulation;
             pointer-events: auto;
+            transition: background 140ms ease, border-color 140ms ease, box-shadow 140ms ease, transform 140ms ease, filter 140ms ease;
+        }
+        .cream-shot-btn::after{
+            content: "";
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            width: 12px;
+            height: 12px;
+            border-radius: 999px;
+            background: rgba(255,255,255,0.30);
+            box-shadow: 0 0 0 2px rgba(0,0,0,0.25);
         }
         .cream-shot-btn:active{
             transform: scale(0.96);
         }
         .cream-shot-btn.on{
-            background: rgba(120,255,180,0.24);
-            border-color: rgba(120,255,180,0.75);
-            box-shadow: 0 10px 25px rgba(0,0,0,0.25), 0 0 0 2px rgba(120,255,180,0.16) inset;
+            background: rgba(120,255,180,0.30);
+            border-color: rgba(120,255,180,0.90);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.35), 0 0 0 2px rgba(120,255,180,0.22) inset, 0 0 18px rgba(120,255,180,0.35);
+            transform: scale(1.03);
+            filter: saturate(1.08);
+        }
+        .cream-shot-btn.on::after{
+            background: rgba(120,255,180,0.95);
+            box-shadow: 0 0 0 2px rgba(0,0,0,0.25), 0 0 14px rgba(120,255,180,0.75);
         }
 
 .icon-btn {
@@ -129,7 +147,7 @@
 
         .control-panel {
             background: rgba(255, 255, 255, 0.95);
-            padding: 15px;
+            padding: 10px;
             padding-bottom: calc(15px + env(safe-area-inset-bottom, 0px));
             border-radius: 12px;
             pointer-events: auto;
@@ -387,7 +405,44 @@
             opacity: 1;
             bottom: 50px;
         }
-    </style>
+    
+        /* Accordion UI */
+        .acc-section {
+            margin: 8px 0;
+            border-radius: 12px;
+            overflow: hidden;
+            background: rgb(219 232 245);
+        }
+        .acc-section > summary {
+            list-style: none;
+            cursor: pointer;
+            padding: 10px 12px;
+            font-weight: 700;
+            user-select: none;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            color: #39338d;
+        }
+        .acc-section > summary::-webkit-details-marker { display:none; }
+        .acc-section > summary::after {
+            content: "▾";
+            opacity: 0.8;
+            transform: rotate(0deg);
+            transition: transform 120ms ease;
+        }
+        .acc-section[open] > summary::after { transform: rotate(180deg); }
+        .acc-section > summary:hover { background: rgba(255,255,255,0.06); }
+        .acc-section > summary:active { background: rgba(255,255,255,0.10); }
+        .acc-section[open] { }
+        .acc-section .slider-container, .acc-section .toggle-label, .acc-section .custom-file-upload, .acc-section button, .acc-section input, .acc-section select, .acc-section textarea {
+            /* keep original spacing */
+        }
+
+
+        .acc-section > *:not(summary) { padding: 8px 12px 10px 12px; }
+</style>
 
     <script type="importmap">
     {
@@ -419,16 +474,19 @@
     <div id="ui-container" style="display:none;">
         <div class="icon-buttons">
             <button id="toggle-light-btn" class="icon-btn" title="照明・画質設定">💡</button>
-            <button id="toggle-menu-btn" class="icon-btn" title="モデル・トラッキング設定">⚙️</button>
+            <button id="toggle-menu-btn" class="icon-btn" title="オプション設定">⚙️</button>
             <button id="toggle-fullscreen-btn" class="icon-btn" title="全画面表示切替">⛶</button>
         </div>
 
         <!-- Left-bottom toggle button: Auto cream shot -->
-        <button id="auto-cream-toggle-btn" class="cream-shot-btn" type="button" title="自動射出 ON/OFF">A</button>
+        <button id="auto-cream-toggle-btn" class="cream-shot-btn" type="button" title="自動射出 ON/OFF">💧</button>
 
         <!-- メイン設定パネル -->
         <div class="control-panel" id="control-panel" style="display:none;">
-            <h1>モデル・トラッキング</h1>
+            <h1>オプション設定</h1>
+            <details class="acc-section" data-acc="basic" open>
+                <summary>モデル</summary>
+
             
             <label for="vrm-upload" class="custom-file-upload">
                 📂 VRMファイルを選択
@@ -452,7 +510,12 @@
             </div>
 
             <!-- マスキング設定 -->
-            <h2>肩マスキング (アーチ型)</h2>
+            
+            </details>
+
+            <details class="acc-section" data-acc="mask">
+                <summary>肩マスキング</summary>
+
             <div class="slider-container">
                 <label class="toggle-label">
                     <input type="checkbox" id="occlusion-toggle" class="toggle-checkbox" checked>
@@ -503,7 +566,12 @@
             
             </div>
 
-<h2>クリーム射出</h2>
+
+            </details>
+
+            <details class="acc-section" data-acc="cream" open>
+                <summary>クリーム射出</summary>
+
             <div class="slider-container">
                 <label class="toggle-label">
                     <input type="checkbox" id="cream-auto-toggle" class="toggle-checkbox">
@@ -521,6 +589,26 @@
                 <input type="range" id="cream-size-mul-slider" min="0.5" max="2.0" step="0.05" value="1.0">
                 <span id="cream-size-mul-slider-val" class="val-display">1.0</span>
             </div>
+
+            <div class="slider-container">
+                <span class="slider-label">光沢</span>
+                <input type="range" id="cream-gloss-slider" min="0" max="2.0" step="0.05" value="1.0">
+                <span id="cream-gloss-slider-val" class="val-display">1.0</span>
+            </div>
+
+            <div class="slider-container">
+                <span class="slider-label">粘度</span>
+                <input type="range" id="cream-viscosity-slider" min="0.2" max="3.0" step="0.05" value="1.0">
+                <span id="cream-viscosity-slider-val" class="val-display">1.0</span>
+            </div>
+
+
+            <div class="slider-container">
+                <span class="slider-label">貼付感(擬似Z)</span>
+                <input type="range" id="cream-z-attach-slider" min="0" max="1" step="0.05" value="0.6">
+                <span id="cream-z-attach-slider-val" class="val-display">0.6</span>
+            </div>
+
             <div class="slider-container">
                 <span class="slider-label">同時射出個数</span>
                 <input type="range" id="cream-simul-count-slider" min="1" max="20" step="1" value="3">
@@ -530,7 +618,7 @@
 
             
                 <div class="slider-container">
-                    <span class="slider-label">クリーム消滅時間<br>(Cream Lifetime)</span>
+                    <span class="slider-label">クリーム消滅時間</span>
                     <input type="range" id="cream-life-slider" min="1" max="30" step="1" value="10">
                     <span id="cream-life-slider-val" class="val-display">10</span>
                 </div>
@@ -540,7 +628,12 @@
                 <span id="cream-max-count-slider-val" class="val-display">40</span>
             </div>
 
-<h2>表情設定</h2>
+
+            </details>
+
+            <details class="acc-section" data-acc="expression">
+                <summary>表情設定</summary>
+
             <div class="slider-container">
                 <label class="toggle-label">
                     <input type="checkbox" id="autoblink-toggle" class="toggle-checkbox" checked>
@@ -663,7 +756,12 @@
 
             </div>
 
-            <h2>トラッキング</h2>
+            
+            </details>
+
+            <details class="acc-section" data-acc="tracking">
+                <summary>トラッキング</summary>
+
 
             <div class="slider-container">
                 <label class="toggle-label">
@@ -690,16 +788,15 @@
             </div>
 
             <button id="apply-tracking-btn" class="restart-btn">設定を適用して再起動</button>
-        </div>
+        
+            </details>
+</div>
 
         <!-- 照明・画質設定パネル -->
         <div class="control-panel" id="light-panel" style="display:none;">
-            <div class="tab-container">
-                <button class="tab-btn active" id="tab-vrm">VRM照明</button>
-                <button class="tab-btn" id="tab-camera">カメラ画質</button>
-            </div>
-
-            <!-- VRM照明タブ -->
+            <h1>照明・画質</h1>
+            <details class="acc-section" data-acc="light_vrm" open>
+                <summary>VRM照明</summary>
             <div id="vrm-light-settings">
                 <!-- 親コンテナのdisplayをblockにして改行を強制 -->
                 <div class="slider-container" style="background: #e8f0fe; padding: 10px; border-radius: 8px; border: 1px solid #4a90e2; margin-bottom:10px; display: block;">
@@ -708,123 +805,127 @@
                         <strong>影を強制的に出す</strong>
                     </label>
                     <div id="shadow-details" style="border-top:1px dashed #abc; padding-top:8px; margin-top:5px;">
-                        <div class="slider-container">
-                            <span class="slider-label" style="font-size:10px; color:#333;">影の柔らかさ<br>(Softness)</span>
-                            <input type="range" id="shadow-softness-slider" min="0.0" max="1.0" step="0.1" value="0.5">
-                            <span id="shadow-softness-slider-val" class="val-display">0.5</span>
-                        </div>
-                        <div class="slider-container" style="margin-bottom:5px;">
-                            <span class="slider-label" style="font-size:10px; color:#333;">影の濃さ<br>(Darkness)</span>
-                            <input type="range" id="shadow-darkness-slider" min="0.0" max="1.0" step="0.1" value="0.5">
-                            <span id="shadow-darkness-slider-val" class="val-display">0.5</span>
-                        </div>
-                        <div class="slider-container" style="margin-bottom:0;">
-                            <span class="slider-label" style="font-size:10px; color:#333;">影の色<br>(Color)</span>
-                            <input type="color" id="shadow-color-picker" value="#ffa3d0" style="height:30px; width:50px; border:none; background:none; cursor:pointer;">
-                        </div>
-
-                <div class="slider-container">
-                    <span class="slider-label" style="font-size:10px; color:#333;">光の高さ<br>(上下)</span>
-                    <input type="range" id="light-y-slider" min="-10.0" max="10.0" step="0.1" value="2.0">
-                    <span id="light-y-slider-val" class="val-display">2.0</span>
-                </div>
-                <div class="slider-container">
-                    <span class="slider-label" style="font-size:10px; color:#333;">光の向き<br>(回転)</span>
-                    <input type="range" id="light-rot-slider" min="0" max="360" step="10" value="45">
-                    <span id="light-rot-slider-val" class="val-display">45</span>
-                </div>
+                      <div class="slider-container">
+                          <span class="slider-label" style="font-size:10px; color:#333;">影の柔らかさ</span>
+                          <input type="range" id="shadow-softness-slider" min="0.0" max="1.0" step="0.1" value="0.5">
+                          <span id="shadow-softness-slider-val" class="val-display">0.5</span>
+                      </div>
+                      <div class="slider-container" style="margin-bottom:5px;">
+                          <span class="slider-label" style="font-size:10px; color:#333;">影の濃さ</span>
+                          <input type="range" id="shadow-darkness-slider" min="0.0" max="1.0" step="0.1" value="0.5">
+                          <span id="shadow-darkness-slider-val" class="val-display">0.5</span>
+                      </div>
+                      <div class="slider-container" style="margin-bottom:0;">
+                          <span class="slider-label" style="font-size:10px; color:#333;">影の色</span>
+                          <input type="color" id="shadow-color-picker" value="#ffa3d0" style="height:30px; width:50px; border:none; background:none; cursor:pointer;">
+                      </div>
+                      <div class="slider-container">
+                          <span class="slider-label" style="font-size:10px; color:#333;">光の高さ</span>
+                          <input type="range" id="light-y-slider" min="-10.0" max="10.0" step="0.1" value="2.0">
+                          <span id="light-y-slider-val" class="val-display">2.0</span>
+                      </div>
+                      <div class="slider-container">
+                          <span class="slider-label" style="font-size:10px; color:#333;">光の向き</span>
+                          <input type="range" id="light-rot-slider" min="0" max="360" step="10" value="45">
+                          <span id="light-rot-slider-val" class="val-display">45</span>
+                      </div>
                     </div>
                 </div>
 
                 <div class="slider-container">
-                    <span class="slider-label">メイン光<br>強さ</span>
+                    <span class="slider-label">メイン光 強さ</span>
                     <input type="range" id="light-int-slider" min="0.0" max="5.0" step="0.1" value="2.0">
                     <span id="light-int-slider-val" class="val-display">2.0</span>
                 </div>
                 <div class="slider-container">
-                    <span class="slider-label">環境光<br>強さ</span>
+                    <span class="slider-label">環境光 強さ</span>
                     <input type="range" id="amb-int-slider" min="0.0" max="2.0" step="0.1" value="0.2">
                     <span id="amb-int-slider-val" class="val-display">0.2</span>
                 </div>
 
                 <div class="slider-container">
-                    <span class="slider-label">色味<br>(暖色⇔寒色)</span>
+                    <span class="slider-label">VRM色味</span>
                     <input type="range" id="light-color-slider" min="0" max="100" step="1" value="50">
                     <span id="light-color-slider-val" class="val-display">50</span>
                 </div>
                 <div class="slider-container">
-                    <span class="slider-label">VRM彩度<br>(Vividness)</span>
+                    <span class="slider-label">VRM彩度</span>
                     <input type="range" id="vrm-sat-slider" min="0" max="200" step="5" value="100">
                     <span id="vrm-sat-slider-val" class="val-display">100</span>
                 </div>
             </div>
 
             <!-- カメラ画質タブ -->
-            <div id="camera-settings" style="display:none;">
-                <div class="slider-container" style="background: #e8f0fe; padding: 5px; border-radius: 8px; border: 1px solid #4a90e2;">
-                    <span class="slider-label" style="color: #4a90e2;">✨美肌補正<br>(Skin Smooth)</span>
+            
+            </details>
+
+            <details class="acc-section" data-acc="light_cam">
+                <summary>カメラ画質</summary>
+            <div id="camera-settings" style="display:block;">
+                <div class="slider-container">
+                    <span class="slider-label">✨美肌補正</span>
                     <input type="range" id="skin-smooth-slider" min="0" max="100" step="1" value="0">
                     <span id="skin-smooth-slider-val" class="val-display">0</span>
                 </div>
                 <div class="slider-container">
-                    <span class="slider-label">明るさ<br>(Brightness)</span>
+                    <span class="slider-label">明るさ</span>
                     <input type="range" id="cam-bright-slider" min="50" max="150" step="1" value="100">
                     <span id="cam-bright-slider-val" class="val-display">100</span>
                 </div>
                 <div class="slider-container">
-                    <span class="slider-label">彩度<br>(Saturate)</span>
+                    <span class="slider-label">彩度</span>
                     <input type="range" id="cam-sat-slider" min="0" max="200" step="5" value="100">
                     <span id="cam-sat-slider-val" class="val-display">100</span>
                 </div>
                 <div class="slider-container">
-                    <span class="slider-label">コントラスト<br>(Contrast)</span>
+                    <span class="slider-label">コントラスト</span>
                     <input type="range" id="cam-cont-slider" min="50" max="150" step="1" value="100">
                     <span id="cam-cont-slider-val" class="val-display">100</span>
                 </div>
                 <div class="slider-container">
-                    <span class="slider-label">ぼかし<br>(Blur)</span>
-                    <input type="range" id="cam-blur-slider" min="0" max="5" step="0.5" value="0">
-                    <span id="cam-blur-slider-val" class="val-display">0</span>
-                </div>
-                <div class="slider-container">
-                    <span class="slider-label">セピア<br>(Sepia)</span>
-                    <input type="range" id="cam-sepia-slider" min="0" max="100" step="1" value="0">
-                    <span id="cam-sepia-slider-val" class="val-display">0</span>
-                </div>
-
-                <div class="slider-container">
-                    <span class="slider-label">黒レベル<br>(Black Lift)</span>
+                    <span class="slider-label">黒レベル</span>
                     <input type="range" id="cam-black-slider" min="0" max="100" step="1" value="0">
                     <span id="cam-black-slider-val" class="val-display">0</span>
                 </div>
                 <div class="slider-container">
-                    <span class="slider-label">色温度<br>(Warm ⇔ Cool)</span>
+                    <span class="slider-label">色味</span>
                     <input type="range" id="cam-temp-slider" min="0" max="100" step="1" value="50">
                     <span id="cam-temp-slider-val" class="val-display">50</span>
                 </div>
-
-
                 <div class="slider-container">
-                    <span class="slider-label">ビネット<br>(Vignette)</span>
+                    <span class="slider-label">ビネット</span>
                     <input type="range" id="cam-vignette-slider" min="0" max="100" step="1" value="0">
                     <span id="cam-vignette-slider-val" class="val-display">0</span>
                 </div>
                 <div class="slider-container">
-                    <span class="slider-label">ソフトグロー<br>(Soft Glow)</span>
+                    <span class="slider-label">ソフトグロー</span>
                     <input type="range" id="cam-softglow-slider" min="0" max="100" step="1" value="0">
                     <span id="cam-softglow-slider-val" class="val-display">0</span>
                 </div>
+                <div class="slider-container">
+                    <span class="slider-label">ぼかし</span>
+                    <input type="range" id="cam-blur-slider" min="0" max="5" step="0.5" value="0">
+                    <span id="cam-blur-slider-val" class="val-display">0</span>
+                </div>
+                <div class="slider-container">
+                    <span class="slider-label">セピア</span>
+                    <input type="range" id="cam-sepia-slider" min="0" max="100" step="1" value="0">
+                    <span id="cam-sepia-slider-val" class="val-display">0</span>
+                </div>
+
 </div>
         </div>
-    </div>
+    
+            </details>
+</div>
 
     <div id="loading">Initialize AR...</div>
 
     <script type="module">
         
 // ===== App Version (single source of truth) =====
-const APP_VERSION = "v6.01.15";
-const APP_VERSION_NOTE = "cream: auto target uses face-oval screen sampling + exclude lower 10% | note: cream is 2D overlay (no Z)";
+const APP_VERSION = "v6.01.20";
+const APP_VERSION_NOTE = "ui: accordion options + light; restore scroll";
 
 
 function getOverlayPixelRatio() {
@@ -1030,7 +1131,10 @@ let latestCheekLVideoX = 0.35; // normalized in ORIGINAL video frame (0..1)
                 var creamAutoIntervalSec = 1.5; // base interval (seconds)
                 var creamMaxCount = 40;         // max total (patches + projectiles)
                 var creamSizeMul = 1.0;      // size multiplier (0.5-2.0)
+                var creamGloss = 1.0;        // highlight strength (0..2)
+                var creamViscosity = 1.0;    // viscosity (0.2..3.0) higher=thicker
                 var creamSimulCount = 3;   // simultaneous shots per tap/auto (1-20)
+                var creamZAttach = 0.6;     // pseudo "Z-stick" (0..1)
                 let creamAutoElapsedSec = 0.0;
                 let creamNextAutoIntervalSec = null;
 
@@ -1330,6 +1434,61 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
         const uiContainer = document.getElementById('ui-container');
         const controlPanel = document.getElementById('control-panel');
         const lightPanel = document.getElementById('light-panel');
+        // --- UI state helpers: accordion + scroll restore ---
+        function _uiKey(suffix) {
+            const fname = (typeof currentFileName !== 'undefined' && currentFileName) ? currentFileName : 'default';
+            return `ui_${suffix}_${fname}`;
+        }
+
+        function _savePanelScroll(panel, suffix) {
+            try { localStorage.setItem(_uiKey(suffix + '_scroll'), String(panel.scrollTop || 0)); } catch(e) {}
+        }
+        function _restorePanelScroll(panel, suffix) {
+            try {
+                const v = Number(localStorage.getItem(_uiKey(suffix + '_scroll')));
+                if (!Number.isNaN(v)) panel.scrollTop = v;
+            } catch(e) {}
+        }
+
+        function _saveAccordionState(panel, suffix) {
+            try {
+                const openIds = Array.from(panel.querySelectorAll('details.acc-section'))
+                    .filter(d => d.open)
+                    .map(d => d.dataset.acc || '');
+                localStorage.setItem(_uiKey(suffix + '_acc'), JSON.stringify(openIds));
+            } catch(e) {}
+        }
+        function _restoreAccordionState(panel, suffix) {
+            try {
+                const raw = localStorage.getItem(_uiKey(suffix + '_acc'));
+                if (!raw) return;
+                const openIds = new Set(JSON.parse(raw));
+                Array.from(panel.querySelectorAll('details.acc-section')).forEach(d => {
+                    const id = d.dataset.acc || '';
+                    if (openIds.has(id)) d.open = true;
+                    else if (openIds.size > 0) d.open = false;
+                });
+            } catch(e) {}
+        }
+
+        function _attachPanelState(panel, suffix) {
+            if (!panel) return;
+            // Scroll save (debounced)
+            let t = null;
+            panel.addEventListener('scroll', () => {
+                if (t) clearTimeout(t);
+                t = setTimeout(() => _savePanelScroll(panel, suffix), 120);
+            }, { passive: true });
+
+            // Accordion open-state save
+            Array.from(panel.querySelectorAll('details.acc-section')).forEach(d => {
+                d.addEventListener('toggle', () => _saveAccordionState(panel, suffix));
+            });
+        }
+
+        _attachPanelState(controlPanel, 'control');
+        _attachPanelState(lightPanel, 'light');
+
         const loadingText = document.getElementById('loading');
         const statusMsg = document.getElementById('status-msg');
         const arContainer = document.getElementById('ar-container');
@@ -1554,26 +1713,12 @@ const occlusionToggle = document.getElementById('occlusion-toggle');
         
         const camVignetteSlider = document.getElementById('cam-vignette-slider');
         const camSoftGlowSlider = document.getElementById('cam-softglow-slider');
-const tabVrm = document.getElementById('tab-vrm');
-        const tabCamera = document.getElementById('tab-camera');
         const vrmLightSettings = document.getElementById('vrm-light-settings');
         const cameraSettings = document.getElementById('camera-settings');
-
-        tabVrm.addEventListener('click', () => {
-            tabVrm.classList.add('active');
-            tabCamera.classList.remove('active');
-            vrmLightSettings.style.display = 'block';
-            cameraSettings.style.display = 'none';
-        });
-
-        tabCamera.addEventListener('click', () => {
-            tabCamera.classList.add('active');
-            tabVrm.classList.remove('active');
-            vrmLightSettings.style.display = 'none';
-            cameraSettings.style.display = 'block';
-        });
-
-        const allSliders = [
+        // Light panel is now accordion-based (no tabs)
+        if (vrmLightSettings) vrmLightSettings.style.display = 'block';
+        if (cameraSettings) cameraSettings.style.display = 'block';
+const allSliders = [
             minCfSlider, betaSlider, mouthSensSlider, eyeSensSlider,
             lightIntSlider, ambIntSlider, lightYSlider, lightRotSlider, lightColorSlider, vrmSatSlider,
             skinSmoothSlider, camBrightSlider, camSatSlider, camContSlider, camBlurSlider, camSepiaSlider,
@@ -1645,6 +1790,43 @@ if (creamSizeMulSlider) {
         saveSettings();
     });
 }
+
+// Cream gloss/highlight slider (0-2.0)
+const creamGlossSlider = document.getElementById('cream-gloss-slider');
+if (creamGlossSlider) {
+    updateSliderDisplay(creamGlossSlider);
+    creamGloss = parseFloat(creamGlossSlider.value) || creamGloss;
+    creamGlossSlider.addEventListener('input', () => {
+        updateSliderDisplay(creamGlossSlider);
+        creamGloss = parseFloat(creamGlossSlider.value) || creamGloss;
+        saveSettings();
+    });
+}
+
+// Cream viscosity slider (0.2-3.0) higher = thicker (slower flow)
+const creamViscositySlider = document.getElementById('cream-viscosity-slider');
+if (creamViscositySlider) {
+    updateSliderDisplay(creamViscositySlider);
+    creamViscosity = parseFloat(creamViscositySlider.value) || creamViscosity;
+    creamViscositySlider.addEventListener('input', () => {
+        updateSliderDisplay(creamViscositySlider);
+        creamViscosity = parseFloat(creamViscositySlider.value) || creamViscosity;
+        saveSettings();
+    });
+}
+
+// Cream pseudo-Z stick slider (0..1)
+const creamZAttachSlider = document.getElementById('cream-z-attach-slider');
+if (creamZAttachSlider) {
+    updateSliderDisplay(creamZAttachSlider);
+    creamZAttach = Math.max(0, Math.min(1, parseFloat(creamZAttachSlider.value) || creamZAttach));
+    creamZAttachSlider.addEventListener('input', () => {
+        updateSliderDisplay(creamZAttachSlider);
+        creamZAttach = Math.max(0, Math.min(1, parseFloat(creamZAttachSlider.value) || 0));
+        saveSettings();
+    });
+}
+
 
 // Cream simultaneous shot count slider (1-20)
 const creamSimulCountSlider = document.getElementById('cream-simul-count-slider');
@@ -1789,10 +1971,18 @@ forceShadowToggle.addEventListener('change', () => {
 
 document.getElementById('toggle-menu-btn').addEventListener('click', () => {
             // close the other panel first
+            if (getComputedStyle(lightPanel).display !== 'none') _savePanelScroll(lightPanel, 'light');
             lightPanel.style.display = 'none';
+
             const isHidden = getComputedStyle(controlPanel).display === 'none';
-            controlPanel.style.display = isHidden ? 'block' : 'none';
-            if (isHidden) controlPanel.scrollTop = 0;
+            if (isHidden) {
+                controlPanel.style.display = 'block';
+                _restoreAccordionState(controlPanel, 'control');
+                requestAnimationFrame(() => _restorePanelScroll(controlPanel, 'control'));
+            } else {
+                _savePanelScroll(controlPanel, 'control');
+                controlPanel.style.display = 'none';
+            }
         });
 
         document.getElementById('toggle-light-btn').addEventListener('click', () => {
@@ -2252,7 +2442,10 @@ document.getElementById('toggle-menu-btn').addEventListener('click', () => {
                 creamInterval: (typeof creamAutoIntervalSlider !== 'undefined' && creamAutoIntervalSlider) ? creamAutoIntervalSlider.value : String(creamAutoIntervalSec),
                 creamMax: (typeof creamMaxCountSlider !== 'undefined' && creamMaxCountSlider) ? creamMaxCountSlider.value : String(creamMaxCount),
                 creamSizeMul: (typeof creamSizeMulSlider !== 'undefined' && creamSizeMulSlider) ? creamSizeMulSlider.value : String(creamSizeMul),
+                creamGloss: (typeof creamGlossSlider !== 'undefined' && creamGlossSlider) ? creamGlossSlider.value : String(creamGloss),
+                creamViscosity: (typeof creamViscositySlider !== 'undefined' && creamViscositySlider) ? creamViscositySlider.value : String(creamViscosity),
                 creamSimul: (typeof creamSimulCountSlider !== 'undefined' && creamSimulCountSlider) ? creamSimulCountSlider.value : String(creamSimulCount),
+                creamZAttach: (typeof creamZAttachSlider !== 'undefined' && creamZAttachSlider) ? creamZAttachSlider.value : String(creamZAttach),
                 trackingFacing: currentFacingMode,
                 trackingMirror: !!mirrorEnabled,
             };
@@ -2365,6 +2558,12 @@ document.getElementById('toggle-menu-btn').addEventListener('click', () => {
                         updateSliderDisplay(creamSimulCountSlider);
                         creamSimulCount = parseInt(creamSimulCountSlider.value, 10) || creamSimulCount;
                     }
+                    if (Object.prototype.hasOwnProperty.call(s, 'creamZAttach') && typeof creamZAttachSlider !== 'undefined' && creamZAttachSlider) {
+                        creamZAttachSlider.value = s.creamZAttach;
+                        updateSliderDisplay(creamZAttachSlider);
+                        creamZAttach = Math.max(0, Math.min(1, parseFloat(creamZAttachSlider.value) || creamZAttach));
+                    }
+
 
                     if (Object.prototype.hasOwnProperty.call(s, 'creamAuto')) {
                         setCreamAutoEnabled(!!s.creamAuto);
@@ -3331,24 +3530,38 @@ const CREAM_SHOT_COOLDOWN_MS = 320;
 // Ensure +V always points downward in screen space (fixes top/bottom inversion on some rotations).
 if (vy < 0) { vx = -vx; vy = -vy; }
 
+            
             const roll = Math.atan2(uy, ux);
-            return { rect, le, re, eyeMid, mouthMid, faceW, ux, uy, vx, vy, roll };
+
+            // Pseudo depth: foreshorten UV axes based on face yaw/pitch so cream feels less "floating" during rotation.
+            const k = Math.max(0, Math.min(1, (typeof creamZAttach !== 'undefined' ? (creamZAttach || 0) : 0)));
+            const cy = Math.cos(Math.min(Math.abs(typeof latestFaceYawRad !== 'undefined' ? (latestFaceYawRad || 0) : 0), Math.PI / 2));
+            const cp = Math.cos(Math.min(Math.abs(typeof latestFacePitchRad !== 'undefined' ? (latestFacePitchRad || 0) : 0), Math.PI / 2));
+            const su = 1.0 - k + k * Math.max(0.35, cy);
+            const sv = 1.0 - k + k * Math.max(0.35, cp);
+
+            return { rect, le, re, eyeMid, mouthMid, faceW, ux, uy, vx, vy, roll, su, sv };
+
         }
 
         function screenPxToFaceLocal(px, py, basis) {
             if (!basis) return null;
             const dx = px - basis.eyeMid.x;
             const dy = py - basis.eyeMid.y;
-            const u = (dx * basis.ux + dy * basis.uy) / basis.faceW;
-            const v = (dx * basis.vx + dy * basis.vy) / basis.faceW;
+            const su = (basis.su || 1.0);
+            const sv = (basis.sv || 1.0);
+            const u = (dx * basis.ux + dy * basis.uy) / (basis.faceW * su);
+            const v = (dx * basis.vx + dy * basis.vy) / (basis.faceW * sv);
             return { u, v };
         }
 
         function faceLocalToScreenPx(localU, localV, basis) {
             if (!basis) return null;
+            const su = (basis.su || 1.0);
+            const sv = (basis.sv || 1.0);
             return {
-                x: basis.eyeMid.x + (basis.ux * localU + basis.vx * localV) * basis.faceW,
-                y: basis.eyeMid.y + (basis.uy * localU + basis.vy * localV) * basis.faceW
+                x: basis.eyeMid.x + (basis.ux * (localU * su) + basis.vx * (localV * sv)) * basis.faceW,
+                y: basis.eyeMid.y + (basis.uy * (localU * su) + basis.vy * (localV * sv)) * basis.faceW
             };
         }
 
@@ -3407,7 +3620,7 @@ if (vy < 0) { vx = -vx; vy = -vy; }
                     y = Math.min(y, yMaxAllowed);
                     x = Math.min(Math.max(x, 0), cssW);
                     y = Math.min(Math.max(y, 0), cssH);
-                    return { x, y };
+                    return { x, y, yTop, yMaxAllowed };
                 }
             }
 
@@ -3548,13 +3761,27 @@ const uvTap = screenPxToFaceLocal(tx, ty, basis);
             ctx.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2);
             ctx.fill();
 
+            const gl = (typeof creamGloss === 'number') ? Math.max(0, Math.min(2, creamGloss)) : 1.0;
+
+            // Soft highlight (scales with gloss)
             const h = ctx.createRadialGradient(-rx * 0.25, -ry * 0.28, 0, -rx * 0.25, -ry * 0.28, Math.max(2, r * 0.55));
-            h.addColorStop(0.0, `rgba(255, 255, 255, ${0.35 * opacity})`);
+            h.addColorStop(0.0, `rgba(255, 255, 255, ${0.22 * opacity * gl})`);
             h.addColorStop(1.0, `rgba(255, 255, 255, 0)`);
             ctx.fillStyle = h;
             ctx.beginPath();
             ctx.ellipse(-rx * 0.22, -ry * 0.22, r * 0.40, r * 0.30, 0, 0, Math.PI * 2);
             ctx.fill();
+
+            // Sharp specular streak (more obvious at high gloss)
+            const gl2 = gl * gl;
+            if (gl > 0.01) {
+                ctx.globalCompositeOperation = 'screen';
+                ctx.fillStyle = `rgba(255,255,255,${0.12 * opacity * gl2})`;
+                ctx.beginPath();
+                ctx.ellipse(-rx * 0.10, -ry * 0.34, r * 0.18, r * 0.07, 0.35, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.globalCompositeOperation = 'source-over';
+            }
 
             ctx.restore();
         }
@@ -3585,13 +3812,42 @@ const uvTap = screenPxToFaceLocal(tx, ty, basis);
             ctx.closePath();
             ctx.fill();
 
-            // Highlight
-            ctx.fillStyle = `rgba(255,255,255,${0.22 * opacity})`;
+            // Highlight (scales with gloss)
+            const gl = (typeof creamGloss === 'number') ? Math.max(0, Math.min(2, creamGloss)) : 1.0;
+            const gl2 = gl * gl;
+
+            ctx.globalCompositeOperation = 'screen';
+            ctx.fillStyle = `rgba(255,255,255,${0.16 * opacity * gl})`;
             ctx.beginPath();
             ctx.ellipse(-w * 0.14, -h * 0.18, w * 0.12, h * 0.10, 0, 0, Math.PI * 2);
             ctx.fill();
 
-            ctx.restore();
+            if (gl > 0.01) {
+                ctx.fillStyle = `rgba(255,255,255,${0.08 * opacity * gl2})`;
+                ctx.beginPath();
+                ctx.ellipse(-w * 0.06, -h * 0.28, w * 0.08, h * 0.18, -0.20, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            ctx.globalCompositeOperation = 'source-over';
+
+            
+            // Specular highlight (gloss)
+            const _gl2 = (typeof creamGloss === 'number') ? Math.max(0, creamGloss) : 1.0;
+            if (_gl2 > 0.001) {
+                ctx.save();
+                ctx.globalCompositeOperation = 'lighter';
+                const hg = ctx.createRadialGradient(-w * 0.18, -h * 0.25, 0, -w * 0.18, -h * 0.25, Math.max(w, h) * 0.7);
+                hg.addColorStop(0.0, `rgba(255, 255, 255, ${0.22 * opacity * _gl2})`);
+                hg.addColorStop(1.0, `rgba(255, 255, 255, 0)`);
+                ctx.fillStyle = hg;
+                ctx.beginPath();
+                ctx.ellipse(-w * 0.12, -h * 0.18, w * 0.28, h * 0.22, 0, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+                ctx.globalCompositeOperation = 'source-over';
+            }
+
+ctx.restore();
         }
 
 function drawCreamDrip(ctx, x, y, w, h, opacity, angleRad) {
@@ -3634,7 +3890,15 @@ function drawCreamDrip(ctx, x, y, w, h, opacity, angleRad) {
                                 // Same hit randomness as manual tap: tiny horizontal, mostly vertical (slight down-bias)
                                 const dx = (Math.random() * 2 - 1) * 5.0;        // ±5px
                                 const dy = (Math.random() * 2 - 1) * 14.0 + 6.0; // mostly vertical
-                                spawnCreamBurst(tgt.x + dx, tgt.y + dy, true, gid);
+                                let ax = tgt.x + dx;
+                                let ay = tgt.y + dy;
+                                // Keep bounds AFTER jitter so the lower-10% exclusion stays effective.
+                                if (Number.isFinite(tgt.yTop) && Number.isFinite(tgt.yMaxAllowed)) {
+                                    ay = Math.min(Math.max(ay, tgt.yTop), tgt.yMaxAllowed);
+                                }
+                                ax = Math.min(Math.max(ax, 0), cssW);
+                                ay = Math.min(Math.max(ay, 0), cssH);
+                                spawnCreamBurst(ax, ay, true, gid);
                             }
                             scheduleNextAutoCream();
                         } else {
@@ -3766,7 +4030,8 @@ const ang = Math.atan2(dvy, dvx);
 
                 // Let the attached cream itself slowly flow down along the face v-axis (no separate drip objects)
                 if (typeof s.flowVel === 'number') {
-                    s.v += s.flowVel * delta;
+                    const _visc = (typeof creamViscosity === 'number') ? Math.max(0.2, creamViscosity) : 1.0;
+                    s.v += (s.flowVel * delta) / _visc;
                 }
 
 
@@ -3781,7 +4046,7 @@ const ang = Math.atan2(dvy, dvx);
                         const r = useBasis.faceW * 0.18 * s.sizeU * spread;
                         const ang = (useBasis.roll || 0) + (s.rollBias || 0) + (s.rotRad || 0);
                         const baseStretch = (s.sizeV && s.sizeU) ? Math.min(3.0, Math.max(0.8, (s.sizeV / Math.max(1e-6, s.sizeU)))) : 1.0;
-                        const stretchY = baseStretch * (1.0 + Math.max(0, (s.age - s.dripDelay) * 0.10));
+                        const stretchY = baseStretch * (1.0 + Math.max(0, (s.age - s.dripDelay) * (0.10 / ((typeof creamViscosity === 'number') ? Math.max(0.2, creamViscosity) : 1.0))));
                         const rxScale = (s.rxScale || 1.0) * narrow;
                         creamOverlayCtx.globalAlpha = 0.75 * a;
                         drawCreamBlob(creamOverlayCtx, pxy.x, pxy.y, r, 1.0, ang, stretchY, rxScale);
@@ -4423,6 +4688,9 @@ if (videoTexture) videoTexture.needsUpdate = true;
                 const tmpPos = new THREE.Vector3();
                 const tmpQuat = new THREE.Quaternion();
                 const tmpScaleVec = new THREE.Vector3();
+                const tmpEuler = new THREE.Euler();
+                let latestFaceYawRad = 0.0;
+                let latestFacePitchRad = 0.0;
 
                 renderer.setAnimationLoop(() => {
                     const delta = clock.getDelta();
@@ -4505,6 +4773,13 @@ const tms = res && res.facialTransformationMatrixes;
                             worldMatrix.decompose(tmpPos, tmpQuat, tmpScaleVec);
                             tmpScaleVec.set(1, 1, 1);
                             worldMatrix.compose(tmpPos, tmpQuat, tmpScaleVec);
+
+                            // Capture face yaw/pitch for 2D cream pseudo-depth attachment.
+                            try {
+                                tmpEuler.setFromQuaternion(tmpQuat, 'YXZ');
+                                latestFacePitchRad = tmpEuler.x || 0.0;
+                                latestFaceYawRad = tmpEuler.y || 0.0;
+                            } catch (_) {}
 
                             // Apply our own uniform scale
                             worldMatrix.scale(new THREE.Vector3(baseScale, baseScale, baseScale));
