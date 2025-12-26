@@ -1464,6 +1464,9 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
             return `ui_${suffix}`;
         }
 
+        // Prevent accordion 'toggle' handlers from saving while we are restoring state
+        let _uiRestoring = false;
+
         function _savePanelScroll(panel, suffix) {
             try { localStorage.setItem(_uiKey(suffix + '_scroll'), String(panel.scrollTop || 0)); } catch(e) {}
         }
@@ -1490,11 +1493,18 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
                     return;
                 }
                 const openIds = new Set(JSON.parse(raw));
+
+                // Avoid saving partial state while we programmatically toggle <details open>
+                _uiRestoring = true;
                 Array.from(panel.querySelectorAll('details.acc-section')).forEach(d => {
                     const id = d.dataset.acc || '';
                     d.open = openIds.has(id);
                 });
-            } catch(e) {}
+                // Let toggle events (if any) finish, then re-enable saving.
+                setTimeout(() => { _uiRestoring = false; }, 0);
+            } catch(e) {
+                _uiRestoring = false;
+            }
         }
 
         function _attachPanelState(panel, suffix) {
@@ -1509,6 +1519,7 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
             // Accordion open-state save
             Array.from(panel.querySelectorAll('details.acc-section')).forEach(d => {
                 d.addEventListener('toggle', () => {
+                    if (_uiRestoring) return;
                     _saveAccordionState(panel, suffix);
                 });
             });
@@ -2030,8 +2041,15 @@ document.getElementById('toggle-menu-btn').addEventListener('click', () => {
             // close the other panel first
             controlPanel.style.display = 'none';
             const isHidden = getComputedStyle(lightPanel).display === 'none';
-            lightPanel.style.display = isHidden ? 'block' : 'none';
-            if (isHidden) lightPanel.scrollTop = 0;
+            if (isHidden) {
+                lightPanel.style.display = 'block';
+                _restoreAccordionState(lightPanel, 'light');
+                requestAnimationFrame(() => _restorePanelScroll(lightPanel, 'light'));
+            } else {
+                _savePanelScroll(lightPanel, 'light');
+                _saveAccordionState(lightPanel, 'light');
+                lightPanel.style.display = 'none';
+            }
         });
 
         document.getElementById('toggle-fullscreen-btn').addEventListener('click', () => {
