@@ -493,7 +493,13 @@
             </label>
             <input type="file" id="vrm-upload">
 
-            <div class="slider-container">
+            
+
+            <button id="apply-default-to-vrm-btn" class="restart-btn" style="background:#26a69a; margin-top:10px;" disabled>デフォルトオプションをこのVRMに反映</button>
+            <div style="font-size:12px; opacity:0.85; margin-top:4px; line-height:1.4;">
+                既に個別セーブがあるVRMに、保存済みデフォルトオプションを反映（上書き保存）します。
+            </div>
+<div class="slider-container">
                 <span class="slider-label">サイズ</span>
                 <input type="range" id="scale-slider" min="0.5" max="12.0" step="0.1" value="8.0">
                 <span id="scale-slider-val" class="val-display">8.0</span>
@@ -5037,7 +5043,26 @@ const tms = res && res.facialTransformationMatrixes;
         const fileInput = document.getElementById('vrm-upload');
         
         const saveDefaultBtn = document.getElementById('save-default-btn');
-        if (saveDefaultBtn) {
+        
+        const applyDefaultToVrmBtn = document.getElementById('apply-default-to-vrm-btn');
+        if (applyDefaultToVrmBtn) {
+            applyDefaultToVrmBtn.addEventListener('click', () => {
+                if (!currentFileName) {
+                    showToast('まずVRMを読み込んでください');
+                    return;
+                }
+                const ok = loadSettings('default', { silent: true, label: 'デフォルト' });
+                if (!ok) {
+                    showToast('デフォルト設定が見つかりません');
+                    return;
+                }
+                // Overwrite per-VRM save with the defaults we just loaded
+                saveSettings(currentFileName);
+                showToast('デフォルト設定をこのVRMに反映しました');
+            });
+        }
+
+if (saveDefaultBtn) {
             saveDefaultBtn.addEventListener('click', () => {
                 // Save current UI values as global defaults (used for VRMs without per-file save)
                 saveSettings('default');
@@ -5051,7 +5076,9 @@ const tms = res && res.facialTransformationMatrixes;
 
             currentFileName = file.name;
 
-            const fileSizeMB = file.size / (1024 * 1024);
+            
+            if (applyDefaultToVrmBtn) applyDefaultToVrmBtn.disabled = true;
+const fileSizeMB = file.size / (1024 * 1024);
             if (fileSizeMB > 50) {
                 showToast(`ファイルサイズが大きいです (${fileSizeMB.toFixed(1)}MB)。動作が重くなる可能性があります。`);
             }
@@ -5075,7 +5102,9 @@ const tms = res && res.facialTransformationMatrixes;
                             VRMUtils.deepDispose(currentVrm.scene);
                         }
                         currentVrm = vrm;
-                        VRMUtils.rotateVRM0(vrm);
+                        
+                        if (applyDefaultToVrmBtn) applyDefaultToVrmBtn.disabled = false;
+VRMUtils.rotateVRM0(vrm);
                         makeHeadOnly(vrm);
 
                         vrm.scene.rotation.y = Math.PI;
