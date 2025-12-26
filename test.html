@@ -948,8 +948,8 @@
     <script type="module">
         
 // ===== App Version (single source of truth) =====
-const APP_VERSION = "v6.01.21";
-const APP_VERSION_NOTE = "defaults: global + per-VRM; add help";
+const APP_VERSION = "v6.01.22";
+const APP_VERSION_NOTE = "UI restore: control accordion robust";
 
 
 function getOverlayPixelRatio() {
@@ -1481,30 +1481,48 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
             try {
                 const openIds = Array.from(panel.querySelectorAll('details.acc-section'))
                     .filter(d => d.open)
-                    .map(d => d.dataset.acc || '');
+                    .map(d => (d.dataset.acc || '').trim())
+                    .filter(Boolean);
                 localStorage.setItem(_uiKey(suffix + '_acc'), JSON.stringify(openIds));
             } catch(e) {}
         }
         function _restoreAccordionState(panel, suffix) {
-            try {
-                const raw = localStorage.getItem(_uiKey(suffix + '_acc'));
-                if (raw === null) {
-                    // No saved state yet: keep the default markup states.
-                    return;
-                }
-                const openIds = new Set(JSON.parse(raw));
-
-                // Avoid saving partial state while we programmatically toggle <details open>
-                _uiRestoring = true;
-                Array.from(panel.querySelectorAll('details.acc-section')).forEach(d => {
-                    const id = d.dataset.acc || '';
-                    d.open = openIds.has(id);
-                });
-                // Let toggle events (if any) finish, then re-enable saving.
-                setTimeout(() => { _uiRestoring = false; }, 0);
-            } catch(e) {
-                _uiRestoring = false;
+            let raw = null;
+            try { raw = localStorage.getItem(_uiKey(suffix + '_acc')); } catch (e) { raw = null; }
+            if (raw === null) {
+                // No saved state yet: keep the default markup states.
+                return;
             }
+
+            let arr = [];
+            try {
+                const v = JSON.parse(raw);
+                if (Array.isArray(v)) {
+                    arr = v;
+                } else if (typeof v === 'string') {
+                    arr = v.split(/,\s*/);
+                } else if (v && typeof v === 'object') {
+                    // legacy/alternate shapes
+                    if (Array.isArray(v.openIds)) arr = v.openIds;
+                    else if (Array.isArray(v.open)) arr = v.open;
+                }
+            } catch (e) {
+                // Legacy fallback: "basic,mask,cream" etc.
+                arr = String(raw).split(/[\s,]+/);
+            }
+
+            const openIds = new Set((arr || [])
+                .map(s => String(s).trim())
+                .filter(Boolean));
+
+            // Avoid saving partial state while we programmatically toggle <details open>
+            _uiRestoring = true;
+            Array.from(panel.querySelectorAll('details.acc-section')).forEach(d => {
+                const id = String(d.dataset.acc || '').trim();
+                d.open = openIds.has(id);
+            });
+            // Let toggle events (if any) finish, then re-enable saving.
+            setTimeout(() => { _uiRestoring = false; }, 0);
         }
 
         function _attachPanelState(panel, suffix) {
