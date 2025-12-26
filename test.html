@@ -3776,6 +3776,54 @@ if (vy < 0) { vx = -vx; vy = -vy; }
             return pt ? { x: pt.x, y: pt.y } : { x: centerX, y: centerY };
         }
 
+        // Compute screen-space shift (px) between tracked face origin and the user's model offsets.
+        // This is used to keep auto-cream firing aligned when the user moves the model left/right (X) and height (Y).
+        const autoCreamShiftTmp0 = new THREE.Vector3();
+        const autoCreamShiftTmp1 = new THREE.Vector3();
+        const autoCreamShiftTmp2 = new THREE.Vector3();
+        const autoCreamShiftTmpUp = new THREE.Vector3();
+        const autoCreamShiftTmpQ = new THREE.Quaternion();
+
+        function getModelOffsetScreenShiftPx(cssW, cssH) {
+            if (!camera || !pivotGroup) return { dx: 0, dy: 0 };
+
+            const wx = (wrapperGroup && wrapperGroup.position && Number.isFinite(wrapperGroup.position.x)) ? wrapperGroup.position.x : 0;
+            const yv = (ySlider && Number.isFinite(parseFloat(ySlider.value))) ? parseFloat(ySlider.value) : 0;
+
+            if (wx === 0 && yv === 0) return { dx: 0, dy: 0 };
+
+            // Tracked face origin in world space (includes wrapper translation).
+            autoCreamShiftTmp0.setFromMatrixPosition(pivotGroup.matrixWorld);
+
+            // Base (no offsets): subtract wrapper X, and do not add Y.
+            autoCreamShiftTmp1.copy(autoCreamShiftTmp0);
+            if (wx !== 0) autoCreamShiftTmp1.x -= wx;
+
+            // Offset point: include wrapper X (already in tmp0) and include Y along pivot's local up axis.
+            autoCreamShiftTmp2.copy(autoCreamShiftTmp0);
+            if (yv !== 0) {
+                pivotGroup.getWorldQuaternion(autoCreamShiftTmpQ);
+                autoCreamShiftTmpUp.set(0, 1, 0).applyQuaternion(autoCreamShiftTmpQ).multiplyScalar(yv);
+                autoCreamShiftTmp2.add(autoCreamShiftTmpUp);
+            }
+
+            autoCreamShiftTmp1.project(camera);
+            autoCreamShiftTmp2.project(camera);
+
+            const ok = Number.isFinite(autoCreamShiftTmp1.x) && Number.isFinite(autoCreamShiftTmp1.y) &&
+                       Number.isFinite(autoCreamShiftTmp2.x) && Number.isFinite(autoCreamShiftTmp2.y);
+            if (!ok) return { dx: 0, dy: 0 };
+
+            const px0 = (autoCreamShiftTmp1.x * 0.5 + 0.5) * cssW;
+            const py0 = (-autoCreamShiftTmp1.y * 0.5 + 0.5) * cssH;
+            const px1 = (autoCreamShiftTmp2.x * 0.5 + 0.5) * cssW;
+            const py1 = (-autoCreamShiftTmp2.y * 0.5 + 0.5) * cssH;
+
+            return { dx: (px1 - px0), dy: (py1 - py0) };
+        }
+
+
+
 function spawnCreamBurst(targetX = null, targetY = null, ignoreCooldown = false, groupId = null) {
             const now = performance.now();
             const gid = (groupId !== null && groupId !== undefined) ? groupId : (creamNextPatchGroupId++);
@@ -4012,16 +4060,23 @@ function drawCreamDrip(ctx, x, y, w, h, opacity, angleRad) {
                         const cssH = (creamOverlayCanvas ? creamOverlayCanvas.height / pr : window.innerHeight);
                         const tgt = sampleAutoCreamTargetPx(useBasis, cssW, cssH);
                         if (tgt) {
+                            // Apply model offsets (X via wrapper, Y via adjustment) in screen space so auto shots match the shifted model.
+                            const sh = getModelOffsetScreenShiftPx(cssW, cssH);
+                            const sdx = sh ? sh.dx : 0;
+                            const sdy = sh ? sh.dy : 0;
+                            const yTopShift = (Number.isFinite(tgt.yTop) ? (tgt.yTop + sdy) : tgt.yTop);
+                            const yMaxShift = (Number.isFinite(tgt.yMaxAllowed) ? (tgt.yMaxAllowed + sdy) : tgt.yMaxAllowed);
+
                             const gid = (creamNextPatchGroupId++);
                             for (let i = 0; i < shotCount; i++) {
                                 // Same hit randomness as manual tap: tiny horizontal, mostly vertical (slight down-bias)
                                 const dx = (Math.random() * 2 - 1) * 5.0;        // ±5px
                                 const dy = (Math.random() * 2 - 1) * 14.0 + 6.0; // mostly vertical
-                                let ax = tgt.x + dx;
-                                let ay = tgt.y + dy;
+                                let ax = tgt.x + sdx + dx;
+                                let ay = tgt.y + sdy + dy;
                                 // Keep bounds AFTER jitter so the lower-10% exclusion stays effective.
-                                if (Number.isFinite(tgt.yTop) && Number.isFinite(tgt.yMaxAllowed)) {
-                                    ay = Math.min(Math.max(ay, tgt.yTop), tgt.yMaxAllowed);
+                                if (Number.isFinite(yTopShift) && Number.isFinite(yMaxShift)) {
+                                    ay = Math.min(Math.max(ay, yTopShift), yMaxShift);
                                 }
                                 ax = Math.min(Math.max(ax, 0), cssW);
                                 ay = Math.min(Math.max(ay, 0), cssH);
