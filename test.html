@@ -405,7 +405,44 @@
             opacity: 1;
             bottom: 50px;
         }
-    </style>
+    
+        /* Accordion UI */
+        .acc-section {
+            margin: 8px 0;
+            border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 12px;
+            overflow: hidden;
+            background: rgba(0,0,0,0.18);
+        }
+        .acc-section > summary {
+            list-style: none;
+            cursor: pointer;
+            padding: 10px 12px;
+            font-weight: 700;
+            user-select: none;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+        }
+        .acc-section > summary::-webkit-details-marker { display:none; }
+        .acc-section > summary::after {
+            content: "▾";
+            opacity: 0.8;
+            transform: rotate(0deg);
+            transition: transform 120ms ease;
+        }
+        .acc-section[open] > summary::after { transform: rotate(180deg); }
+        .acc-section > summary:hover { background: rgba(255,255,255,0.06); }
+        .acc-section > summary:active { background: rgba(255,255,255,0.10); }
+        .acc-section[open] { box-shadow: 0 8px 20px rgba(0,0,0,0.25); }
+        .acc-section .slider-container, .acc-section .toggle-label, .acc-section .custom-file-upload, .acc-section button, .acc-section input, .acc-section select, .acc-section textarea {
+            /* keep original spacing */
+        }
+
+
+        .acc-section > *:not(summary) { padding: 8px 12px 10px 12px; }
+</style>
 
     <script type="importmap">
     {
@@ -447,6 +484,9 @@
         <!-- メイン設定パネル -->
         <div class="control-panel" id="control-panel" style="display:none;">
             <h1>モデル・トラッキング</h1>
+            <details class="acc-section" data-acc="basic" open>
+                <summary>基本</summary>
+
             
             <label for="vrm-upload" class="custom-file-upload">
                 📂 VRMファイルを選択
@@ -470,7 +510,12 @@
             </div>
 
             <!-- マスキング設定 -->
-            <h2>肩マスキング (アーチ型)</h2>
+            
+            </details>
+
+            <details class="acc-section" data-acc="mask">
+                <summary>肩マスキング</summary>
+
             <div class="slider-container">
                 <label class="toggle-label">
                     <input type="checkbox" id="occlusion-toggle" class="toggle-checkbox" checked>
@@ -521,7 +566,12 @@
             
             </div>
 
-<h2>クリーム射出</h2>
+
+            </details>
+
+            <details class="acc-section" data-acc="cream" open>
+                <summary>クリーム射出</summary>
+
             <div class="slider-container">
                 <label class="toggle-label">
                     <input type="checkbox" id="cream-auto-toggle" class="toggle-checkbox">
@@ -578,7 +628,12 @@
                 <span id="cream-max-count-slider-val" class="val-display">40</span>
             </div>
 
-<h2>表情設定</h2>
+
+            </details>
+
+            <details class="acc-section" data-acc="expression">
+                <summary>表情設定</summary>
+
             <div class="slider-container">
                 <label class="toggle-label">
                     <input type="checkbox" id="autoblink-toggle" class="toggle-checkbox" checked>
@@ -701,7 +756,12 @@
 
             </div>
 
-            <h2>トラッキング</h2>
+            
+            </details>
+
+            <details class="acc-section" data-acc="tracking">
+                <summary>トラッキング</summary>
+
 
             <div class="slider-container">
                 <label class="toggle-label">
@@ -728,16 +788,15 @@
             </div>
 
             <button id="apply-tracking-btn" class="restart-btn">設定を適用して再起動</button>
-        </div>
+        
+            </details>
+</div>
 
         <!-- 照明・画質設定パネル -->
         <div class="control-panel" id="light-panel" style="display:none;">
-            <div class="tab-container">
-                <button class="tab-btn active" id="tab-vrm">VRM照明</button>
-                <button class="tab-btn" id="tab-camera">カメラ画質</button>
-            </div>
-
-            <!-- VRM照明タブ -->
+            <h1>照明・画質</h1>
+            <details class="acc-section" data-acc="light_vrm" open>
+                <summary>VRM照明</summary>
             <div id="vrm-light-settings">
                 <!-- 親コンテナのdisplayをblockにして改行を強制 -->
                 <div class="slider-container" style="background: #e8f0fe; padding: 10px; border-radius: 8px; border: 1px solid #4a90e2; margin-bottom:10px; display: block;">
@@ -798,7 +857,12 @@
             </div>
 
             <!-- カメラ画質タブ -->
-            <div id="camera-settings" style="display:none;">
+            
+            </details>
+
+            <details class="acc-section" data-acc="light_cam">
+                <summary>カメラ画質</summary>
+            <div id="camera-settings" style="display:block;">
                 <div class="slider-container" style="background: #e8f0fe; padding: 5px; border-radius: 8px; border: 1px solid #4a90e2;">
                     <span class="slider-label" style="color: #4a90e2;">✨美肌補正<br>(Skin Smooth)</span>
                     <input type="range" id="skin-smooth-slider" min="0" max="100" step="1" value="0">
@@ -854,15 +918,17 @@
                 </div>
 </div>
         </div>
-    </div>
+    
+            </details>
+</div>
 
     <div id="loading">Initialize AR...</div>
 
     <script type="module">
         
 // ===== App Version (single source of truth) =====
-const APP_VERSION = "v6.01.18";
-const APP_VERSION_NOTE = "ui: clearer auto toggle; remove Cream Lifetime label; cream gloss highlight stronger";
+const APP_VERSION = "v6.01.20";
+const APP_VERSION_NOTE = "ui: accordion options + light; restore scroll";
 
 
 function getOverlayPixelRatio() {
@@ -1371,6 +1437,61 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
         const uiContainer = document.getElementById('ui-container');
         const controlPanel = document.getElementById('control-panel');
         const lightPanel = document.getElementById('light-panel');
+        // --- UI state helpers: accordion + scroll restore ---
+        function _uiKey(suffix) {
+            const fname = (typeof currentFileName !== 'undefined' && currentFileName) ? currentFileName : 'default';
+            return `ui_${suffix}_${fname}`;
+        }
+
+        function _savePanelScroll(panel, suffix) {
+            try { localStorage.setItem(_uiKey(suffix + '_scroll'), String(panel.scrollTop || 0)); } catch(e) {}
+        }
+        function _restorePanelScroll(panel, suffix) {
+            try {
+                const v = Number(localStorage.getItem(_uiKey(suffix + '_scroll')));
+                if (!Number.isNaN(v)) panel.scrollTop = v;
+            } catch(e) {}
+        }
+
+        function _saveAccordionState(panel, suffix) {
+            try {
+                const openIds = Array.from(panel.querySelectorAll('details.acc-section'))
+                    .filter(d => d.open)
+                    .map(d => d.dataset.acc || '');
+                localStorage.setItem(_uiKey(suffix + '_acc'), JSON.stringify(openIds));
+            } catch(e) {}
+        }
+        function _restoreAccordionState(panel, suffix) {
+            try {
+                const raw = localStorage.getItem(_uiKey(suffix + '_acc'));
+                if (!raw) return;
+                const openIds = new Set(JSON.parse(raw));
+                Array.from(panel.querySelectorAll('details.acc-section')).forEach(d => {
+                    const id = d.dataset.acc || '';
+                    if (openIds.has(id)) d.open = true;
+                    else if (openIds.size > 0) d.open = false;
+                });
+            } catch(e) {}
+        }
+
+        function _attachPanelState(panel, suffix) {
+            if (!panel) return;
+            // Scroll save (debounced)
+            let t = null;
+            panel.addEventListener('scroll', () => {
+                if (t) clearTimeout(t);
+                t = setTimeout(() => _savePanelScroll(panel, suffix), 120);
+            }, { passive: true });
+
+            // Accordion open-state save
+            Array.from(panel.querySelectorAll('details.acc-section')).forEach(d => {
+                d.addEventListener('toggle', () => _saveAccordionState(panel, suffix));
+            });
+        }
+
+        _attachPanelState(controlPanel, 'control');
+        _attachPanelState(lightPanel, 'light');
+
         const loadingText = document.getElementById('loading');
         const statusMsg = document.getElementById('status-msg');
         const arContainer = document.getElementById('ar-container');
@@ -1595,26 +1716,12 @@ const occlusionToggle = document.getElementById('occlusion-toggle');
         
         const camVignetteSlider = document.getElementById('cam-vignette-slider');
         const camSoftGlowSlider = document.getElementById('cam-softglow-slider');
-const tabVrm = document.getElementById('tab-vrm');
-        const tabCamera = document.getElementById('tab-camera');
         const vrmLightSettings = document.getElementById('vrm-light-settings');
         const cameraSettings = document.getElementById('camera-settings');
-
-        tabVrm.addEventListener('click', () => {
-            tabVrm.classList.add('active');
-            tabCamera.classList.remove('active');
-            vrmLightSettings.style.display = 'block';
-            cameraSettings.style.display = 'none';
-        });
-
-        tabCamera.addEventListener('click', () => {
-            tabCamera.classList.add('active');
-            tabVrm.classList.remove('active');
-            vrmLightSettings.style.display = 'none';
-            cameraSettings.style.display = 'block';
-        });
-
-        const allSliders = [
+        // Light panel is now accordion-based (no tabs)
+        if (vrmLightSettings) vrmLightSettings.style.display = 'block';
+        if (cameraSettings) cameraSettings.style.display = 'block';
+const allSliders = [
             minCfSlider, betaSlider, mouthSensSlider, eyeSensSlider,
             lightIntSlider, ambIntSlider, lightYSlider, lightRotSlider, lightColorSlider, vrmSatSlider,
             skinSmoothSlider, camBrightSlider, camSatSlider, camContSlider, camBlurSlider, camSepiaSlider,
@@ -1867,10 +1974,18 @@ forceShadowToggle.addEventListener('change', () => {
 
 document.getElementById('toggle-menu-btn').addEventListener('click', () => {
             // close the other panel first
+            if (getComputedStyle(lightPanel).display !== 'none') _savePanelScroll(lightPanel, 'light');
             lightPanel.style.display = 'none';
+
             const isHidden = getComputedStyle(controlPanel).display === 'none';
-            controlPanel.style.display = isHidden ? 'block' : 'none';
-            if (isHidden) controlPanel.scrollTop = 0;
+            if (isHidden) {
+                controlPanel.style.display = 'block';
+                _restoreAccordionState(controlPanel, 'control');
+                requestAnimationFrame(() => _restorePanelScroll(controlPanel, 'control'));
+            } else {
+                _savePanelScroll(controlPanel, 'control');
+                controlPanel.style.display = 'none';
+            }
         });
 
         document.getElementById('toggle-light-btn').addEventListener('click', () => {
