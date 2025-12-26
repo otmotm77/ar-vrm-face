@@ -80,10 +80,10 @@
             width: 58px;
             height: 58px;
             border-radius: 999px;
-            border: 1px solid rgba(255,255,255,0.35);
-            background: rgba(255,255,255,0.18);
+            border: 1px solid rgba(255,255,255,0.40);
+            background: rgba(0,0,0,0.25);
             color: rgba(255,255,255,0.95);
-            font-size: 28px;
+            font-size: 30px;
             line-height: 1;
             display: flex;
             align-items: center;
@@ -91,19 +91,37 @@
             z-index: 2600;
             backdrop-filter: blur(6px);
             -webkit-backdrop-filter: blur(6px);
-            box-shadow: 0 10px 25px rgba(0,0,0,0.25);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.35);
             user-select: none;
             -webkit-user-select: none;
             touch-action: manipulation;
             pointer-events: auto;
+            transition: background 140ms ease, border-color 140ms ease, box-shadow 140ms ease, transform 140ms ease, filter 140ms ease;
+        }
+        .cream-shot-btn::after{
+            content: "";
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            width: 12px;
+            height: 12px;
+            border-radius: 999px;
+            background: rgba(255,255,255,0.30);
+            box-shadow: 0 0 0 2px rgba(0,0,0,0.25);
         }
         .cream-shot-btn:active{
             transform: scale(0.96);
         }
         .cream-shot-btn.on{
-            background: rgba(120,255,180,0.24);
-            border-color: rgba(120,255,180,0.75);
-            box-shadow: 0 10px 25px rgba(0,0,0,0.25), 0 0 0 2px rgba(120,255,180,0.16) inset;
+            background: rgba(120,255,180,0.30);
+            border-color: rgba(120,255,180,0.90);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.35), 0 0 0 2px rgba(120,255,180,0.22) inset, 0 0 18px rgba(120,255,180,0.35);
+            transform: scale(1.03);
+            filter: saturate(1.08);
+        }
+        .cream-shot-btn.on::after{
+            background: rgba(120,255,180,0.95);
+            box-shadow: 0 0 0 2px rgba(0,0,0,0.25), 0 0 14px rgba(120,255,180,0.75);
         }
 
 .icon-btn {
@@ -424,7 +442,7 @@
         </div>
 
         <!-- Left-bottom toggle button: Auto cream shot -->
-        <button id="auto-cream-toggle-btn" class="cream-shot-btn" type="button" title="自動射出 ON/OFF">A</button>
+        <button id="auto-cream-toggle-btn" class="cream-shot-btn" type="button" title="自動射出 ON/OFF">💧</button>
 
         <!-- メイン設定パネル -->
         <div class="control-panel" id="control-panel" style="display:none;">
@@ -550,7 +568,7 @@
 
             
                 <div class="slider-container">
-                    <span class="slider-label">クリーム消滅時間<br>(Cream Lifetime)</span>
+                    <span class="slider-label">クリーム消滅時間</span>
                     <input type="range" id="cream-life-slider" min="1" max="30" step="1" value="10">
                     <span id="cream-life-slider-val" class="val-display">10</span>
                 </div>
@@ -843,8 +861,8 @@
     <script type="module">
         
 // ===== App Version (single source of truth) =====
-const APP_VERSION = "v6.01.17";
-const APP_VERSION_NOTE = "hotfix: fix ReferenceError in cream sliders init";
+const APP_VERSION = "v6.01.18";
+const APP_VERSION_NOTE = "ui: clearer auto toggle; remove Cream Lifetime label; cream gloss highlight stronger";
 
 
 function getOverlayPixelRatio() {
@@ -3631,14 +3649,27 @@ const uvTap = screenPxToFaceLocal(tx, ty, basis);
             ctx.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2);
             ctx.fill();
 
+            const gl = (typeof creamGloss === 'number') ? Math.max(0, Math.min(2, creamGloss)) : 1.0;
+
+            // Soft highlight (scales with gloss)
             const h = ctx.createRadialGradient(-rx * 0.25, -ry * 0.28, 0, -rx * 0.25, -ry * 0.28, Math.max(2, r * 0.55));
-            const _gl = (typeof creamGloss === 'number') ? Math.max(0, creamGloss) : 1.0;
-            h.addColorStop(0.0, `rgba(255, 255, 255, ${0.35 * opacity * _gl})`);
+            h.addColorStop(0.0, `rgba(255, 255, 255, ${0.22 * opacity * gl})`);
             h.addColorStop(1.0, `rgba(255, 255, 255, 0)`);
             ctx.fillStyle = h;
             ctx.beginPath();
             ctx.ellipse(-rx * 0.22, -ry * 0.22, r * 0.40, r * 0.30, 0, 0, Math.PI * 2);
             ctx.fill();
+
+            // Sharp specular streak (more obvious at high gloss)
+            const gl2 = gl * gl;
+            if (gl > 0.01) {
+                ctx.globalCompositeOperation = 'screen';
+                ctx.fillStyle = `rgba(255,255,255,${0.12 * opacity * gl2})`;
+                ctx.beginPath();
+                ctx.ellipse(-rx * 0.10, -ry * 0.34, r * 0.18, r * 0.07, 0.35, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.globalCompositeOperation = 'source-over';
+            }
 
             ctx.restore();
         }
@@ -3669,11 +3700,23 @@ const uvTap = screenPxToFaceLocal(tx, ty, basis);
             ctx.closePath();
             ctx.fill();
 
-            // Highlight
-            ctx.fillStyle = `rgba(255,255,255,${0.22 * opacity})`;
+            // Highlight (scales with gloss)
+            const gl = (typeof creamGloss === 'number') ? Math.max(0, Math.min(2, creamGloss)) : 1.0;
+            const gl2 = gl * gl;
+
+            ctx.globalCompositeOperation = 'screen';
+            ctx.fillStyle = `rgba(255,255,255,${0.16 * opacity * gl})`;
             ctx.beginPath();
             ctx.ellipse(-w * 0.14, -h * 0.18, w * 0.12, h * 0.10, 0, 0, Math.PI * 2);
             ctx.fill();
+
+            if (gl > 0.01) {
+                ctx.fillStyle = `rgba(255,255,255,${0.08 * opacity * gl2})`;
+                ctx.beginPath();
+                ctx.ellipse(-w * 0.06, -h * 0.28, w * 0.08, h * 0.18, -0.20, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            ctx.globalCompositeOperation = 'source-over';
 
             
             // Specular highlight (gloss)
