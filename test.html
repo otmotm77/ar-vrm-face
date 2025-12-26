@@ -147,7 +147,7 @@
 
         .control-panel {
             background: rgba(255, 255, 255, 0.95);
-            padding: 15px;
+            padding: 10px;
             padding-bottom: calc(15px + env(safe-area-inset-bottom, 0px));
             border-radius: 12px;
             pointer-events: auto;
@@ -409,10 +409,9 @@
         /* Accordion UI */
         .acc-section {
             margin: 8px 0;
-            border: 1px solid rgba(255,255,255,0.12);
             border-radius: 12px;
             overflow: hidden;
-            background: rgba(0,0,0,0.18);
+            background: rgb(219 232 245);
         }
         .acc-section > summary {
             list-style: none;
@@ -424,6 +423,7 @@
             align-items: center;
             justify-content: space-between;
             gap: 10px;
+            color: #39338d;
         }
         .acc-section > summary::-webkit-details-marker { display:none; }
         .acc-section > summary::after {
@@ -435,7 +435,7 @@
         .acc-section[open] > summary::after { transform: rotate(180deg); }
         .acc-section > summary:hover { background: rgba(255,255,255,0.06); }
         .acc-section > summary:active { background: rgba(255,255,255,0.10); }
-        .acc-section[open] { box-shadow: 0 8px 20px rgba(0,0,0,0.25); }
+        .acc-section[open] { }
         .acc-section .slider-container, .acc-section .toggle-label, .acc-section .custom-file-upload, .acc-section button, .acc-section input, .acc-section select, .acc-section textarea {
             /* keep original spacing */
         }
@@ -492,9 +492,6 @@
                 📂 VRMファイルを選択
             </label>
             <input type="file" id="vrm-upload">
-
-            <button id="save-default-btn" class="restart-btn" style="background:#5c6bc0; margin-top:8px;">デフォルトオプションとして保存</button>
-
 
             <div class="slider-container">
                 <span class="slider-label">サイズ</span>
@@ -594,7 +591,7 @@
             </div>
 
             <div class="slider-container">
-                <span class="slider-label">光沢 / ハイライト</span>
+                <span class="slider-label">光沢</span>
                 <input type="range" id="cream-gloss-slider" min="0" max="2.0" step="0.05" value="1.0">
                 <span id="cream-gloss-slider-val" class="val-display">1.0</span>
             </div>
@@ -793,8 +790,6 @@
             <button id="apply-tracking-btn" class="restart-btn">設定を適用して再起動</button>
         
             </details>
-</div>
-
 
             <details class="acc-section" data-acc="help">
                 <summary>ヘルプ</summary>
@@ -803,14 +798,17 @@
                         このアプリはカメラ映像を使って端末内で顔認識を行い、VRMの頭部を重ねて表示します。
                     </p>
                     <ul style="margin:0; padding-left:18px;">
-                        <li>カメラアクセスは行いますが、映像の<strong>送信</strong>や<strong>保存</strong>は一切行いません（端末内で処理します）。</li>
-                        <li>VRMを読み込む前に変更した設定値は、<strong>デフォルト</strong>として保存されます。</li>
-                        <li>VRM読み込み後の設定は、読み込んだ<strong>VRMごと</strong>に保存されます。</li>
-                        <li>「<strong>デフォルトオプションとして保存</strong>」を実行すると、現在のVRM設定がデフォルト値として保存されます。</li>
+                        <li>カメラアクセスは行いますが、映像の送信や保存は<strong>一切行いません</strong>（端末内で処理されますので、貴方のプライバシーは守られています）。</li>
+                        <li>VRM読み込み前に変更した設定値は、<strong>デフォルト</strong>として保存されます。</li>
+                        <li>VRM読み込み後の設定は、読み込んだ<strong>VRMごとに保存されます</strong>。</li>
+                        <li>「<strong>デフォルトオプションとして保存</strong>」を実行すると、現在のVRM設定がデフォルトに上書きされます。</li>
                     </ul>
                 </div>
             </details>
 
+            <button id="save-default-btn" class="restart-btn" style="background:#5c6bc0; margin-top:8px;">デフォルトオプションとして保存</button>
+
+</div>
 
         <!-- 照明・画質設定パネル -->
         <div class="control-panel" id="light-panel" style="display:none;">
@@ -826,27 +824,27 @@
                     </label>
                     <div id="shadow-details" style="border-top:1px dashed #abc; padding-top:8px; margin-top:5px;">
                         <div class="slider-container">
-                            <span class="slider-label" style="font-size:10px; color:#333;">影の柔らかさ<br>(Softness)</span>
+                            <span class="slider-label" style="font-size:10px; color:#333;">影の柔らかさ</span>
                             <input type="range" id="shadow-softness-slider" min="0.0" max="1.0" step="0.1" value="0.5">
                             <span id="shadow-softness-slider-val" class="val-display">0.5</span>
                         </div>
                         <div class="slider-container" style="margin-bottom:5px;">
-                            <span class="slider-label" style="font-size:10px; color:#333;">影の濃さ<br>(Darkness)</span>
+                            <span class="slider-label" style="font-size:10px; color:#333;">影の濃さ</span>
                             <input type="range" id="shadow-darkness-slider" min="0.0" max="1.0" step="0.1" value="0.5">
                             <span id="shadow-darkness-slider-val" class="val-display">0.5</span>
                         </div>
                         <div class="slider-container" style="margin-bottom:0;">
-                            <span class="slider-label" style="font-size:10px; color:#333;">影の色<br>(Color)</span>
+                            <span class="slider-label" style="font-size:10px; color:#333;">影の色</span>
                             <input type="color" id="shadow-color-picker" value="#ffa3d0" style="height:30px; width:50px; border:none; background:none; cursor:pointer;">
                         </div>
 
                 <div class="slider-container">
-                    <span class="slider-label" style="font-size:10px; color:#333;">光の高さ<br>(上下)</span>
+                    <span class="slider-label" style="font-size:10px; color:#333;">光の高さ</span>
                     <input type="range" id="light-y-slider" min="-10.0" max="10.0" step="0.1" value="2.0">
                     <span id="light-y-slider-val" class="val-display">2.0</span>
                 </div>
                 <div class="slider-container">
-                    <span class="slider-label" style="font-size:10px; color:#333;">光の向き<br>(回転)</span>
+                    <span class="slider-label" style="font-size:10px; color:#333;">光の向き</span>
                     <input type="range" id="light-rot-slider" min="0" max="360" step="10" value="45">
                     <span id="light-rot-slider-val" class="val-display">45</span>
                 </div>
@@ -854,23 +852,23 @@
                 </div>
 
                 <div class="slider-container">
-                    <span class="slider-label">メイン光<br>強さ</span>
+                    <span class="slider-label">メイン光強さ</span>
                     <input type="range" id="light-int-slider" min="0.0" max="5.0" step="0.1" value="2.0">
                     <span id="light-int-slider-val" class="val-display">2.0</span>
                 </div>
                 <div class="slider-container">
-                    <span class="slider-label">環境光<br>強さ</span>
+                    <span class="slider-label">環境光強さ</span>
                     <input type="range" id="amb-int-slider" min="0.0" max="2.0" step="0.1" value="0.2">
                     <span id="amb-int-slider-val" class="val-display">0.2</span>
                 </div>
 
                 <div class="slider-container">
-                    <span class="slider-label">色味<br>(暖色⇔寒色)</span>
+                    <span class="slider-label">VRM色温度</span>
                     <input type="range" id="light-color-slider" min="0" max="100" step="1" value="50">
                     <span id="light-color-slider-val" class="val-display">50</span>
                 </div>
                 <div class="slider-container">
-                    <span class="slider-label">VRM彩度<br>(Vividness)</span>
+                    <span class="slider-label">VRM彩度</span>
                     <input type="range" id="vrm-sat-slider" min="0" max="200" step="5" value="100">
                     <span id="vrm-sat-slider-val" class="val-display">100</span>
                 </div>
@@ -889,52 +887,49 @@
                     <span id="skin-smooth-slider-val" class="val-display">0</span>
                 </div>
                 <div class="slider-container">
-                    <span class="slider-label">明るさ<br>(Brightness)</span>
+                    <span class="slider-label">明るさ</span>
                     <input type="range" id="cam-bright-slider" min="50" max="150" step="1" value="100">
                     <span id="cam-bright-slider-val" class="val-display">100</span>
                 </div>
                 <div class="slider-container">
-                    <span class="slider-label">彩度<br>(Saturate)</span>
+                    <span class="slider-label">彩度</span>
                     <input type="range" id="cam-sat-slider" min="0" max="200" step="5" value="100">
                     <span id="cam-sat-slider-val" class="val-display">100</span>
                 </div>
                 <div class="slider-container">
-                    <span class="slider-label">コントラスト<br>(Contrast)</span>
+                    <span class="slider-label">コントラスト</span>
                     <input type="range" id="cam-cont-slider" min="50" max="150" step="1" value="100">
                     <span id="cam-cont-slider-val" class="val-display">100</span>
                 </div>
                 <div class="slider-container">
-                    <span class="slider-label">ぼかし<br>(Blur)</span>
-                    <input type="range" id="cam-blur-slider" min="0" max="5" step="0.5" value="0">
-                    <span id="cam-blur-slider-val" class="val-display">0</span>
-                </div>
-                <div class="slider-container">
-                    <span class="slider-label">セピア<br>(Sepia)</span>
-                    <input type="range" id="cam-sepia-slider" min="0" max="100" step="1" value="0">
-                    <span id="cam-sepia-slider-val" class="val-display">0</span>
-                </div>
-
-                <div class="slider-container">
-                    <span class="slider-label">黒レベル<br>(Black Lift)</span>
+                    <span class="slider-label">黒レベル</span>
                     <input type="range" id="cam-black-slider" min="0" max="100" step="1" value="0">
                     <span id="cam-black-slider-val" class="val-display">0</span>
                 </div>
                 <div class="slider-container">
-                    <span class="slider-label">色温度<br>(Warm ⇔ Cool)</span>
+                    <span class="slider-label">色温度</span>
                     <input type="range" id="cam-temp-slider" min="0" max="100" step="1" value="50">
                     <span id="cam-temp-slider-val" class="val-display">50</span>
                 </div>
-
-
                 <div class="slider-container">
-                    <span class="slider-label">ビネット<br>(Vignette)</span>
+                    <span class="slider-label">ビネット</span>
                     <input type="range" id="cam-vignette-slider" min="0" max="100" step="1" value="0">
                     <span id="cam-vignette-slider-val" class="val-display">0</span>
                 </div>
                 <div class="slider-container">
-                    <span class="slider-label">ソフトグロー<br>(Soft Glow)</span>
+                    <span class="slider-label">ソフトグロー</span>
                     <input type="range" id="cam-softglow-slider" min="0" max="100" step="1" value="0">
                     <span id="cam-softglow-slider-val" class="val-display">0</span>
+                </div>
+                <div class="slider-container">
+                    <span class="slider-label">ぼかし</span>
+                    <input type="range" id="cam-blur-slider" min="0" max="5" step="0.5" value="0">
+                    <span id="cam-blur-slider-val" class="val-display">0</span>
+                </div>
+                <div class="slider-container">
+                    <span class="slider-label">セピア</span>
+                    <input type="range" id="cam-sepia-slider" min="0" max="100" step="1" value="0">
+                    <span id="cam-sepia-slider-val" class="val-display">0</span>
                 </div>
 </div>
         </div>
