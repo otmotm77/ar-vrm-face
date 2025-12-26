@@ -2412,6 +2412,7 @@ await waitForVideoEvent
                     try {
                         ensureDisplayCanvasSize();
                         drawVideoToDisplayCanvas();
+                        refreshVideoTextureAfterCameraSwitch();
                     } catch (_) {}
                 } catch (applyErr) {
                     console.error('Camera switch apply failed:', applyErr);
@@ -4469,7 +4470,38 @@ const ang = Math.atan2(dvy, dvx);
             }
         }
 
-        function drawVideoToDisplayCanvas() {
+        
+
+        // After switching camera streams, some Android browsers keep rendering the old WebGL texture
+        // even though the <video> is feeding new frames. Rebinding the CanvasTexture fixes that.
+        function refreshVideoTextureAfterCameraSwitch() {
+            try {
+                if (!displayCanvas || !bgPlane || !THREE) return;
+                try { if (videoTexture && typeof videoTexture.dispose === 'function') videoTexture.dispose(); } catch (_) {}
+
+                try {
+                    videoTexture = new THREE.CanvasTexture(displayCanvas);
+                    videoTexture.colorSpace = THREE.SRGBColorSpace;
+                    videoTexture.minFilter = THREE.LinearFilter;
+                    videoTexture.magFilter = THREE.LinearFilter;
+                    videoTexture.generateMipmaps = false;
+                } catch (_) {
+                    return;
+                }
+
+                try {
+                    if (bgPlane.material) {
+                        bgPlane.material.map = videoTexture;
+                        bgPlane.material.needsUpdate = true;
+                    }
+                } catch (_) {}
+
+                try { videoTexture.needsUpdate = true; } catch (_) {}
+                try { updateBgPlaneSizeLetterbox(); } catch (_) {}
+            } catch (_) {}
+        }
+
+function drawVideoToDisplayCanvas() {
             if (!videoEl || !displayCtx) return;
             if (videoEl.readyState < 2) return;
             ensureDisplayCanvasSize();
