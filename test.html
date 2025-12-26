@@ -4992,11 +4992,20 @@ const tms = res && res.facialTransformationMatrixes;
                 loadingText.style.display = 'none';
                 uiContainer.style.display = 'block';
 
-                // Auto open main options on start (restored behavior)
+                // Auto open main options on start
+                // NOTE: Restore saved accordion/scroll first (so "all open" comes back),
+                // then force-open the Model section (basic) for this initial open only.
                 try {
                     lightPanel.style.display = 'none';
                     controlPanel.style.display = 'block';
-                    controlPanel.scrollTop = 0;
+
+                    requestAnimationFrame(() => {
+                        _restoreAccordionState(controlPanel, 'control');
+                        const modelSec = controlPanel.querySelector('details.acc-section[data-acc="basic"]');
+                        if (modelSec) modelSec.open = true; // keep others as restored
+                        _forceOpenBasicOnce = false; // consume the one-time force-open on this auto-open
+                        _restorePanelScroll(controlPanel, 'control');
+                    });
                 } catch(_) {}
 
                 showToast(isRestart ? "再起動しました (MediaPipe)" : "カメラを開始しました (MediaPipe)");
