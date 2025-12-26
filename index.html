@@ -474,7 +474,7 @@
     <div id="ui-container" style="display:none;">
         <div class="icon-buttons">
             <button id="toggle-light-btn" class="icon-btn" title="照明・画質設定">💡</button>
-            <button id="toggle-menu-btn" class="icon-btn" title="オプション設定">⚙️</button>
+            <button id="toggle-menu-btn" class="icon-btn" title="全般オプション">⚙️</button>
             <button id="toggle-fullscreen-btn" class="icon-btn" title="全画面表示切替">⛶</button>
         </div>
 
@@ -483,7 +483,7 @@
 
         <!-- メイン設定パネル -->
         <div class="control-panel" id="control-panel" style="display:none;">
-            <h1>オプション設定</h1>
+            <h1>全般オプション</h1>
             <details class="acc-section" data-acc="basic" open>
                 <summary>モデル</summary>
 
@@ -493,7 +493,13 @@
             </label>
             <input type="file" id="vrm-upload">
 
-            <div class="slider-container">
+            
+
+            <button id="apply-default-to-vrm-btn" class="restart-btn" style="background:#26a69a; margin-top:10px;" disabled>デフォルトオプションをこのVRMに反映</button>
+            <div style="font-size:12px; opacity:0.85; margin-top:4px; line-height:1.4;">
+                既に個別セーブがあるVRMに、保存済みデフォルトオプションを反映（上書き保存）します。
+            </div>
+<div class="slider-container">
                 <span class="slider-label">サイズ</span>
                 <input type="range" id="scale-slider" min="0.5" max="12.0" step="0.1" value="8.0">
                 <span id="scale-slider-val" class="val-display">8.0</span>
@@ -569,7 +575,7 @@
 
             </details>
 
-            <details class="acc-section" data-acc="cream" open>
+            <details class="acc-section" data-acc="cream">
                 <summary>クリーム射出</summary>
 
             <div class="slider-container">
@@ -604,7 +610,7 @@
 
 
             <div class="slider-container">
-                <span class="slider-label">貼付感(擬似Z)</span>
+                <span class="slider-label">貼り付き（擬似Z）</span>
                 <input type="range" id="cream-z-attach-slider" min="0" max="1" step="0.05" value="0.6">
                 <span id="cream-z-attach-slider-val" class="val-display">0.6</span>
             </div>
@@ -790,12 +796,30 @@
             <button id="apply-tracking-btn" class="restart-btn">設定を適用して再起動</button>
         
             </details>
+
+            <details class="acc-section" data-acc="help">
+                <summary>ヘルプ</summary>
+                <div style="font-size:12px; line-height:1.55; color:#222;">
+                    <p style="margin:0 0 8px 0;">
+                        このアプリはカメラ映像を使って端末内で顔認識を行い、VRMの頭部を重ねて表示します。
+                    </p>
+                    <ul style="margin:0; padding-left:18px;">
+                        <li>カメラアクセスは行いますが、映像の送信や保存は<strong>一切行いません</strong>（端末内で処理されますので、貴方のプライバシーは守られています）。</li>
+                        <li>VRM読み込み前に変更した設定値は、<strong>デフォルト</strong>として保存されます。</li>
+                        <li>VRM読み込み後の設定は、読み込んだ<strong>VRMごとに保存されます</strong>。</li>
+                        <li>「<strong>デフォルトオプションとして保存</strong>」を実行すると、現在のVRM設定がデフォルトに上書きされます。</li>
+                    </ul>
+                </div>
+            </details>
+
+            <button id="save-default-btn" class="restart-btn" style="background:#5c6bc0; margin-top:8px;">デフォルトオプションとして保存</button>
+
 </div>
 
         <!-- 照明・画質設定パネル -->
         <div class="control-panel" id="light-panel" style="display:none;">
             <h1>照明・画質</h1>
-            <details class="acc-section" data-acc="light_vrm" open>
+            <details class="acc-section" data-acc="light_vrm">
                 <summary>VRM照明</summary>
             <div id="vrm-light-settings">
                 <!-- 親コンテナのdisplayをblockにして改行を強制 -->
@@ -805,46 +829,47 @@
                         <strong>影を強制的に出す</strong>
                     </label>
                     <div id="shadow-details" style="border-top:1px dashed #abc; padding-top:8px; margin-top:5px;">
-                      <div class="slider-container">
-                          <span class="slider-label" style="font-size:10px; color:#333;">影の柔らかさ</span>
-                          <input type="range" id="shadow-softness-slider" min="0.0" max="1.0" step="0.1" value="0.5">
-                          <span id="shadow-softness-slider-val" class="val-display">0.5</span>
-                      </div>
-                      <div class="slider-container" style="margin-bottom:5px;">
-                          <span class="slider-label" style="font-size:10px; color:#333;">影の濃さ</span>
-                          <input type="range" id="shadow-darkness-slider" min="0.0" max="1.0" step="0.1" value="0.5">
-                          <span id="shadow-darkness-slider-val" class="val-display">0.5</span>
-                      </div>
-                      <div class="slider-container" style="margin-bottom:0;">
-                          <span class="slider-label" style="font-size:10px; color:#333;">影の色</span>
-                          <input type="color" id="shadow-color-picker" value="#ffa3d0" style="height:30px; width:50px; border:none; background:none; cursor:pointer;">
-                      </div>
-                      <div class="slider-container">
-                          <span class="slider-label" style="font-size:10px; color:#333;">光の高さ</span>
-                          <input type="range" id="light-y-slider" min="-10.0" max="10.0" step="0.1" value="2.0">
-                          <span id="light-y-slider-val" class="val-display">2.0</span>
-                      </div>
-                      <div class="slider-container">
-                          <span class="slider-label" style="font-size:10px; color:#333;">光の向き</span>
-                          <input type="range" id="light-rot-slider" min="0" max="360" step="10" value="45">
-                          <span id="light-rot-slider-val" class="val-display">45</span>
-                      </div>
+                        <div class="slider-container">
+                            <span class="slider-label" style="font-size:10px; color:#333;">影の柔らかさ</span>
+                            <input type="range" id="shadow-softness-slider" min="0.0" max="1.0" step="0.1" value="0.5">
+                            <span id="shadow-softness-slider-val" class="val-display">0.5</span>
+                        </div>
+                        <div class="slider-container" style="margin-bottom:5px;">
+                            <span class="slider-label" style="font-size:10px; color:#333;">影の濃さ</span>
+                            <input type="range" id="shadow-darkness-slider" min="0.0" max="1.0" step="0.1" value="0.5">
+                            <span id="shadow-darkness-slider-val" class="val-display">0.5</span>
+                        </div>
+                        <div class="slider-container" style="margin-bottom:0;">
+                            <span class="slider-label" style="font-size:10px; color:#333;">影の色</span>
+                            <input type="color" id="shadow-color-picker" value="#ffa3d0" style="height:30px; width:50px; border:none; background:none; cursor:pointer;">
+                        </div>
+
+                <div class="slider-container">
+                    <span class="slider-label" style="font-size:10px; color:#333;">光の高さ</span>
+                    <input type="range" id="light-y-slider" min="-10.0" max="10.0" step="0.1" value="2.0">
+                    <span id="light-y-slider-val" class="val-display">2.0</span>
+                </div>
+                <div class="slider-container">
+                    <span class="slider-label" style="font-size:10px; color:#333;">光の向き</span>
+                    <input type="range" id="light-rot-slider" min="0" max="360" step="10" value="45">
+                    <span id="light-rot-slider-val" class="val-display">45</span>
+                </div>
                     </div>
                 </div>
 
                 <div class="slider-container">
-                    <span class="slider-label">メイン光 強さ</span>
+                    <span class="slider-label">メイン光強さ</span>
                     <input type="range" id="light-int-slider" min="0.0" max="5.0" step="0.1" value="2.0">
                     <span id="light-int-slider-val" class="val-display">2.0</span>
                 </div>
                 <div class="slider-container">
-                    <span class="slider-label">環境光 強さ</span>
+                    <span class="slider-label">環境光強さ</span>
                     <input type="range" id="amb-int-slider" min="0.0" max="2.0" step="0.1" value="0.2">
                     <span id="amb-int-slider-val" class="val-display">0.2</span>
                 </div>
 
                 <div class="slider-container">
-                    <span class="slider-label">VRM色味</span>
+                    <span class="slider-label">VRM色温度</span>
                     <input type="range" id="light-color-slider" min="0" max="100" step="1" value="50">
                     <span id="light-color-slider-val" class="val-display">50</span>
                 </div>
@@ -863,7 +888,7 @@
                 <summary>カメラ画質</summary>
             <div id="camera-settings" style="display:block;">
                 <div class="slider-container">
-                    <span class="slider-label">✨美肌補正</span>
+                    <span class="slider-label">美肌補正</span>
                     <input type="range" id="skin-smooth-slider" min="0" max="100" step="1" value="0">
                     <span id="skin-smooth-slider-val" class="val-display">0</span>
                 </div>
@@ -888,7 +913,7 @@
                     <span id="cam-black-slider-val" class="val-display">0</span>
                 </div>
                 <div class="slider-container">
-                    <span class="slider-label">色味</span>
+                    <span class="slider-label">色温度</span>
                     <input type="range" id="cam-temp-slider" min="0" max="100" step="1" value="50">
                     <span id="cam-temp-slider-val" class="val-display">50</span>
                 </div>
@@ -912,7 +937,6 @@
                     <input type="range" id="cam-sepia-slider" min="0" max="100" step="1" value="0">
                     <span id="cam-sepia-slider-val" class="val-display">0</span>
                 </div>
-
 </div>
         </div>
     
@@ -924,8 +948,8 @@
     <script type="module">
         
 // ===== App Version (single source of truth) =====
-const APP_VERSION = "v6.01.20";
-const APP_VERSION_NOTE = "ui: accordion options + light; restore scroll";
+const APP_VERSION = "v6.01.22";
+const APP_VERSION_NOTE = "UI restore: control accordion robust";
 
 
 function getOverlayPixelRatio() {
@@ -1436,9 +1460,12 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
         const lightPanel = document.getElementById('light-panel');
         // --- UI state helpers: accordion + scroll restore ---
         function _uiKey(suffix) {
-            const fname = (typeof currentFileName !== 'undefined' && currentFileName) ? currentFileName : 'default';
-            return `ui_${suffix}_${fname}`;
+            // UI state should be global (not per-VRM) so section open/close is consistent.
+            return `ui_${suffix}`;
         }
+
+        // Prevent accordion 'toggle' handlers from saving while we are restoring state
+        let _uiRestoring = false;
 
         function _savePanelScroll(panel, suffix) {
             try { localStorage.setItem(_uiKey(suffix + '_scroll'), String(panel.scrollTop || 0)); } catch(e) {}
@@ -1454,21 +1481,48 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
             try {
                 const openIds = Array.from(panel.querySelectorAll('details.acc-section'))
                     .filter(d => d.open)
-                    .map(d => d.dataset.acc || '');
+                    .map(d => (d.dataset.acc || '').trim())
+                    .filter(Boolean);
                 localStorage.setItem(_uiKey(suffix + '_acc'), JSON.stringify(openIds));
             } catch(e) {}
         }
         function _restoreAccordionState(panel, suffix) {
+            let raw = null;
+            try { raw = localStorage.getItem(_uiKey(suffix + '_acc')); } catch (e) { raw = null; }
+            if (raw === null) {
+                // No saved state yet: keep the default markup states.
+                return;
+            }
+
+            let arr = [];
             try {
-                const raw = localStorage.getItem(_uiKey(suffix + '_acc'));
-                if (!raw) return;
-                const openIds = new Set(JSON.parse(raw));
-                Array.from(panel.querySelectorAll('details.acc-section')).forEach(d => {
-                    const id = d.dataset.acc || '';
-                    if (openIds.has(id)) d.open = true;
-                    else if (openIds.size > 0) d.open = false;
-                });
-            } catch(e) {}
+                const v = JSON.parse(raw);
+                if (Array.isArray(v)) {
+                    arr = v;
+                } else if (typeof v === 'string') {
+                    arr = v.split(/,\s*/);
+                } else if (v && typeof v === 'object') {
+                    // legacy/alternate shapes
+                    if (Array.isArray(v.openIds)) arr = v.openIds;
+                    else if (Array.isArray(v.open)) arr = v.open;
+                }
+            } catch (e) {
+                // Legacy fallback: "basic,mask,cream" etc.
+                arr = String(raw).split(/[\s,]+/);
+            }
+
+            const openIds = new Set((arr || [])
+                .map(s => String(s).trim())
+                .filter(Boolean));
+
+            // Avoid saving partial state while we programmatically toggle <details open>
+            _uiRestoring = true;
+            Array.from(panel.querySelectorAll('details.acc-section')).forEach(d => {
+                const id = String(d.dataset.acc || '').trim();
+                d.open = openIds.has(id);
+            });
+            // Let toggle events (if any) finish, then re-enable saving.
+            setTimeout(() => { _uiRestoring = false; }, 0);
         }
 
         function _attachPanelState(panel, suffix) {
@@ -1482,12 +1536,19 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
 
             // Accordion open-state save
             Array.from(panel.querySelectorAll('details.acc-section')).forEach(d => {
-                d.addEventListener('toggle', () => _saveAccordionState(panel, suffix));
+                d.addEventListener('toggle', () => {
+                    if (_uiRestoring) return;
+                    _saveAccordionState(panel, suffix);
+                });
             });
         }
 
         _attachPanelState(controlPanel, 'control');
         _attachPanelState(lightPanel, 'light');
+
+        // After camera starts, force-open the 'model' section only once (on first menu open).
+        let _forceOpenBasicOnce = false;
+
 
         const loadingText = document.getElementById('loading');
         const statusMsg = document.getElementById('status-msg');
@@ -1977,10 +2038,23 @@ document.getElementById('toggle-menu-btn').addEventListener('click', () => {
             const isHidden = getComputedStyle(controlPanel).display === 'none';
             if (isHidden) {
                 controlPanel.style.display = 'block';
-                _restoreAccordionState(controlPanel, 'control');
-                requestAnimationFrame(() => _restorePanelScroll(controlPanel, 'control'));
+
+                // Restore saved accordion state first, then (only once) force-open the model section,
+                // keeping any other restored sections as-is.
+                requestAnimationFrame(() => {
+                    _restoreAccordionState(controlPanel, 'control');
+
+                    if (_forceOpenBasicOnce) {
+                        const modelSec = controlPanel.querySelector('details.acc-section[data-acc="basic"]');
+                        if (modelSec) modelSec.open = true;
+                        _forceOpenBasicOnce = false;
+                    }
+
+                    _restorePanelScroll(controlPanel, 'control');
+                });
             } else {
                 _savePanelScroll(controlPanel, 'control');
+                _saveAccordionState(controlPanel, 'control');
                 controlPanel.style.display = 'none';
             }
         });
@@ -1989,8 +2063,15 @@ document.getElementById('toggle-menu-btn').addEventListener('click', () => {
             // close the other panel first
             controlPanel.style.display = 'none';
             const isHidden = getComputedStyle(lightPanel).display === 'none';
-            lightPanel.style.display = isHidden ? 'block' : 'none';
-            if (isHidden) lightPanel.scrollTop = 0;
+            if (isHidden) {
+                lightPanel.style.display = 'block';
+                _restoreAccordionState(lightPanel, 'light');
+                requestAnimationFrame(() => _restorePanelScroll(lightPanel, 'light'));
+            } else {
+                _savePanelScroll(lightPanel, 'light');
+                _saveAccordionState(lightPanel, 'light');
+                lightPanel.style.display = 'none';
+            }
         });
 
         document.getElementById('toggle-fullscreen-btn').addEventListener('click', () => {
@@ -2308,6 +2389,11 @@ document.getElementById('toggle-menu-btn').addEventListener('click', () => {
             startBtn.disabled = true;
             statusMsg.textContent = "カメラを起動中...";
             try { await requestDeviceOrientationPermissionIfNeeded(); } catch(_) {}
+
+            // Apply saved default options BEFORE starting the camera (startup defaults)
+            try { loadSettings('default', { silent: true, label: 'デフォルト' }); } catch(_) {}
+
+            _forceOpenBasicOnce = true;
             await startAR();
         });
 
@@ -2380,8 +2466,10 @@ document.getElementById('toggle-menu-btn').addEventListener('click', () => {
             bgPlane.scale.set(planeW, planeH, 1);
         }
 
-        function saveSettings() {
-            if (!currentFileName) return;
+        function saveSettings(forceName) {
+            if (window.__suppressAutoSave) return;
+            const fname = (forceName && String(forceName)) ? String(forceName) : (currentFileName || "default");
+            if (!fname) return;
             const settings = {
                 scale: scaleSlider.value,
                 y: ySlider.value,
@@ -2452,13 +2540,17 @@ document.getElementById('toggle-menu-btn').addEventListener('click', () => {
 
 
             try {
-                localStorage.setItem("vrm_settings_" + currentFileName, JSON.stringify(settings));
+                localStorage.setItem("vrm_settings_" + fname, JSON.stringify(settings));
             } catch(e) {
                 console.error("Save failed:", e);
             }
         }
 
-        function loadSettings(fname) {
+        function loadSettings(fname, opts = {}) {
+            const silent = !!(opts && opts.silent);
+            const label = (opts && opts.label) ? String(opts.label) : String(fname);
+            window.__suppressAutoSave = true;
+            try {
             try {
                 const data = localStorage.getItem("vrm_settings_" + fname);
                 if (data) {
@@ -2528,7 +2620,7 @@ document.getElementById('toggle-menu-btn').addEventListener('click', () => {
                     if (Object.prototype.hasOwnProperty.call(s, 'blushFront') && blushFrontToggle) blushFrontToggle.checked = !!s.blushFront;
                     if (Object.prototype.hasOwnProperty.call(s, 'blushColor') && typeof blushColorPicker !== 'undefined' && blushColorPicker) blushColorPicker.value = s.blushColor;
 
-                    if (typeof updateBlushUI === 'function') updateBlushUI(true);
+                    if (typeof updateBlushUI === 'function') try { updateBlushUI(true) } catch(_) {};
 
  
                     // Cream shooting
@@ -2568,7 +2660,7 @@ document.getElementById('toggle-menu-btn').addEventListener('click', () => {
                     if (Object.prototype.hasOwnProperty.call(s, 'creamAuto')) {
                         setCreamAutoEnabled(!!s.creamAuto);
                     } else {
-                        syncCreamAutoUI();
+                        try { syncCreamAutoUI() } catch(_) {};
                     }
 
                     // Tracking (camera + mirror)
@@ -2576,7 +2668,7 @@ document.getElementById('toggle-menu-btn').addEventListener('click', () => {
                         mirrorEnabled = !!s.trackingMirror;
                         mirrorUserOverride = true;
                         try { if (mirrorToggle) mirrorToggle.checked = mirrorEnabled; } catch (_) {}
-                        try { applyMirrorToRenderer(); } catch (_) {}
+                        try { try { applyMirrorToRenderer() } catch(_) {}; } catch (_) {}
                     }
                     if (Object.prototype.hasOwnProperty.call(s, 'trackingFacing')) {
                         const want = s.trackingFacing;
@@ -2590,21 +2682,24 @@ document.getElementById('toggle-menu-btn').addEventListener('click', () => {
                         }
                     }
 
-                   if (typeof updateBreathUI === 'function') updateBreathUI(true);
+                   if (typeof updateBreathUI === 'function') try { updateBreathUI(true) } catch(_) {};
 // 値の表示を更新
                     allSliders.forEach(el => updateSliderDisplay(el));
 
-                    updateLight(); 
-                    updateCameraFilter();
-                    updateVRMFilter();
-                    updateOccluder();
-                    showToast(`設定を復元しました:\n${fname}`);
+                    try { updateLight() } catch(_) {}; 
+                    try { updateCameraFilter() } catch(_) {};
+                    try { updateVRMFilter() } catch(_) {};
+                    try { updateOccluder() } catch(_) {};
+                    if (!silent) showToast(`設定を復元しました:\n${label}`);
                     return true;
                 }
             } catch(e) {
                 console.error("Load failed:", e);
             }
             return false;
+            } finally {
+                window.__suppressAutoSave = false;
+            }
         }
 
         [scaleSlider, ySlider, zSlider, minCfSlider, betaSlider, mouthSensSlider, eyeSensSlider, 
@@ -4167,10 +4262,6 @@ const ang = Math.atan2(dvy, dvx);
             displayCtx.drawImage(videoEl, 0, 0, vw, vh);
             displayCtx.restore();
 
-            
-
-
-            // Skin Smooth (beauty) - blur-blend pass (camera only)
             const skinS = (typeof camSkinSmoothStrength === 'number') ? camSkinSmoothStrength : 0;
             if (skinS > 0.001) {
                 if (smoothCanvas.width !== vw || smoothCanvas.height !== vh) {
@@ -4901,11 +4992,20 @@ const tms = res && res.facialTransformationMatrixes;
                 loadingText.style.display = 'none';
                 uiContainer.style.display = 'block';
 
-                // Auto open main options on start (restored behavior)
+                // Auto open main options on start
+                // NOTE: Restore saved accordion/scroll first (so "all open" comes back),
+                // then force-open the Model section (basic) for this initial open only.
                 try {
                     lightPanel.style.display = 'none';
                     controlPanel.style.display = 'block';
-                    controlPanel.scrollTop = 0;
+
+                    requestAnimationFrame(() => {
+                        _restoreAccordionState(controlPanel, 'control');
+                        const modelSec = controlPanel.querySelector('details.acc-section[data-acc="basic"]');
+                        if (modelSec) modelSec.open = true; // keep others as restored
+                        _forceOpenBasicOnce = false; // consume the one-time force-open on this auto-open
+                        _restorePanelScroll(controlPanel, 'control');
+                    });
                 } catch(_) {}
 
                 showToast(isRestart ? "再起動しました (MediaPipe)" : "カメラを開始しました (MediaPipe)");
@@ -4995,13 +5095,43 @@ const tms = res && res.facialTransformationMatrixes;
         loader.register((parser) => new VRMLoaderPlugin(parser));
         const fileInput = document.getElementById('vrm-upload');
         
+        const saveDefaultBtn = document.getElementById('save-default-btn');
+        
+        const applyDefaultToVrmBtn = document.getElementById('apply-default-to-vrm-btn');
+        if (applyDefaultToVrmBtn) {
+            applyDefaultToVrmBtn.addEventListener('click', () => {
+                if (!currentFileName) {
+                    showToast('まずVRMを読み込んでください');
+                    return;
+                }
+                const ok = loadSettings('default', { silent: true, label: 'デフォルト' });
+                if (!ok) {
+                    showToast('デフォルト設定が見つかりません');
+                    return;
+                }
+                // Overwrite per-VRM save with the defaults we just loaded
+                saveSettings(currentFileName);
+                showToast('デフォルト設定をこのVRMに反映しました');
+            });
+        }
+
+if (saveDefaultBtn) {
+            saveDefaultBtn.addEventListener('click', () => {
+                // Save current UI values as global defaults (used for VRMs without per-file save)
+                saveSettings('default');
+                showToast('デフォルト設定に保存しました');
+            });
+        }
+
         fileInput.addEventListener('change', (event) => {
             const file = event.target.files[0];
             if (!file) return;
 
             currentFileName = file.name;
 
-            const fileSizeMB = file.size / (1024 * 1024);
+            
+            if (applyDefaultToVrmBtn) applyDefaultToVrmBtn.disabled = true;
+const fileSizeMB = file.size / (1024 * 1024);
             if (fileSizeMB > 50) {
                 showToast(`ファイルサイズが大きいです (${fileSizeMB.toFixed(1)}MB)。動作が重くなる可能性があります。`);
             }
@@ -5025,7 +5155,9 @@ const tms = res && res.facialTransformationMatrixes;
                             VRMUtils.deepDispose(currentVrm.scene);
                         }
                         currentVrm = vrm;
-                        VRMUtils.rotateVRM0(vrm);
+                        
+                        if (applyDefaultToVrmBtn) applyDefaultToVrmBtn.disabled = false;
+VRMUtils.rotateVRM0(vrm);
                         makeHeadOnly(vrm);
 
                         vrm.scene.rotation.y = Math.PI;
@@ -5064,7 +5196,14 @@ const tms = res && res.facialTransformationMatrixes;
                         updateBlushAnchorsFromVRM(vrm);
                         }
 
-                        loadSettings(currentFileName);
+                                                const loaded = loadSettings(currentFileName, { silent: true, label: currentFileName });
+                        if (!loaded) {
+                            loadSettings('default', { silent: true, label: 'デフォルト' });
+                            showToast('デフォルト設定を適用しました');
+                        } else {
+                            showToast(`設定を復元しました:\n${currentFileName}`);
+                        }
+
                         updateTransform();
 
                         loadingText.style.display = 'none';
