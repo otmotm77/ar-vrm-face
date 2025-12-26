@@ -2464,9 +2464,48 @@ await waitForVideoEvent
             mirrorToggle.addEventListener('change', applyMirrorFromToggle);
         }
         if (facingToggle) {
+            let __cameraRestarting = false;
             facingToggle.addEventListener('change', async () => {
                 const want = facingToggle.checked ? 'environment' : 'user';
-                await switchCameraFacing(want);
+
+                // If AR isn't started yet, just update state (startAR() will pick it up)
+                if (!stream || !videoEl || !renderer) {
+                    currentFacingMode = want;
+                    saveSettings();
+                    showToast(want === 'environment' ? 'アウトカメラ: ON' : 'アウトカメラ: OFF');
+                    return;
+                }
+
+                // During an active session, camera switching is more reliable via restartAR()
+                if (__cameraRestarting) return;
+                __cameraRestarting = true;
+
+                const prevFacing = currentFacingMode;
+                currentFacingMode = want;
+
+                try {
+                    facingToggle.disabled = true;
+                    showToast('カメラ切替中...');
+
+                    // Persist the choice immediately so restart uses the right facing.
+                    saveSettings();
+
+                    await restartAR();
+
+                    // After restart, apply/reflect toggles just in case
+                    syncTrackingTogglesFromState();
+                    showToast(want === 'environment' ? 'アウトカメラに切り替えました' : 'インカメラに切り替えました');
+                } catch (e) {
+                    console.error('Camera restart switch failed:', e);
+                    // rollback UI + state
+                    currentFacingMode = prevFacing;
+                    if (facingToggle) facingToggle.checked = (prevFacing === 'environment');
+                    syncTrackingTogglesFromState();
+                    showToast('カメラ切替に失敗しました');
+                } finally {
+                    facingToggle.disabled = false;
+                    __cameraRestarting = false;
+                }
             });
         }
 
