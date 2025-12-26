@@ -509,7 +509,13 @@
                 <input type="range" id="y-slider" min="-2.0" max="2.0" step="0.05" value="0.2">
                 <span id="y-slider-val" class="val-display">0.2</span>
             </div>
+            
             <div class="slider-container">
+                <span class="slider-label">左右</span>
+                <input type="range" id="x-slider" min="-2.0" max="2.0" step="0.05" value="0.0">
+                <span id="x-slider-val" class="val-display">0.0</span>
+            </div>
+<div class="slider-container">
                 <span class="slider-label">前後</span>
                 <input type="range" id="z-slider" min="-2.0" max="2.0" step="0.05" value="-1.0">
                 <span id="z-slider-val" class="val-display">-1.0</span>
@@ -987,7 +993,10 @@ import * as THREE from 'three';
         const vision = await import("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/+esm");
         const { FaceLandmarker, FilesetResolver } = vision;
 
-        let renderer = null;
+                // Base scale factor used for tracked pose matrices.
+        const MODEL_BASE_SCALE = 40;
+
+let renderer = null;
         let scene = null;
         let camera = null;
         let videoEl = null;
@@ -1035,10 +1044,11 @@ let videoTexture = null; // THREE.CanvasTexture
         let eyeAngleDeg = 0;
 
         let currentVrm = null;
+        let wrapperGroup;
         let pivotGroup;       
         let adjustmentGroup;  
         
-        let appliedMinCF = 0.0005;
+      let appliedMinCF = 0.0005;
         let appliedBeta = 0.04;
         let currentFileName = "";
         let currentFacingMode = 'user'; // カメラの向き (user / environment)
@@ -1244,6 +1254,7 @@ let latestCheekLVideoX = 0.35; // normalized in ORIGINAL video frame (0..1)
         const breathTmpV = new THREE.Vector3(); // reuse for projection
         const breathTmpV2 = new THREE.Vector3(); // pivot projection
 
+        const breathTmpV3 = new THREE.Vector3(); // pivot without wrapper projection
         let breathEmitter = null;
                 creamOverlayCanvas = null;
                 creamOverlayCtx = null;
@@ -1556,6 +1567,7 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
 
         const scaleSlider = document.getElementById('scale-slider');
         const ySlider = document.getElementById('y-slider');
+        const xSlider = document.getElementById('x-slider');
         const zSlider = document.getElementById('z-slider');
         const minCfSlider = document.getElementById('mincf-slider');
         const betaSlider = document.getElementById('beta-slider');
@@ -1787,7 +1799,7 @@ const allSliders = [
             camVignetteSlider, camSoftGlowSlider,
             occPosXSlider, occPosYSlider, occPosZSlider, occSizeXSlider, occSizeYSlider, occSizeZSlider,
             // Main transform
-            scaleSlider, ySlider, zSlider, 
+            scaleSlider, xSlider, ySlider, zSlider, 
             // Shadow detail
             shadowSoftnessSlider, shadowDarknessSlider
         ];
@@ -2472,6 +2484,7 @@ document.getElementById('toggle-menu-btn').addEventListener('click', () => {
             if (!fname) return;
             const settings = {
                 scale: scaleSlider.value,
+                x: xSlider ? xSlider.value : 0,
                 y: ySlider.value,
                 z: zSlider.value,
                 minCF: minCfSlider.value,
@@ -2555,9 +2568,10 @@ document.getElementById('toggle-menu-btn').addEventListener('click', () => {
                 const data = localStorage.getItem("vrm_settings_" + fname);
                 if (data) {
                     const s = JSON.parse(data);
-                    if(s.scale) scaleSlider.value = s.scale;
-                    if(s.y) ySlider.value = s.y;
-                    if(s.z) zSlider.value = s.z;
+                    if(Object.prototype.hasOwnProperty.call(s,'scale')) scaleSlider.value = s.scale;
+                    if(Object.prototype.hasOwnProperty.call(s,'x') && xSlider) xSlider.value = s.x;
+                    if(Object.prototype.hasOwnProperty.call(s,'y')) ySlider.value = s.y;
+                    if(Object.prototype.hasOwnProperty.call(s,'z')) zSlider.value = s.z;
                     if(s.minCF) minCfSlider.value = s.minCF;
                     if(s.beta) betaSlider.value = s.beta;
                     if(s.mouthSens) mouthSensSlider.value = s.mouthSens;
@@ -2702,7 +2716,7 @@ document.getElementById('toggle-menu-btn').addEventListener('click', () => {
             }
         }
 
-        [scaleSlider, ySlider, zSlider, minCfSlider, betaSlider, mouthSensSlider, eyeSensSlider, 
+        [scaleSlider, xSlider, ySlider, zSlider, minCfSlider, betaSlider, mouthSensSlider, eyeSensSlider, 
          lightIntSlider, ambIntSlider, lightYSlider, lightRotSlider, lightColorSlider, vrmSatSlider,
          skinSmoothSlider, camBrightSlider, camSatSlider, camContSlider, camBlurSlider, camSepiaSlider, 
          occlusionToggle, forceShadowToggle, shadowSoftnessSlider, shadowDarknessSlider, shadowColorPicker,
@@ -3389,6 +3403,24 @@ function updateBreathEffect(delta) {
                     const py1 = (-breathTmpV.y * 0.5 + 0.5) * h;
                     shiftX = px1 - px0;
                     shiftY = py1 - py0;
+
+                    // If X offset is applied via wrapperGroup, include that screen-space shift as well.
+                    // This keeps 2D overlays (blush/breath) aligned with the model when X moves the rotation center.
+                    if (wrapperGroup && camera) {
+                        const wx = (wrapperGroup.position && Number.isFinite(wrapperGroup.position.x)) ? wrapperGroup.position.x : 0;
+                        if (wx !== 0) {
+                            breathTmpV3.setFromMatrixPosition(pivotGroup.matrixWorld);
+                            breathTmpV3.x -= wx; // approximate "unshifted" tracked pose
+                            breathTmpV3.project(camera);
+                            const ok2 = Number.isFinite(breathTmpV3.x) && Number.isFinite(breathTmpV3.y) && Number.isFinite(breathTmpV3.z);
+                            if (ok2) {
+                                const pxBase = (breathTmpV3.x * 0.5 + 0.5) * w;
+                                const pyBase = (-breathTmpV3.y * 0.5 + 0.5) * h;
+                                shiftX += (px0 - pxBase);
+                                shiftY += (py0 - pyBase);
+                            }
+                        }
+                    }
                 }
             }
 
@@ -3744,6 +3776,75 @@ if (vy < 0) { vx = -vx; vy = -vy; }
             return pt ? { x: pt.x, y: pt.y } : { x: centerX, y: centerY };
         }
 
+        // Compute screen-space shift (px) between tracked face origin and the user's model offsets.
+        // This is used to keep auto-cream firing aligned when the user moves the model left/right (X) and height (Y).
+        const autoCreamShiftTmp0 = new THREE.Vector3();
+        const autoCreamShiftTmp1 = new THREE.Vector3();
+        const autoCreamShiftTmp2 = new THREE.Vector3();
+        const autoCreamShiftTmpUp = new THREE.Vector3();
+        const autoCreamShiftTmpQ = new THREE.Quaternion();
+
+        function getModelOffsetScreenShiftPx(cssW, cssH) {
+            // Convert model UI offsets (X via wrapperGroup, Y via adjustmentGroup) into a screen-space pixel shift.
+            // This keeps auto-cream targeting aligned with the visibly shifted VRM, including depth (Z).
+            if (!camera || !pivotGroup || !adjustmentGroup) return { dx: 0, dy: 0 };
+
+            const wx = (wrapperGroup && wrapperGroup.position && Number.isFinite(wrapperGroup.position.x)) ? wrapperGroup.position.x : 0;
+            const yv = (ySlider && Number.isFinite(parseFloat(ySlider.value))) ? parseFloat(ySlider.value) : 0;
+
+            if (wx === 0 && yv === 0) return { dx: 0, dy: 0 };
+
+            // Current (with offsets): use adjustmentGroup world position so Z-depth is reflected.
+            autoCreamShiftTmp0.setFromMatrixPosition(adjustmentGroup.matrixWorld);
+
+            // World-space vector for wrapper X offset.
+            autoCreamShiftTmp2.set(0, 0, 0);
+            if (wx !== 0) {
+                if (wrapperGroup) {
+                    autoCreamShiftTmp1.set(0, 0, 0);
+                    wrapperGroup.localToWorld(autoCreamShiftTmp1);
+                    autoCreamShiftTmp2.set(wx, 0, 0);
+                    wrapperGroup.localToWorld(autoCreamShiftTmp2);
+                    autoCreamShiftTmp2.sub(autoCreamShiftTmp1);
+                } else {
+                    autoCreamShiftTmp2.set(wx, 0, 0);
+                }
+            }
+
+            // World-space vector for Y offset (pivot's local up).
+            autoCreamShiftTmpUp.set(0, 0, 0);
+            if (yv !== 0) {
+                autoCreamShiftTmp1.set(0, 0, 0);
+                pivotGroup.localToWorld(autoCreamShiftTmp1);
+                autoCreamShiftTmpUp.set(0, yv, 0);
+                pivotGroup.localToWorld(autoCreamShiftTmpUp);
+                autoCreamShiftTmpUp.sub(autoCreamShiftTmp1);
+            }
+
+            // Base (no X/Y offsets), keep the same Z as current.
+            autoCreamShiftTmp1.copy(autoCreamShiftTmp0);
+            if (wx !== 0) autoCreamShiftTmp1.sub(autoCreamShiftTmp2);
+            if (yv !== 0) autoCreamShiftTmp1.sub(autoCreamShiftTmpUp);
+
+            // Project to NDC
+            autoCreamShiftTmp1.project(camera);
+            autoCreamShiftTmp0.project(camera);
+
+            const ok = Number.isFinite(autoCreamShiftTmp1.x) && Number.isFinite(autoCreamShiftTmp1.y) &&
+                       Number.isFinite(autoCreamShiftTmp0.x) && Number.isFinite(autoCreamShiftTmp0.y);
+            if (!ok) return { dx: 0, dy: 0 };
+
+            const px0 = (autoCreamShiftTmp1.x * 0.5 + 0.5) * cssW;
+            const py0 = (-autoCreamShiftTmp1.y * 0.5 + 0.5) * cssH;
+            const px1 = (autoCreamShiftTmp0.x * 0.5 + 0.5) * cssW;
+            const py1 = (-autoCreamShiftTmp0.y * 0.5 + 0.5) * cssH;
+
+            return { dx: (px1 - px0), dy: (py1 - py0) };
+        }
+
+
+
+
 function spawnCreamBurst(targetX = null, targetY = null, ignoreCooldown = false, groupId = null) {
             const now = performance.now();
             const gid = (groupId !== null && groupId !== undefined) ? groupId : (creamNextPatchGroupId++);
@@ -3980,16 +4081,23 @@ function drawCreamDrip(ctx, x, y, w, h, opacity, angleRad) {
                         const cssH = (creamOverlayCanvas ? creamOverlayCanvas.height / pr : window.innerHeight);
                         const tgt = sampleAutoCreamTargetPx(useBasis, cssW, cssH);
                         if (tgt) {
+                            // Apply model offsets (X via wrapper, Y via adjustment) in screen space so auto shots match the shifted model.
+                            const sh = getModelOffsetScreenShiftPx(cssW, cssH);
+                            const sdx = sh ? sh.dx : 0;
+                            const sdy = sh ? sh.dy : 0;
+                            const yTopShift = (Number.isFinite(tgt.yTop) ? (tgt.yTop + sdy) : tgt.yTop);
+                            const yMaxShift = (Number.isFinite(tgt.yMaxAllowed) ? (tgt.yMaxAllowed + sdy) : tgt.yMaxAllowed);
+
                             const gid = (creamNextPatchGroupId++);
                             for (let i = 0; i < shotCount; i++) {
                                 // Same hit randomness as manual tap: tiny horizontal, mostly vertical (slight down-bias)
                                 const dx = (Math.random() * 2 - 1) * 5.0;        // ±5px
                                 const dy = (Math.random() * 2 - 1) * 14.0 + 6.0; // mostly vertical
-                                let ax = tgt.x + dx;
-                                let ay = tgt.y + dy;
+                                let ax = tgt.x + sdx + dx;
+                                let ay = tgt.y + sdy + dy;
                                 // Keep bounds AFTER jitter so the lower-10% exclusion stays effective.
-                                if (Number.isFinite(tgt.yTop) && Number.isFinite(tgt.yMaxAllowed)) {
-                                    ay = Math.min(Math.max(ay, tgt.yTop), tgt.yMaxAllowed);
+                                if (Number.isFinite(yTopShift) && Number.isFinite(yMaxShift)) {
+                                    ay = Math.min(Math.max(ay, yTopShift), yMaxShift);
                                 }
                                 ax = Math.min(Math.max(ax, 0), cssW);
                                 ay = Math.min(Math.max(ay, 0), cssH);
@@ -4708,15 +4816,19 @@ if (videoTexture) videoTexture.needsUpdate = true;
                 updateLight();
 
                 // Root group for face pose
+                // Wrapper group for user X offset (moves rotation center)
+                wrapperGroup = new THREE.Group();
+                scene.add(wrapperGroup);
+
                 pivotGroup = new THREE.Group();
                 pivotGroup.visible = false;
                 pivotGroup.matrixAutoUpdate = false;
-                scene.add(pivotGroup);
+                wrapperGroup.add(pivotGroup);
 
-                // User adjustment group
+                // User adjustment group (scale + Y/Z offsets)
                 adjustmentGroup = new THREE.Group();
                 pivotGroup.add(adjustmentGroup);
-                updateTransform();
+updateTransform();
 
                 // --- Breath effect setup ---
                 if (!breathParticles) {
@@ -4774,7 +4886,7 @@ if (videoTexture) videoTexture.needsUpdate = true;
                 // (use global lightRelativePos controlled by sliders)
                 const worldMatrix = new THREE.Matrix4();
                 const rotComp = new THREE.Matrix4();
-                const baseScale = 40;
+                const baseScale = MODEL_BASE_SCALE;
 
                 const tmpPos = new THREE.Vector3();
                 const tmpQuat = new THREE.Quaternion();
@@ -5004,7 +5116,8 @@ const tms = res && res.facialTransformationMatrixes;
                         const modelSec = controlPanel.querySelector('details.acc-section[data-acc="basic"]');
                         if (modelSec) modelSec.open = true; // keep others as restored
                         _forceOpenBasicOnce = false; // consume the one-time force-open on this auto-open
-                        _restorePanelScroll(controlPanel, 'control');
+                        // On auto-open right after camera starts, always show top (do not restore previous scroll)
+                        controlPanel.scrollTop = 0;
                     });
                 } catch(_) {}
 
@@ -5245,12 +5358,20 @@ VRMUtils.rotateVRM0(vrm);
             if (!adjustmentGroup) return;
             const s = parseFloat(scaleSlider.value);
             adjustmentGroup.scale.set(s, s, s);
+
+            const x = xSlider ? parseFloat(xSlider.value) : 0;
             const y = parseFloat(ySlider.value);
             const z = parseFloat(zSlider.value);
+
+            // X is applied to wrapperGroup so the rotation center (tracked pose origin) moves with the model.
+            // Multiply by baseScale so the slider keeps roughly the same "feel" as before.
+            if (wrapperGroup) wrapperGroup.position.x = x * MODEL_BASE_SCALE;
+
+            // Keep Y/Z (and any future offsets) on adjustmentGroup.
             adjustmentGroup.position.set(0, y, z);
         }
-
-        scaleSlider.addEventListener('input', updateTransform);
+scaleSlider.addEventListener('input', updateTransform);
+        if (xSlider) xSlider.addEventListener('input', updateTransform);
         ySlider.addEventListener('input', updateTransform);
         zSlider.addEventListener('input', updateTransform);
 
