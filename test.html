@@ -3785,42 +3785,63 @@ if (vy < 0) { vx = -vx; vy = -vy; }
         const autoCreamShiftTmpQ = new THREE.Quaternion();
 
         function getModelOffsetScreenShiftPx(cssW, cssH) {
-            if (!camera || !pivotGroup) return { dx: 0, dy: 0 };
+            // Convert model UI offsets (X via wrapperGroup, Y via adjustmentGroup) into a screen-space pixel shift.
+            // This keeps auto-cream targeting aligned with the visibly shifted VRM, including depth (Z).
+            if (!camera || !pivotGroup || !adjustmentGroup) return { dx: 0, dy: 0 };
 
             const wx = (wrapperGroup && wrapperGroup.position && Number.isFinite(wrapperGroup.position.x)) ? wrapperGroup.position.x : 0;
             const yv = (ySlider && Number.isFinite(parseFloat(ySlider.value))) ? parseFloat(ySlider.value) : 0;
 
             if (wx === 0 && yv === 0) return { dx: 0, dy: 0 };
 
-            // Tracked face origin in world space (includes wrapper translation).
-            autoCreamShiftTmp0.setFromMatrixPosition(pivotGroup.matrixWorld);
+            // Current (with offsets): use adjustmentGroup world position so Z-depth is reflected.
+            autoCreamShiftTmp0.setFromMatrixPosition(adjustmentGroup.matrixWorld);
 
-            // Base (no offsets): subtract wrapper X, and do not add Y.
-            autoCreamShiftTmp1.copy(autoCreamShiftTmp0);
-            if (wx !== 0) autoCreamShiftTmp1.x -= wx;
-
-            // Offset point: include wrapper X (already in tmp0) and include Y along pivot's local up axis.
-            autoCreamShiftTmp2.copy(autoCreamShiftTmp0);
-            if (yv !== 0) {
-                pivotGroup.getWorldQuaternion(autoCreamShiftTmpQ);
-                autoCreamShiftTmpUp.set(0, 1, 0).applyQuaternion(autoCreamShiftTmpQ).multiplyScalar(yv);
-                autoCreamShiftTmp2.add(autoCreamShiftTmpUp);
+            // World-space vector for wrapper X offset.
+            autoCreamShiftTmp2.set(0, 0, 0);
+            if (wx !== 0) {
+                if (wrapperGroup) {
+                    autoCreamShiftTmp1.set(0, 0, 0);
+                    wrapperGroup.localToWorld(autoCreamShiftTmp1);
+                    autoCreamShiftTmp2.set(wx, 0, 0);
+                    wrapperGroup.localToWorld(autoCreamShiftTmp2);
+                    autoCreamShiftTmp2.sub(autoCreamShiftTmp1);
+                } else {
+                    autoCreamShiftTmp2.set(wx, 0, 0);
+                }
             }
 
+            // World-space vector for Y offset (pivot's local up).
+            autoCreamShiftTmpUp.set(0, 0, 0);
+            if (yv !== 0) {
+                autoCreamShiftTmp1.set(0, 0, 0);
+                pivotGroup.localToWorld(autoCreamShiftTmp1);
+                autoCreamShiftTmpUp.set(0, yv, 0);
+                pivotGroup.localToWorld(autoCreamShiftTmpUp);
+                autoCreamShiftTmpUp.sub(autoCreamShiftTmp1);
+            }
+
+            // Base (no X/Y offsets), keep the same Z as current.
+            autoCreamShiftTmp1.copy(autoCreamShiftTmp0);
+            if (wx !== 0) autoCreamShiftTmp1.sub(autoCreamShiftTmp2);
+            if (yv !== 0) autoCreamShiftTmp1.sub(autoCreamShiftTmpUp);
+
+            // Project to NDC
             autoCreamShiftTmp1.project(camera);
-            autoCreamShiftTmp2.project(camera);
+            autoCreamShiftTmp0.project(camera);
 
             const ok = Number.isFinite(autoCreamShiftTmp1.x) && Number.isFinite(autoCreamShiftTmp1.y) &&
-                       Number.isFinite(autoCreamShiftTmp2.x) && Number.isFinite(autoCreamShiftTmp2.y);
+                       Number.isFinite(autoCreamShiftTmp0.x) && Number.isFinite(autoCreamShiftTmp0.y);
             if (!ok) return { dx: 0, dy: 0 };
 
             const px0 = (autoCreamShiftTmp1.x * 0.5 + 0.5) * cssW;
             const py0 = (-autoCreamShiftTmp1.y * 0.5 + 0.5) * cssH;
-            const px1 = (autoCreamShiftTmp2.x * 0.5 + 0.5) * cssW;
-            const py1 = (-autoCreamShiftTmp2.y * 0.5 + 0.5) * cssH;
+            const px1 = (autoCreamShiftTmp0.x * 0.5 + 0.5) * cssW;
+            const py1 = (-autoCreamShiftTmp0.y * 0.5 + 0.5) * cssH;
 
             return { dx: (px1 - px0), dy: (py1 - py0) };
         }
+
 
 
 
@@ -5095,7 +5116,8 @@ const tms = res && res.facialTransformationMatrixes;
                         const modelSec = controlPanel.querySelector('details.acc-section[data-acc="basic"]');
                         if (modelSec) modelSec.open = true; // keep others as restored
                         _forceOpenBasicOnce = false; // consume the one-time force-open on this auto-open
-                        _restorePanelScroll(controlPanel, 'control');
+                        // On auto-open right after camera starts, always show top (do not restore previous scroll)
+                        controlPanel.scrollTop = 0;
                     });
                 } catch(_) {}
 
