@@ -954,8 +954,8 @@
     <script type="module">
         
 // ===== App Version (single source of truth) =====
-const APP_VERSION = "v6.01.22";
-const APP_VERSION_NOTE = "UI restore: control accordion robust";
+const APP_VERSION = "v6.01.23";
+const APP_VERSION_NOTE = "Camera switch: reliable first-frame + reset";
 
 
 function getOverlayPixelRatio() {
@@ -2132,6 +2132,18 @@ document.getElementById('toggle-menu-btn').addEventListener('click', () => {
                 } catch (_) {}
             };
 
+            const isSameStream = (a, b) => {
+                try {
+                    if (!a || !b) return false;
+                    if (a === b) return true;
+                    const at = a.getVideoTracks ? a.getVideoTracks()[0] : null;
+                    const bt = b.getVideoTracks ? b.getVideoTracks()[0] : null;
+                    if (at && bt && at.id && bt.id && at.id === bt.id) return true;
+                } catch (_) {}
+                return false;
+            };
+
+
             const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
             const waitForVideoEvent = (el, evName, timeoutMs=1500) => new Promise(resolve => {
@@ -2151,25 +2163,56 @@ document.getElementById('toggle-menu-btn').addEventListener('click', () => {
                 } catch (_) { resolve(false); }
             });
 
-            const waitForFirstFrame = async (el, timeoutMs=1500) => {
-                try {
-                    if (!el) return false;
-                    if (el.readyState >= 2) return true;
-                    const start = performance.now();
-                    return await new Promise(resolve => {
-                        const tick = () => {
-                            if (el.readyState >= 2) return resolve(true);
-                            if (performance.now() - start > timeoutMs) return resolve(false);
-                            if (typeof el.requestVideoFrameCallback === 'function') {
-                                el.requestVideoFrameCallback(() => tick());
-                            } else {
-                                requestAnimationFrame(tick);
-                            }
-                        };
-                        tick();
-                    });
-                } catch (_) { return false; }
-            };
+            
+const waitForFirstFrame = async (el, timeoutMs=2000) => {
+    try {
+        if (!el) return false;
+
+        // Reset-aware: require real dimensions and at least one delivered frame callback (when available).
+        const start = performance.now();
+        const startW = el.videoWidth || 0;
+        const startH = el.videoHeight || 0;
+
+        if (typeof el.requestVideoFrameCallback === 'function') {
+            return await new Promise(resolve => {
+                let lastMediaTime = -1;
+                const tick = (_now, meta) => {
+                    try {
+                        const w = el.videoWidth || 0;
+                        const h = el.videoHeight || 0;
+                        const mt = (meta && typeof meta.mediaTime === 'number') ? meta.mediaTime : -1;
+
+                        const hasDims = (w > 0 && h > 0);
+                        const mediaAdvanced = (mt >= 0 && mt !== lastMediaTime);
+
+                        // Consider "got a frame" when we have valid dims and either mediaTime advances,
+                        // or dims changed from the previous stream (common after camera switch).
+                        if (hasDims && (mediaAdvanced || w !== startW || h !== startH)) return resolve(true);
+
+                        if (performance.now() - start > timeoutMs) return resolve(false);
+
+                        lastMediaTime = mt;
+                        el.requestVideoFrameCallback(tick);
+                    } catch (_) {
+                        resolve(false);
+                    }
+                };
+                el.requestVideoFrameCallback(tick);
+            });
+        }
+
+        // Fallback: poll for readyState + non-zero dimensions
+        while (performance.now() - start <= timeoutMs) {
+            const w = el.videoWidth || 0;
+            const h = el.videoHeight || 0;
+            if (el.readyState >= 2 && w > 0 && h > 0 && (w !== startW || h !== startH || (startW === 0 && startH === 0))) return true;
+            await new Promise(r => requestAnimationFrame(r));
+        }
+        return (el.readyState >= 2 && (el.videoWidth || 0) > 0 && (el.videoHeight || 0) > 0);
+    } catch (_) {
+        return false;
+    }
+};
 
 
             const buildFacingConstraints = (includeResFps) => {
@@ -2285,20 +2328,91 @@ document.getElementById('toggle-menu-btn').addEventListener('click', () => {
 
                 try {
                     // Attach new stream (avoid overwriting global handlers by using addEventListener)
-                    try { videoEl.pause(); } catch (_) {}
-                    videoEl.srcObject = newStream;
+                    
+try { videoEl.pause(); } catch (_) {}
+// Reset the video element pipeline; some Android browsers keep readyState/dimensions and then the new stream never renders.
+try { videoEl.srcObject = null; } catch (_) {}
+try { videoEl.load(); } catch (_) {}
+await sleep(40);
+videoEl.srcObject = newStream;
 
                     // Wait for metadata / canplay (best-effort)
                     await waitForVideoEvent(videoEl, 'loadedmetadata', 2000);
                     try { await videoEl.play(); } catch (_) {}
 
                     // Ensure at least one frame becomes available so drawVideoToDisplayCanvas can update
-                    await waitForFirstFrame(videoEl, 2000);
+                    const gotFrame = await waitForFirstFrame(videoEl, 2200);
+                    if (!gotFrame) {
+                        // Fallback: some Android devices return a stream that never produces frames unless the previous stream is stopped.
+                        try {
+                            try { stopStream(newStream); } catch (_) {}
+                            try { if (videoEl) videoEl.srcObject = null; } catch (_) {}
+                            try { stopStream(prevStream); } catch (_) {}
+                            await sleep(120);
+
+                            const retry = await tryGetUserMedia(attempts);
+                            if (!retry.stream) throw (retry.err || new Error('RetryFailed'));
+                            newStream = retry.stream;
+
+                            // Re-apply
+                            stream = newStream;
+                            currentFacingMode = wantFacing;
+                            
+try { videoEl.pause(); } catch (_) {}
+try { videoEl.srcObject = null; } catch (_) {}
+try { videoEl.load(); } catch (_) {}
+await sleep(40);
+videoEl.srcObject = newStream;
+await waitForVideoEvent
+(videoEl, 'loadedmetadata', 2000);
+                            try { await videoEl.play(); } catch (_) {}
+
+                            const gotFrame2 = await waitForFirstFrame(videoEl, 2500);
+                            if (!gotFrame2) throw new Error('NoFrameAfterSwitchRetry');
+                        } catch (noFrameErr) {
+                            console.error('Camera switch produced no frames:', noFrameErr);
+                            showFail(noFrameErr);
+
+                            // Roll back best-effort (reacquire previous facing)
+                            try { stopStream(newStream); } catch (_) {}
+                            try { if (videoEl) videoEl.srcObject = null; } catch (_) {}
+                            await sleep(120);
+
+                            try {
+                                const prevAttempts = [
+                                    { video: { facingMode: { ideal: prevFacing }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false },
+                                    { video: { facingMode: { exact: prevFacing } }, audio: false },
+                                ];
+                                const back = await tryGetUserMedia(prevAttempts);
+                                if (back.stream) {
+                                    stream = back.stream;
+                                    currentFacingMode = prevFacing;
+                                    videoEl.srcObject = back.stream;
+                                    await waitForVideoEvent(videoEl, 'loadedmetadata', 2000);
+                                    try { await videoEl.play(); } catch (_) {}
+                                } else {
+                                    stream = prevStream;
+                                    currentFacingMode = prevFacing;
+                                    if (videoEl && prevStream) videoEl.srcObject = prevStream;
+                                }
+                            } catch (_) {
+                                stream = prevStream;
+                                currentFacingMode = prevFacing;
+                                if (videoEl && prevStream) videoEl.srcObject = prevStream;
+                            }
+
+                            syncTrackingTogglesFromState();
+                            return;
+                        }
+                    }
+// Update sizing immediately after first frame (camera switch can change aspect)
+                    try { handleViewportResize(); } catch (_) {}
 
                     // Force an immediate refresh of the background once after switching
                     try {
                         ensureDisplayCanvasSize();
                         drawVideoToDisplayCanvas();
+                        refreshVideoTextureAfterCameraSwitch();
                     } catch (_) {}
                 } catch (applyErr) {
                     console.error('Camera switch apply failed:', applyErr);
@@ -2313,7 +2427,7 @@ document.getElementById('toggle-menu-btn').addEventListener('click', () => {
                 }
 
                 // Now stop old stream after successful apply (if still alive)
-                stopStream(oldStreamToStop);
+                if (oldStreamToStop && !isSameStream(oldStreamToStop, newStream)) stopStream(oldStreamToStop);
 
                 // Update current capture size hints (best-effort)
                 try {
@@ -2350,9 +2464,48 @@ document.getElementById('toggle-menu-btn').addEventListener('click', () => {
             mirrorToggle.addEventListener('change', applyMirrorFromToggle);
         }
         if (facingToggle) {
+            let __cameraRestarting = false;
             facingToggle.addEventListener('change', async () => {
                 const want = facingToggle.checked ? 'environment' : 'user';
-                await switchCameraFacing(want);
+
+                // If AR isn't started yet, just update state (startAR() will pick it up)
+                if (!stream || !videoEl || !renderer) {
+                    currentFacingMode = want;
+                    saveSettings();
+                    showToast(want === 'environment' ? 'アウトカメラ: ON' : 'アウトカメラ: OFF');
+                    return;
+                }
+
+                // During an active session, camera switching is more reliable via restartAR()
+                if (__cameraRestarting) return;
+                __cameraRestarting = true;
+
+                const prevFacing = currentFacingMode;
+                currentFacingMode = want;
+
+                try {
+                    facingToggle.disabled = true;
+                    showToast('カメラ切替中...');
+
+                    // Persist the choice immediately so restart uses the right facing.
+                    saveSettings();
+
+                    await restartAR();
+
+                    // After restart, apply/reflect toggles just in case
+                    syncTrackingTogglesFromState();
+                    showToast(want === 'environment' ? 'アウトカメラに切り替えました' : 'インカメラに切り替えました');
+                } catch (e) {
+                    console.error('Camera restart switch failed:', e);
+                    // rollback UI + state
+                    currentFacingMode = prevFacing;
+                    if (facingToggle) facingToggle.checked = (prevFacing === 'environment');
+                    syncTrackingTogglesFromState();
+                    showToast('カメラ切替に失敗しました');
+                } finally {
+                    facingToggle.disabled = false;
+                    __cameraRestarting = false;
+                }
             });
         }
 
@@ -4356,7 +4509,38 @@ const ang = Math.atan2(dvy, dvx);
             }
         }
 
-        function drawVideoToDisplayCanvas() {
+        
+
+        // After switching camera streams, some Android browsers keep rendering the old WebGL texture
+        // even though the <video> is feeding new frames. Rebinding the CanvasTexture fixes that.
+        function refreshVideoTextureAfterCameraSwitch() {
+            try {
+                if (!displayCanvas || !bgPlane || !THREE) return;
+                try { if (videoTexture && typeof videoTexture.dispose === 'function') videoTexture.dispose(); } catch (_) {}
+
+                try {
+                    videoTexture = new THREE.CanvasTexture(displayCanvas);
+                    videoTexture.colorSpace = THREE.SRGBColorSpace;
+                    videoTexture.minFilter = THREE.LinearFilter;
+                    videoTexture.magFilter = THREE.LinearFilter;
+                    videoTexture.generateMipmaps = false;
+                } catch (_) {
+                    return;
+                }
+
+                try {
+                    if (bgPlane.material) {
+                        bgPlane.material.map = videoTexture;
+                        bgPlane.material.needsUpdate = true;
+                    }
+                } catch (_) {}
+
+                try { videoTexture.needsUpdate = true; } catch (_) {}
+                try { updateBgPlaneSizeLetterbox(); } catch (_) {}
+            } catch (_) {}
+        }
+
+function drawVideoToDisplayCanvas() {
             if (!videoEl || !displayCtx) return;
             if (videoEl.readyState < 2) return;
             ensureDisplayCanvasSize();
