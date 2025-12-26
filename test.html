@@ -2132,6 +2132,18 @@ document.getElementById('toggle-menu-btn').addEventListener('click', () => {
                 } catch (_) {}
             };
 
+            const isSameStream = (a, b) => {
+                try {
+                    if (!a || !b) return false;
+                    if (a === b) return true;
+                    const at = a.getVideoTracks ? a.getVideoTracks()[0] : null;
+                    const bt = b.getVideoTracks ? b.getVideoTracks()[0] : null;
+                    if (at && bt && at.id && bt.id && at.id === bt.id) return true;
+                } catch (_) {}
+                return false;
+            };
+
+
             const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
             const waitForVideoEvent = (el, evName, timeoutMs=1500) => new Promise(resolve => {
@@ -2294,6 +2306,8 @@ document.getElementById('toggle-menu-btn').addEventListener('click', () => {
 
                     // Ensure at least one frame becomes available so drawVideoToDisplayCanvas can update
                     await waitForFirstFrame(videoEl, 2000);
+                    // Update sizing immediately after first frame (camera switch can change aspect)
+                    try { handleViewportResize(); } catch (_) {}
 
                     // Force an immediate refresh of the background once after switching
                     try {
@@ -2313,7 +2327,7 @@ document.getElementById('toggle-menu-btn').addEventListener('click', () => {
                 }
 
                 // Now stop old stream after successful apply (if still alive)
-                stopStream(oldStreamToStop);
+                if (oldStreamToStop && !isSameStream(oldStreamToStop, newStream)) stopStream(oldStreamToStop);
 
                 // Update current capture size hints (best-effort)
                 try {
