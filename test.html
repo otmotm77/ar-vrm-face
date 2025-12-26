@@ -2305,8 +2305,66 @@ document.getElementById('toggle-menu-btn').addEventListener('click', () => {
                     try { await videoEl.play(); } catch (_) {}
 
                     // Ensure at least one frame becomes available so drawVideoToDisplayCanvas can update
-                    await waitForFirstFrame(videoEl, 2000);
-                    // Update sizing immediately after first frame (camera switch can change aspect)
+                    const gotFrame = await waitForFirstFrame(videoEl, 2200);
+                    if (!gotFrame) {
+                        // Fallback: some Android devices return a stream that never produces frames unless the previous stream is stopped.
+                        try {
+                            try { stopStream(newStream); } catch (_) {}
+                            try { if (videoEl) videoEl.srcObject = null; } catch (_) {}
+                            try { stopStream(prevStream); } catch (_) {}
+                            await sleep(120);
+
+                            const retry = await tryGetUserMedia(attempts);
+                            if (!retry.stream) throw (retry.err || new Error('RetryFailed'));
+                            newStream = retry.stream;
+
+                            // Re-apply
+                            stream = newStream;
+                            currentFacingMode = wantFacing;
+                            try { videoEl.pause(); } catch (_) {}
+                            videoEl.srcObject = newStream;
+                            await waitForVideoEvent(videoEl, 'loadedmetadata', 2000);
+                            try { await videoEl.play(); } catch (_) {}
+
+                            const gotFrame2 = await waitForFirstFrame(videoEl, 2500);
+                            if (!gotFrame2) throw new Error('NoFrameAfterSwitchRetry');
+                        } catch (noFrameErr) {
+                            console.error('Camera switch produced no frames:', noFrameErr);
+                            showFail(noFrameErr);
+
+                            // Roll back best-effort (reacquire previous facing)
+                            try { stopStream(newStream); } catch (_) {}
+                            try { if (videoEl) videoEl.srcObject = null; } catch (_) {}
+                            await sleep(120);
+
+                            try {
+                                const prevAttempts = [
+                                    { video: { facingMode: { ideal: prevFacing }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false },
+                                    { video: { facingMode: { exact: prevFacing } }, audio: false },
+                                ];
+                                const back = await tryGetUserMedia(prevAttempts);
+                                if (back.stream) {
+                                    stream = back.stream;
+                                    currentFacingMode = prevFacing;
+                                    videoEl.srcObject = back.stream;
+                                    await waitForVideoEvent(videoEl, 'loadedmetadata', 2000);
+                                    try { await videoEl.play(); } catch (_) {}
+                                } else {
+                                    stream = prevStream;
+                                    currentFacingMode = prevFacing;
+                                    if (videoEl && prevStream) videoEl.srcObject = prevStream;
+                                }
+                            } catch (_) {
+                                stream = prevStream;
+                                currentFacingMode = prevFacing;
+                                if (videoEl && prevStream) videoEl.srcObject = prevStream;
+                            }
+
+                            syncTrackingTogglesFromState();
+                            return;
+                        }
+                    }
+// Update sizing immediately after first frame (camera switch can change aspect)
                     try { handleViewportResize(); } catch (_) {}
 
                     // Force an immediate refresh of the background once after switching
