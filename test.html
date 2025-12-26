@@ -954,8 +954,8 @@
     <script type="module">
         
 // ===== App Version (single source of truth) =====
-const APP_VERSION = "v6.01.22";
-const APP_VERSION_NOTE = "UI restore: control accordion robust";
+const APP_VERSION = "v6.01.23";
+const APP_VERSION_NOTE = "Camera switch: reliable first-frame + reset";
 
 
 function getOverlayPixelRatio() {
@@ -2163,25 +2163,56 @@ document.getElementById('toggle-menu-btn').addEventListener('click', () => {
                 } catch (_) { resolve(false); }
             });
 
-            const waitForFirstFrame = async (el, timeoutMs=1500) => {
-                try {
-                    if (!el) return false;
-                    if (el.readyState >= 2) return true;
-                    const start = performance.now();
-                    return await new Promise(resolve => {
-                        const tick = () => {
-                            if (el.readyState >= 2) return resolve(true);
-                            if (performance.now() - start > timeoutMs) return resolve(false);
-                            if (typeof el.requestVideoFrameCallback === 'function') {
-                                el.requestVideoFrameCallback(() => tick());
-                            } else {
-                                requestAnimationFrame(tick);
-                            }
-                        };
-                        tick();
-                    });
-                } catch (_) { return false; }
-            };
+            
+const waitForFirstFrame = async (el, timeoutMs=2000) => {
+    try {
+        if (!el) return false;
+
+        // Reset-aware: require real dimensions and at least one delivered frame callback (when available).
+        const start = performance.now();
+        const startW = el.videoWidth || 0;
+        const startH = el.videoHeight || 0;
+
+        if (typeof el.requestVideoFrameCallback === 'function') {
+            return await new Promise(resolve => {
+                let lastMediaTime = -1;
+                const tick = (_now, meta) => {
+                    try {
+                        const w = el.videoWidth || 0;
+                        const h = el.videoHeight || 0;
+                        const mt = (meta && typeof meta.mediaTime === 'number') ? meta.mediaTime : -1;
+
+                        const hasDims = (w > 0 && h > 0);
+                        const mediaAdvanced = (mt >= 0 && mt !== lastMediaTime);
+
+                        // Consider "got a frame" when we have valid dims and either mediaTime advances,
+                        // or dims changed from the previous stream (common after camera switch).
+                        if (hasDims && (mediaAdvanced || w !== startW || h !== startH)) return resolve(true);
+
+                        if (performance.now() - start > timeoutMs) return resolve(false);
+
+                        lastMediaTime = mt;
+                        el.requestVideoFrameCallback(tick);
+                    } catch (_) {
+                        resolve(false);
+                    }
+                };
+                el.requestVideoFrameCallback(tick);
+            });
+        }
+
+        // Fallback: poll for readyState + non-zero dimensions
+        while (performance.now() - start <= timeoutMs) {
+            const w = el.videoWidth || 0;
+            const h = el.videoHeight || 0;
+            if (el.readyState >= 2 && w > 0 && h > 0 && (w !== startW || h !== startH || (startW === 0 && startH === 0))) return true;
+            await new Promise(r => requestAnimationFrame(r));
+        }
+        return (el.readyState >= 2 && (el.videoWidth || 0) > 0 && (el.videoHeight || 0) > 0);
+    } catch (_) {
+        return false;
+    }
+};
 
 
             const buildFacingConstraints = (includeResFps) => {
@@ -2297,8 +2328,13 @@ document.getElementById('toggle-menu-btn').addEventListener('click', () => {
 
                 try {
                     // Attach new stream (avoid overwriting global handlers by using addEventListener)
-                    try { videoEl.pause(); } catch (_) {}
-                    videoEl.srcObject = newStream;
+                    
+try { videoEl.pause(); } catch (_) {}
+// Reset the video element pipeline; some Android browsers keep readyState/dimensions and then the new stream never renders.
+try { videoEl.srcObject = null; } catch (_) {}
+try { videoEl.load(); } catch (_) {}
+await sleep(40);
+videoEl.srcObject = newStream;
 
                     // Wait for metadata / canplay (best-effort)
                     await waitForVideoEvent(videoEl, 'loadedmetadata', 2000);
@@ -2321,9 +2357,14 @@ document.getElementById('toggle-menu-btn').addEventListener('click', () => {
                             // Re-apply
                             stream = newStream;
                             currentFacingMode = wantFacing;
-                            try { videoEl.pause(); } catch (_) {}
-                            videoEl.srcObject = newStream;
-                            await waitForVideoEvent(videoEl, 'loadedmetadata', 2000);
+                            
+try { videoEl.pause(); } catch (_) {}
+try { videoEl.srcObject = null; } catch (_) {}
+try { videoEl.load(); } catch (_) {}
+await sleep(40);
+videoEl.srcObject = newStream;
+await waitForVideoEvent
+(videoEl, 'loadedmetadata', 2000);
                             try { await videoEl.play(); } catch (_) {}
 
                             const gotFrame2 = await waitForFirstFrame(videoEl, 2500);
