@@ -523,6 +523,19 @@
             </div>
 
             <div class="slider-container">
+                <span class="slider-label">光沢 / ハイライト</span>
+                <input type="range" id="cream-gloss-slider" min="0" max="2.0" step="0.05" value="1.0">
+                <span id="cream-gloss-slider-val" class="val-display">1.0</span>
+            </div>
+
+            <div class="slider-container">
+                <span class="slider-label">粘度</span>
+                <input type="range" id="cream-viscosity-slider" min="0.2" max="3.0" step="0.05" value="1.0">
+                <span id="cream-viscosity-slider-val" class="val-display">1.0</span>
+            </div>
+
+
+            <div class="slider-container">
                 <span class="slider-label">貼り付き（擬似Z）</span>
                 <input type="range" id="cream-z-attach-slider" min="0" max="1" step="0.05" value="0.6">
                 <span id="cream-z-attach-slider-val" class="val-display">0.6</span>
@@ -831,7 +844,7 @@
         
 // ===== App Version (single source of truth) =====
 const APP_VERSION = "v6.01.16";
-const APP_VERSION_NOTE = "cream: auto-jitter clamp keeps lower10% excluded | cream pseudo-Z stick slider (yaw/pitch foreshorten)";
+const APP_VERSION_NOTE = "cream: gloss(highlight) slider + viscosity slider";
 
 
 function getOverlayPixelRatio() {
@@ -1037,6 +1050,8 @@ let latestCheekLVideoX = 0.35; // normalized in ORIGINAL video frame (0..1)
                 var creamAutoIntervalSec = 1.5; // base interval (seconds)
                 var creamMaxCount = 40;         // max total (patches + projectiles)
                 var creamSizeMul = 1.0;      // size multiplier (0.5-2.0)
+                var creamGloss = 1.0;        // highlight strength (0..2)
+                var creamViscosity = 1.0;    // viscosity (0.2..3.0) higher=thicker
                 var creamSimulCount = 3;   // simultaneous shots per tap/auto (1-20)
                 var creamZAttach = 0.6;     // pseudo "Z-stick" (0..1)
                 let creamAutoElapsedSec = 0.0;
@@ -1647,9 +1662,46 @@ const creamSizeMulSlider = document.getElementById('cream-size-mul-slider');
 if (creamSizeMulSlider) {
     updateSliderDisplay(creamSizeMulSlider);
     creamSizeMul = parseFloat(creamSizeMulSlider.value) || creamSizeMul;
+
+                    if (Object.prototype.hasOwnProperty.call(s, 'creamGloss') && typeof creamGlossSlider !== 'undefined' && creamGlossSlider) {
+                        creamGlossSlider.value = s.creamGloss;
+                        updateSliderDisplay(creamGlossSlider);
+                        creamGloss = parseFloat(creamGlossSlider.value) || creamGloss;
+                    }
+                    if (Object.prototype.hasOwnProperty.call(s, 'creamViscosity') && typeof creamViscositySlider !== 'undefined' && creamViscositySlider) {
+                        creamViscositySlider.value = s.creamViscosity;
+                        updateSliderDisplay(creamViscositySlider);
+                        creamViscosity = parseFloat(creamViscositySlider.value) || creamViscosity;
+                    }
+
     creamSizeMulSlider.addEventListener('input', () => {
         updateSliderDisplay(creamSizeMulSlider);
         creamSizeMul = parseFloat(creamSizeMulSlider.value) || creamSizeMul;
+        saveSettings();
+    });
+}
+
+
+// Cream gloss/highlight slider (0-2.0)
+const creamGlossSlider = document.getElementById('cream-gloss-slider');
+if (creamGlossSlider) {
+    updateSliderDisplay(creamGlossSlider);
+    creamGloss = parseFloat(creamGlossSlider.value) || creamGloss;
+    creamGlossSlider.addEventListener('input', () => {
+        updateSliderDisplay(creamGlossSlider);
+        creamGloss = parseFloat(creamGlossSlider.value) || creamGloss;
+        saveSettings();
+    });
+}
+
+// Cream viscosity slider (0.2-3.0) higher = thicker (slower flow)
+const creamViscositySlider = document.getElementById('cream-viscosity-slider');
+if (creamViscositySlider) {
+    updateSliderDisplay(creamViscositySlider);
+    creamViscosity = parseFloat(creamViscositySlider.value) || creamViscosity;
+    creamViscositySlider.addEventListener('input', () => {
+        updateSliderDisplay(creamViscositySlider);
+        creamViscosity = parseFloat(creamViscositySlider.value) || creamViscosity;
         saveSettings();
     });
 }
@@ -2273,6 +2325,8 @@ document.getElementById('toggle-menu-btn').addEventListener('click', () => {
                 creamInterval: (typeof creamAutoIntervalSlider !== 'undefined' && creamAutoIntervalSlider) ? creamAutoIntervalSlider.value : String(creamAutoIntervalSec),
                 creamMax: (typeof creamMaxCountSlider !== 'undefined' && creamMaxCountSlider) ? creamMaxCountSlider.value : String(creamMaxCount),
                 creamSizeMul: (typeof creamSizeMulSlider !== 'undefined' && creamSizeMulSlider) ? creamSizeMulSlider.value : String(creamSizeMul),
+                creamGloss: (typeof creamGlossSlider !== 'undefined' && creamGlossSlider) ? creamGlossSlider.value : String(creamGloss),
+                creamViscosity: (typeof creamViscositySlider !== 'undefined' && creamViscositySlider) ? creamViscositySlider.value : String(creamViscosity),
                 creamSimul: (typeof creamSimulCountSlider !== 'undefined' && creamSimulCountSlider) ? creamSimulCountSlider.value : String(creamSimulCount),
                 creamZAttach: (typeof creamZAttachSlider !== 'undefined' && creamZAttachSlider) ? creamZAttachSlider.value : String(creamZAttach),
                 trackingFacing: currentFacingMode,
@@ -3591,7 +3645,8 @@ const uvTap = screenPxToFaceLocal(tx, ty, basis);
             ctx.fill();
 
             const h = ctx.createRadialGradient(-rx * 0.25, -ry * 0.28, 0, -rx * 0.25, -ry * 0.28, Math.max(2, r * 0.55));
-            h.addColorStop(0.0, `rgba(255, 255, 255, ${0.35 * opacity})`);
+            const _gl = (typeof creamGloss === 'number') ? Math.max(0, creamGloss) : 1.0;
+            h.addColorStop(0.0, `rgba(255, 255, 255, ${0.35 * opacity * _gl})`);
             h.addColorStop(1.0, `rgba(255, 255, 255, 0)`);
             ctx.fillStyle = h;
             ctx.beginPath();
@@ -3633,7 +3688,24 @@ const uvTap = screenPxToFaceLocal(tx, ty, basis);
             ctx.ellipse(-w * 0.14, -h * 0.18, w * 0.12, h * 0.10, 0, 0, Math.PI * 2);
             ctx.fill();
 
-            ctx.restore();
+            
+            // Specular highlight (gloss)
+            const _gl2 = (typeof creamGloss === 'number') ? Math.max(0, creamGloss) : 1.0;
+            if (_gl2 > 0.001) {
+                ctx.save();
+                ctx.globalCompositeOperation = 'lighter';
+                const hg = ctx.createRadialGradient(-w * 0.18, -h * 0.25, 0, -w * 0.18, -h * 0.25, Math.max(w, h) * 0.7);
+                hg.addColorStop(0.0, `rgba(255, 255, 255, ${0.22 * opacity * _gl2})`);
+                hg.addColorStop(1.0, `rgba(255, 255, 255, 0)`);
+                ctx.fillStyle = hg;
+                ctx.beginPath();
+                ctx.ellipse(-w * 0.12, -h * 0.18, w * 0.28, h * 0.22, 0, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+                ctx.globalCompositeOperation = 'source-over';
+            }
+
+ctx.restore();
         }
 
 function drawCreamDrip(ctx, x, y, w, h, opacity, angleRad) {
@@ -3816,7 +3888,8 @@ const ang = Math.atan2(dvy, dvx);
 
                 // Let the attached cream itself slowly flow down along the face v-axis (no separate drip objects)
                 if (typeof s.flowVel === 'number') {
-                    s.v += s.flowVel * delta;
+                    const _visc = (typeof creamViscosity === 'number') ? Math.max(0.2, creamViscosity) : 1.0;
+                    s.v += (s.flowVel * delta) / _visc;
                 }
 
 
@@ -3831,7 +3904,7 @@ const ang = Math.atan2(dvy, dvx);
                         const r = useBasis.faceW * 0.18 * s.sizeU * spread;
                         const ang = (useBasis.roll || 0) + (s.rollBias || 0) + (s.rotRad || 0);
                         const baseStretch = (s.sizeV && s.sizeU) ? Math.min(3.0, Math.max(0.8, (s.sizeV / Math.max(1e-6, s.sizeU)))) : 1.0;
-                        const stretchY = baseStretch * (1.0 + Math.max(0, (s.age - s.dripDelay) * 0.10));
+                        const stretchY = baseStretch * (1.0 + Math.max(0, (s.age - s.dripDelay) * (0.10 / ((typeof creamViscosity === 'number') ? Math.max(0.2, creamViscosity) : 1.0))));
                         const rxScale = (s.rxScale || 1.0) * narrow;
                         creamOverlayCtx.globalAlpha = 0.75 * a;
                         drawCreamBlob(creamOverlayCtx, pxy.x, pxy.y, r, 1.0, ang, stretchY, rxScale);
