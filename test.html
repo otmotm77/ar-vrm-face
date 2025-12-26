@@ -2038,16 +2038,20 @@ document.getElementById('toggle-menu-btn').addEventListener('click', () => {
             const isHidden = getComputedStyle(controlPanel).display === 'none';
             if (isHidden) {
                 controlPanel.style.display = 'block';
-                _restoreAccordionState(controlPanel, 'control');
 
-                // On first menu open right after the camera starts, auto-open the model section only once.
-                if (_forceOpenBasicOnce) {
-                    const modelSec = controlPanel.querySelector('details.acc-section[data-acc="basic"]');
-                    if (modelSec) modelSec.open = true;
-                    _forceOpenBasicOnce = false;
-                }
+                // Restore saved accordion state first, then (only once) force-open the model section,
+                // keeping any other restored sections as-is.
+                requestAnimationFrame(() => {
+                    _restoreAccordionState(controlPanel, 'control');
 
-                requestAnimationFrame(() => _restorePanelScroll(controlPanel, 'control'));
+                    if (_forceOpenBasicOnce) {
+                        const modelSec = controlPanel.querySelector('details.acc-section[data-acc="basic"]');
+                        if (modelSec) modelSec.open = true;
+                        _forceOpenBasicOnce = false;
+                    }
+
+                    _restorePanelScroll(controlPanel, 'control');
+                });
             } else {
                 _savePanelScroll(controlPanel, 'control');
                 _saveAccordionState(controlPanel, 'control');
