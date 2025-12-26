@@ -993,7 +993,10 @@ import * as THREE from 'three';
         const vision = await import("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/+esm");
         const { FaceLandmarker, FilesetResolver } = vision;
 
-        let renderer = null;
+                // Base scale factor used for tracked pose matrices.
+        const MODEL_BASE_SCALE = 40;
+
+let renderer = null;
         let scene = null;
         let camera = null;
         let videoEl = null;
@@ -1041,10 +1044,11 @@ let videoTexture = null; // THREE.CanvasTexture
         let eyeAngleDeg = 0;
 
         let currentVrm = null;
+        let wrapperGroup;
         let pivotGroup;       
         let adjustmentGroup;  
         
-        let appliedMinCF = 0.0005;
+      let appliedMinCF = 0.0005;
         let appliedBeta = 0.04;
         let currentFileName = "";
         let currentFacingMode = 'user'; // カメラの向き (user / environment)
@@ -1250,6 +1254,7 @@ let latestCheekLVideoX = 0.35; // normalized in ORIGINAL video frame (0..1)
         const breathTmpV = new THREE.Vector3(); // reuse for projection
         const breathTmpV2 = new THREE.Vector3(); // pivot projection
 
+        const breathTmpV3 = new THREE.Vector3(); // pivot without wrapper projection
         let breathEmitter = null;
                 creamOverlayCanvas = null;
                 creamOverlayCtx = null;
@@ -3398,6 +3403,24 @@ function updateBreathEffect(delta) {
                     const py1 = (-breathTmpV.y * 0.5 + 0.5) * h;
                     shiftX = px1 - px0;
                     shiftY = py1 - py0;
+
+                    // If X offset is applied via wrapperGroup, include that screen-space shift as well.
+                    // This keeps 2D overlays (blush/breath) aligned with the model when X moves the rotation center.
+                    if (wrapperGroup && camera) {
+                        const wx = (wrapperGroup.position && Number.isFinite(wrapperGroup.position.x)) ? wrapperGroup.position.x : 0;
+                        if (wx !== 0) {
+                            breathTmpV3.setFromMatrixPosition(pivotGroup.matrixWorld);
+                            breathTmpV3.x -= wx; // approximate "unshifted" tracked pose
+                            breathTmpV3.project(camera);
+                            const ok2 = Number.isFinite(breathTmpV3.x) && Number.isFinite(breathTmpV3.y) && Number.isFinite(breathTmpV3.z);
+                            if (ok2) {
+                                const pxBase = (breathTmpV3.x * 0.5 + 0.5) * w;
+                                const pyBase = (-breathTmpV3.y * 0.5 + 0.5) * h;
+                                shiftX += (px0 - pxBase);
+                                shiftY += (py0 - pyBase);
+                            }
+                        }
+                    }
                 }
             }
 
@@ -4717,15 +4740,19 @@ if (videoTexture) videoTexture.needsUpdate = true;
                 updateLight();
 
                 // Root group for face pose
+                // Wrapper group for user X offset (moves rotation center)
+                wrapperGroup = new THREE.Group();
+                scene.add(wrapperGroup);
+
                 pivotGroup = new THREE.Group();
                 pivotGroup.visible = false;
                 pivotGroup.matrixAutoUpdate = false;
-                scene.add(pivotGroup);
+                wrapperGroup.add(pivotGroup);
 
-                // User adjustment group
+                // User adjustment group (scale + Y/Z offsets)
                 adjustmentGroup = new THREE.Group();
                 pivotGroup.add(adjustmentGroup);
-                updateTransform();
+updateTransform();
 
                 // --- Breath effect setup ---
                 if (!breathParticles) {
@@ -4783,7 +4810,7 @@ if (videoTexture) videoTexture.needsUpdate = true;
                 // (use global lightRelativePos controlled by sliders)
                 const worldMatrix = new THREE.Matrix4();
                 const rotComp = new THREE.Matrix4();
-                const baseScale = 40;
+                const baseScale = MODEL_BASE_SCALE;
 
                 const tmpPos = new THREE.Vector3();
                 const tmpQuat = new THREE.Quaternion();
@@ -5254,13 +5281,19 @@ VRMUtils.rotateVRM0(vrm);
             if (!adjustmentGroup) return;
             const s = parseFloat(scaleSlider.value);
             adjustmentGroup.scale.set(s, s, s);
+
             const x = xSlider ? parseFloat(xSlider.value) : 0;
             const y = parseFloat(ySlider.value);
             const z = parseFloat(zSlider.value);
-            adjustmentGroup.position.set(x, y, z);
-        }
 
-        scaleSlider.addEventListener('input', updateTransform);
+            // X is applied to wrapperGroup so the rotation center (tracked pose origin) moves with the model.
+            // Multiply by baseScale so the slider keeps roughly the same "feel" as before.
+            if (wrapperGroup) wrapperGroup.position.x = x * MODEL_BASE_SCALE;
+
+            // Keep Y/Z (and any future offsets) on adjustmentGroup.
+            adjustmentGroup.position.set(0, y, z);
+        }
+scaleSlider.addEventListener('input', updateTransform);
         if (xSlider) xSlider.addEventListener('input', updateTransform);
         ySlider.addEventListener('input', updateTransform);
         zSlider.addEventListener('input', updateTransform);
