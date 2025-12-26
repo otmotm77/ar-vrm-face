@@ -323,23 +323,7 @@
             background: #f57c00;
         }
 
-        
-        .default-btn {
-            width: 100%;
-            background: #607d8b;
-            color: white;
-            border: none;
-            padding: 12px;
-            border-radius: 6px;
-            cursor: pointer;
-            font-weight: bold;
-            margin-top: 8px;
-            font-size: 14px;
-        }
-        .default-btn:active {
-            background: #546e7a;
-        }
-#loading {
+        #loading {
             position: absolute;
             top: 50%;
             left: 50%;
@@ -509,7 +493,7 @@
             </label>
             <input type="file" id="vrm-upload">
 
-            <button id="save-default-btn" class="default-btn">デフォルトオプションとして保存</button>
+            <button id="save-default-btn" class="restart-btn" style="background:#5c6bc0; margin-top:8px;">デフォルトオプションとして保存</button>
 
 
             <div class="slider-container">
@@ -811,6 +795,23 @@
             </details>
 </div>
 
+
+            <details class="acc-section" data-acc="help">
+                <summary>ヘルプ</summary>
+                <div style="font-size:12px; line-height:1.55; color:#222;">
+                    <p style="margin:0 0 8px 0;">
+                        このアプリはカメラ映像を使って端末内で顔認識を行い、VRMの頭部を重ねて表示します。
+                    </p>
+                    <ul style="margin:0; padding-left:18px;">
+                        <li>カメラアクセスは行いますが、映像の<strong>送信</strong>や<strong>保存</strong>は一切行いません（端末内で処理します）。</li>
+                        <li>VRMを読み込む前に変更した設定値は、<strong>デフォルト</strong>として保存されます。</li>
+                        <li>VRM読み込み後の設定は、読み込んだ<strong>VRMごと</strong>に保存されます。</li>
+                        <li>「<strong>デフォルトオプションとして保存</strong>」を実行すると、現在のVRM設定がデフォルト値として保存されます。</li>
+                    </ul>
+                </div>
+            </details>
+
+
         <!-- 照明・画質設定パネル -->
         <div class="control-panel" id="light-panel" style="display:none;">
             <h1>照明・画質</h1>
@@ -947,7 +948,7 @@
         
 // ===== App Version (single source of truth) =====
 const APP_VERSION = "v6.01.21";
-const APP_VERSION_NOTE = "defaults: save without VRM + apply on new VRM; save-default button";
+const APP_VERSION_NOTE = "defaults: global + per-VRM; add help";
 
 
 function getOverlayPixelRatio() {
@@ -2402,7 +2403,9 @@ document.getElementById('toggle-menu-btn').addEventListener('click', () => {
             bgPlane.scale.set(planeW, planeH, 1);
         }
 
-        function collectSettingsObject() {
+        function saveSettings(forceName) {
+            const fname = (forceName && String(forceName)) ? String(forceName) : (currentFileName || "default");
+            if (!fname) return;
             const settings = {
                 scale: scaleSlider.value,
                 y: ySlider.value,
@@ -2470,34 +2473,18 @@ document.getElementById('toggle-menu-btn').addEventListener('click', () => {
                 trackingFacing: currentFacingMode,
                 trackingMirror: !!mirrorEnabled,
             };
-            return settings;
-        }
 
-        function saveSettings() {
-            const settings = collectSettingsObject();
-            const keyName = "vrm_settings_" + (currentFileName || "default");
+
             try {
-                localStorage.setItem(keyName, JSON.stringify(settings));
+                localStorage.setItem("vrm_settings_" + fname, JSON.stringify(settings));
             } catch(e) {
                 console.error("Save failed:", e);
             }
         }
 
-        function saveDefaultOptions() {
-            const settings = collectSettingsObject();
-            try {
-                localStorage.setItem("vrm_settings_default", JSON.stringify(settings));
-                showToast("デフォルト設定として保存しました");
-            } catch(e) {
-                console.error("Save default failed:", e);
-                showToast("デフォルト設定の保存に失敗しました");
-            }
-        }
-
-        function loadSettings(fname, opts) {
-            opts = opts || {};
-            const silent = !!opts.silent;
-            const label = (opts.label !== undefined && opts.label !== null) ? String(opts.label) : fname;
+        function loadSettings(fname, opts = {}) {
+            const silent = !!(opts && opts.silent);
+            const label = (opts && opts.label) ? String(opts.label) : String(fname);
             try {
                 const data = localStorage.getItem("vrm_settings_" + fname);
                 if (data) {
@@ -5033,14 +5020,16 @@ const tms = res && res.facialTransformationMatrixes;
         const loader = new GLTFLoader();
         loader.register((parser) => new VRMLoaderPlugin(parser));
         const fileInput = document.getElementById('vrm-upload');
+        
         const saveDefaultBtn = document.getElementById('save-default-btn');
         if (saveDefaultBtn) {
             saveDefaultBtn.addEventListener('click', () => {
-                saveDefaultOptions();
+                // Save current UI values as global defaults (used for VRMs without per-file save)
+                saveSettings('default');
+                showToast('デフォルト設定に保存しました');
             });
         }
 
-        
         fileInput.addEventListener('change', (event) => {
             const file = event.target.files[0];
             if (!file) return;
@@ -5110,8 +5099,14 @@ const tms = res && res.facialTransformationMatrixes;
                         updateBlushAnchorsFromVRM(vrm);
                         }
 
-                        const restored = loadSettings(currentFileName);
-                        if (!restored) loadSettings('default', { silent: true, label: 'デフォルト設定' });
+                                                const loaded = loadSettings(currentFileName, { silent: true, label: currentFileName });
+                        if (!loaded) {
+                            loadSettings('default', { silent: true, label: 'デフォルト' });
+                            showToast('デフォルト設定を適用しました');
+                        } else {
+                            showToast(`設定を復元しました:\n${currentFileName}`);
+                        }
+
                         updateTransform();
 
                         loadingText.style.display = 'none';
