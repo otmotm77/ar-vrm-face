@@ -1460,8 +1460,8 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
         const lightPanel = document.getElementById('light-panel');
         // --- UI state helpers: accordion + scroll restore ---
         function _uiKey(suffix) {
-            const fname = (typeof currentFileName !== 'undefined' && currentFileName) ? currentFileName : 'default';
-            return `ui_${suffix}_${fname}`;
+            // UI state should be global (not per-VRM) so section open/close is consistent.
+            return `ui_${suffix}`;
         }
 
         function _savePanelScroll(panel, suffix) {
@@ -1477,7 +1477,7 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
         function _saveAccordionState(panel, suffix) {
             try {
                 const openIds = Array.from(panel.querySelectorAll('details.acc-section'))
-                    .filter(d => d.open && (d.dataset.acc || '') !== 'basic')
+                    .filter(d => d.open)
                     .map(d => d.dataset.acc || '');
                 localStorage.setItem(_uiKey(suffix + '_acc'), JSON.stringify(openIds));
             } catch(e) {}
@@ -1486,21 +1486,15 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
             try {
                 const raw = localStorage.getItem(_uiKey(suffix + '_acc'));
                 if (raw === null) {
-                    // No saved state yet: still ensure 'basic' stays open
-                    const fixed = panel.querySelector('details.acc-section[data-acc="basic"]');
-                    if (fixed) fixed.open = true;
+                    // No saved state yet: keep the default markup states.
                     return;
                 }
                 const openIds = new Set(JSON.parse(raw));
                 Array.from(panel.querySelectorAll('details.acc-section')).forEach(d => {
                     const id = d.dataset.acc || '';
-                    if (id === 'basic') { d.open = true; return; }
                     d.open = openIds.has(id);
                 });
-            } catch(e) {
-                const fixed = panel.querySelector('details.acc-section[data-acc="basic"]');
-                if (fixed) fixed.open = true;
-            }
+            } catch(e) {}
         }
 
         function _attachPanelState(panel, suffix) {
@@ -1512,13 +1506,9 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
                 t = setTimeout(() => _savePanelScroll(panel, suffix), 120);
             }, { passive: true });
 
-            // Accordion open-state save (and keep 'basic' always open)
+            // Accordion open-state save
             Array.from(panel.querySelectorAll('details.acc-section')).forEach(d => {
                 d.addEventListener('toggle', () => {
-                    if ((d.dataset.acc || '') === 'basic' && !d.open) {
-                        d.open = true;
-                        return;
-                    }
                     _saveAccordionState(panel, suffix);
                 });
             });
@@ -1526,6 +1516,10 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
 
         _attachPanelState(controlPanel, 'control');
         _attachPanelState(lightPanel, 'light');
+
+        // After camera starts, force-open the 'model' section only once (on first menu open).
+        let _forceOpenBasicOnce = false;
+
 
         const loadingText = document.getElementById('loading');
         const statusMsg = document.getElementById('status-msg');
@@ -2016,9 +2010,18 @@ document.getElementById('toggle-menu-btn').addEventListener('click', () => {
             if (isHidden) {
                 controlPanel.style.display = 'block';
                 _restoreAccordionState(controlPanel, 'control');
+
+                // On first menu open right after the camera starts, auto-open the model section only once.
+                if (_forceOpenBasicOnce) {
+                    const modelSec = controlPanel.querySelector('details.acc-section[data-acc="basic"]');
+                    if (modelSec) modelSec.open = true;
+                    _forceOpenBasicOnce = false;
+                }
+
                 requestAnimationFrame(() => _restorePanelScroll(controlPanel, 'control'));
             } else {
                 _savePanelScroll(controlPanel, 'control');
+                _saveAccordionState(controlPanel, 'control');
                 controlPanel.style.display = 'none';
             }
         });
@@ -2350,6 +2353,7 @@ document.getElementById('toggle-menu-btn').addEventListener('click', () => {
             // Apply saved default options BEFORE starting the camera (startup defaults)
             try { loadSettings('default', { silent: true, label: 'デフォルト' }); } catch(_) {}
 
+            _forceOpenBasicOnce = true;
             await startAR();
         });
 
