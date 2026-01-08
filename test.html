@@ -964,7 +964,7 @@
     <script type="module">
         
 // ===== App Version (single source of truth) =====
-const APP_VERSION = "v6.01.24";
+const APP_VERSION = "v6.01.25";
 const APP_VERSION_NOTE = "Landmark mapping uses captured rotation/video size to stabilize auto targeting; Camera switch: reliable first-frame + reset";
 
 
@@ -1552,6 +1552,7 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
                 if (d.rect) lines.push(`rect x=${_fmt(d.rect.x,1)} y=${_fmt(d.rect.y,1)} w=${_fmt(d.rect.w,1)} h=${_fmt(d.rect.h,1)}`);
                 if (d.faceW || d.faceH) lines.push(`faceW=${_fmt(d.faceW,1)} faceH=${_fmt(d.faceH,1)} collapsed=${d.collapsed ? 'Y' : 'N'}`);
                 if (d.axX && d.axY) lines.push(`axX=(${_fmt(d.axX.x,2)},${_fmt(d.axX.y,2)}) axY=(${_fmt(d.axY.x,2)},${_fmt(d.axY.y,2)})`);
+                if (d.vyUnit) lines.push(`vy=(${_fmt(d.vyUnit.x,2)},${_fmt(d.vyUnit.y,2)})`);
                 if (Number.isFinite(d.tMaxAllowed)) lines.push(`tMax=${_fmt(d.tMaxAllowed,1)} t=${_fmt(d.t,1)} yClamp=${d.yClamp ? 'Y' : 'N'}`);
                 if (d.pf && d.pc && d.pl && d.pr) {
                     lines.push(`pf=(${_fmt(d.pf.x,1)},${_fmt(d.pf.y,1)}) pc=(${_fmt(d.pc.x,1)},${_fmt(d.pc.y,1)})`);
@@ -4014,18 +4015,29 @@ const CREAM_SHOT_COOLDOWN_MS = 320;
                     // Build face axes in screen space (robust even when the screen orientation is locked)
                     const vxX = (pr.x - pl.x), vxY = (pr.y - pl.y);
                     const vyX = (pc.x - pf.x), vyY = (pc.y - pf.y);
-                    const faceW = Math.max(12, Math.hypot(vxX, vxY));
-                    const faceH0 = Math.max(12, Math.hypot(vyX, vyY));
-                    // Screen-space face axes (unit). Make them stable/orthonormal so jitter works under orientation lock.
-                    const axX = { x: vxX / faceW, y: vxY / faceW };
-                    // Orthonormalize Y against X to avoid axis swapping / collapse under rotation lock.
-                    let ayx = (vyX / faceH0);
-                    let ayy = (vyY / faceH0);
-                    const dot = (ayx * axX.x + ayy * axX.y);
-                    ayx -= dot * axX.x;
-                    ayy -= dot * axX.y;
-                    const faceH = Math.max(12, Math.hypot(ayx, ayy));
-                    const axY = { x: ayx / faceH, y: ayy / faceH };
+
+                    const vxLen = Math.hypot(vxX, vxY);
+                    const vyLen = Math.hypot(vyX, vyY);
+
+                    // Scale (pixels)
+                    const faceW = Math.max(12, vxLen);
+                    const faceH = Math.max(12, vyLen);
+
+                    // Unit X axis: cheekL -> cheekR (fallback to screen X)
+                    let axX = { x: 1, y: 0 };
+                    if (vxLen > 1e-4) axX = { x: vxX / vxLen, y: vxY / vxLen };
+
+                    // Unit "vertical" axis: forehead -> chin (fallback to screen Y)
+                    let vyUnit = { x: 0, y: 1 };
+                    if (vyLen > 1e-4) vyUnit = { x: vyX / vyLen, y: vyY / vyLen };
+
+                    // Orthonormal Y axis for jitter (guaranteed unit). Keep its direction consistent with vyUnit.
+                    let ayx = vyUnit.x - (vyUnit.x * axX.x + vyUnit.y * axX.y) * axX.x;
+                    let ayy = vyUnit.y - (vyUnit.x * axX.x + vyUnit.y * axX.y) * axX.y;
+                    let ayLen = Math.hypot(ayx, ayy);
+                    if (ayLen < 1e-3) { ayx = -axX.y; ayy = axX.x; ayLen = 1.0; }
+                    if ((ayx * vyUnit.x + ayy * vyUnit.y) < 0) { ayx = -ayx; ayy = -ayy; }
+                    const axY = { x: ayx / ayLen, y: ayy / ayLen };
 
                     // Center: bias slightly toward cheeks so shots stay on the visible face
                     const centerX = (midCheekX * 0.60 + midFCX * 0.40);
@@ -4035,7 +4047,7 @@ const CREAM_SHOT_COOLDOWN_MS = 320;
                         dbg.pf = pf; dbg.pc = pc; dbg.pl = pl; dbg.pr = pr;
                         dbg.center = { x: centerX, y: centerY };
                         dbg.faceW = faceW; dbg.faceH = faceH;
-                        dbg.axX = axX; dbg.axY = axY;
+                        dbg.axX = axX; dbg.axY = axY; dbg.vyUnit = vyUnit;
                     }
 
                     // Limit "too low" along the face vertical axis (projection), not the screen Y axis.
@@ -4044,7 +4056,7 @@ const CREAM_SHOT_COOLDOWN_MS = 320;
 
                     // Optional simple screen-Y clamp only when face vertical axis is close to screen-Y.
                     // (Avoids collapsing to a line when the camera view is rotated relative to the screen.)
-                    if (Math.abs(axY.x) < 0.35) {
+                    if (Math.abs(vyUnit.x) < 0.35) {
                         yTop = Math.min(pf.y, pc.y);
                         const yBot = Math.max(pf.y, pc.y);
                         yMaxAllowed = yTop + (yBot - yTop) * 0.90; // exclude lower 10%
@@ -4077,15 +4089,15 @@ const CREAM_SHOT_COOLDOWN_MS = 320;
                             const v = bPx * rr * Math.sin(theta);
                             x = centerX + axX.x * u + axY.x * v;
                             y = centerY + axX.y * u + axY.y * v;
-                            t = ((x - pf.x) * axY.x + (y - pf.y) * axY.y);
+                            t = ((x - pf.x) * vyUnit.x + (y - pf.y) * vyUnit.y);
                             tries++;
                         } while (t > tMaxAllowed && tries < 18);
 
                         // If we still exceed the lower-limit, project back onto the allowed boundary.
                         if (t > tMaxAllowed) {
                             const excess = (t - tMaxAllowed);
-                            x -= axY.x * excess;
-                            y -= axY.y * excess;
+                            x -= vyUnit.x * excess;
+                            y -= vyUnit.y * excess;
                             t = tMaxAllowed;
                         }
 
