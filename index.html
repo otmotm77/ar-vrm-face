@@ -815,6 +815,16 @@
                         <li>VRM読み込み後の設定は、読み込んだ<strong>VRMごとに保存されます</strong>。</li>
                         <li>「<strong>デフォルトオプションとして保存</strong>」を実行すると、現在のVRM設定がデフォルトに上書きされます。</li>
                     </ul>
+                    <div class="slider-container" style="margin-top:10px;">
+                        <label class="toggle-label">
+                            <input type="checkbox" id="debugtext-toggle" class="toggle-checkbox">
+                            デバッグ表示
+                        </label>
+                        <div style="font-size:11px; opacity:0.85; margin-top:4px; line-height:1.4;">
+                            自動射出などの内部値を画面上に表示します（不具合切り分け用）。
+                        </div>
+                    </div>
+
                 </div>
             </details>
 
@@ -954,8 +964,8 @@
     <script type="module">
         
 // ===== App Version (single source of truth) =====
-const APP_VERSION = "v6.01.23";
-const APP_VERSION_NOTE = "Camera switch: reliable first-frame + reset";
+const APP_VERSION = "v6.01.25";
+const APP_VERSION_NOTE = "Landmark mapping uses captured rotation/video size to stabilize auto targeting; Camera switch: reliable first-frame + reset";
 
 
 function getOverlayPixelRatio() {
@@ -1011,6 +1021,14 @@ let renderer = null;
         let latestMouthCenterVideoY = 0.6;
         let latestMouthCenterVideoValid = false;
         let latestFaceLandmarks0 = null; // MediaPipe faceLandmarks[0] for 2D overlays (blush/breath)
+        // Store the rotation that was used to generate the MediaPipe input for these landmarks.
+        // Auto-cream (and other 2D overlays) must map landmarks back to the ORIGINAL video frame using
+        // the SAME rotation, otherwise mappings can collapse (e.g., when screen rotation is locked).
+        let latestFaceLandmarksInputRotDeg = 0;
+        let latestFaceLandmarksVideoW = 0;
+        let latestFaceLandmarksVideoH = 0;
+        let latestFaceLandmarksMpW = 0;
+        let latestFaceLandmarksMpH = 0;
 
 
         let isFaceVisible = false;
@@ -1474,6 +1492,88 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
             // UI state should be global (not per-VRM) so section open/close is consistent.
             return `ui_${suffix}`;
         }
+
+        // --- Debug text overlay (controlled via Help section toggle) ---
+        const debugTextToggle = document.getElementById('debugtext-toggle');
+        const debugTextOverlay = document.getElementById('debug-text-overlay');
+        let debugTextEnabled = false;
+
+        // Auto-cream debug snapshot (updated by auto targeting)
+        let _dbgAutoLast = null;
+        let _dbgLastUpdateMs = 0;
+
+        function _setDebugOverlayVisible(on) {
+            if (!debugTextOverlay) return;
+            debugTextOverlay.style.display = on ? 'block' : 'none';
+            if (!on) debugTextOverlay.textContent = '';
+        }
+
+        function setDebugTextEnabled(on) {
+            debugTextEnabled = !!on;
+            try { localStorage.setItem(_uiKey('debug_text'), debugTextEnabled ? '1' : '0'); } catch(e) {}
+            _setDebugOverlayVisible(debugTextEnabled);
+        }
+
+        function _initDebugTextToggle() {
+            try { debugTextEnabled = (localStorage.getItem(_uiKey('debug_text')) === '1'); } catch(e) { debugTextEnabled = false; }
+            if (debugTextToggle) {
+                debugTextToggle.checked = !!debugTextEnabled;
+                debugTextToggle.addEventListener('change', () => setDebugTextEnabled(debugTextToggle.checked));
+            }
+            _setDebugOverlayVisible(!!debugTextEnabled);
+        }
+
+        function _fmt(n, d=1) {
+            return (Number.isFinite(n) ? n.toFixed(d) : 'NaN');
+        }
+
+        function _updateDebugOverlayAutoCream(context) {
+            if (!debugTextEnabled || !debugTextOverlay) return;
+            const now = performance.now();
+            if (now - _dbgLastUpdateMs < 120) return;
+            _dbgLastUpdateMs = now;
+
+            const lines = [];
+            lines.push('[Debug] AutoCream');
+            if (context) {
+                lines.push(`css=${_fmt(context.cssW,1)}x${_fmt(context.cssH,1)} pr=${_fmt(context.pr,2)}`);
+            }
+            if (videoEl) {
+                lines.push(`video=${videoEl.videoWidth||0}x${videoEl.videoHeight||0}`);
+            }
+            if (typeof deviceBeta !== 'undefined' || typeof deviceGamma !== 'undefined') {
+                lines.push(`tilt beta=${_fmt(deviceBeta,1)} gamma=${_fmt(deviceGamma,1)}`);
+            }
+            lines.push(`inputRot=${_fmt(inputRotationDeg,0)} lmRot=${_fmt((typeof latestFaceLandmarksInputRotDeg!=='undefined'? latestFaceLandmarksInputRotDeg : NaN),0)}`);
+
+            const d = _dbgAutoLast;
+            if (d) {
+                if (d.mode) lines.push(`mode=${d.mode}${d.reason ? ' ('+d.reason+')' : ''}`);
+                if (d.rect) lines.push(`rect x=${_fmt(d.rect.x,1)} y=${_fmt(d.rect.y,1)} w=${_fmt(d.rect.w,1)} h=${_fmt(d.rect.h,1)}`);
+                if (d.faceW || d.faceH) lines.push(`faceW=${_fmt(d.faceW,1)} faceH=${_fmt(d.faceH,1)} collapsed=${d.collapsed ? 'Y' : 'N'}`);
+                if (d.axX && d.axY) lines.push(`axX=(${_fmt(d.axX.x,2)},${_fmt(d.axX.y,2)}) axY=(${_fmt(d.axY.x,2)},${_fmt(d.axY.y,2)})`);
+                if (d.vyUnit) lines.push(`vy=(${_fmt(d.vyUnit.x,2)},${_fmt(d.vyUnit.y,2)})`);
+                if (Number.isFinite(d.tMaxAllowed)) lines.push(`tMax=${_fmt(d.tMaxAllowed,1)} t=${_fmt(d.t,1)} yClamp=${d.yClamp ? 'Y' : 'N'}`);
+                if (d.pf && d.pc && d.pl && d.pr) {
+                    lines.push(`pf=(${_fmt(d.pf.x,1)},${_fmt(d.pf.y,1)}) pc=(${_fmt(d.pc.x,1)},${_fmt(d.pc.y,1)})`);
+                    lines.push(`pl=(${_fmt(d.pl.x,1)},${_fmt(d.pl.y,1)}) pr=(${_fmt(d.pr.x,1)},${_fmt(d.pr.y,1)})`);
+                }
+                if (d.center) lines.push(`center=(${_fmt(d.center.x,1)},${_fmt(d.center.y,1)})`);
+                if (d.out) lines.push(`tgt=(${_fmt(d.out.x,1)},${_fmt(d.out.y,1)})`);
+                if (d.shift) lines.push(`shift dx=${_fmt(d.shift.dx,1)} dy=${_fmt(d.shift.dy,1)}`);
+                if (d.outShifted) lines.push(`tgt+shift=(${_fmt(d.outShifted.x,1)},${_fmt(d.outShifted.y,1)})`);
+                if (Number.isFinite(d.yTopShift) || Number.isFinite(d.yMaxShift)) {
+                    lines.push(`yTop=${_fmt(d.yTopShift,1)} yMax=${_fmt(d.yMaxShift,1)}`);
+                }
+            } else {
+                lines.push('(no sample yet)');
+            }
+
+            debugTextOverlay.textContent = lines.join('\n');
+        }
+
+        _initDebugTextToggle();
+
 
         // Prevent accordion 'toggle' handlers from saving while we are restoring state
         let _uiRestoring = false;
@@ -3754,21 +3854,27 @@ const CREAM_SHOT_COOLDOWN_MS = 320;
 
         function getCreamVideoRect(cssW, cssH) {
             if (!videoEl) return null;
-            const vw = videoEl.videoWidth || 0;
-            const vh = videoEl.videoHeight || 0;
+            // Use landmark-captured video size when available (prevents mismatch during camera/orientation transitions).
+            const vw = (latestFaceLandmarksVideoW && latestFaceLandmarksVideoW > 0) ? latestFaceLandmarksVideoW : (videoEl.videoWidth || 0);
+            const vh = (latestFaceLandmarksVideoH && latestFaceLandmarksVideoH > 0) ? latestFaceLandmarksVideoH : (videoEl.videoHeight || 0);
             if (vw <= 0 || vh <= 0) return null;
             return computeContainRect(cssW, cssH, vw, vh);
         }
 
         function mapMpLandmarkToScreenPx(p, cssW, cssH, rect) {
             if (!p || !videoEl || !rect) return null;
-            const vw = videoEl.videoWidth || 0;
-            const vh = videoEl.videoHeight || 0;
+
+            // Use the same rotation/dimensions that were used when these landmarks were produced.
+            // (If inputRotationDeg changes after detection, mapping with the "current" value can collapse.)
+            const vw = (latestFaceLandmarksVideoW && latestFaceLandmarksVideoW > 0) ? latestFaceLandmarksVideoW : (videoEl.videoWidth || 0);
+            const vh = (latestFaceLandmarksVideoH && latestFaceLandmarksVideoH > 0) ? latestFaceLandmarksVideoH : (videoEl.videoHeight || 0);
             if (vw <= 0 || vh <= 0) return null;
 
-            const mpW = (inputRotationDeg !== 0) ? (mpOffscreenCanvas.width || vw) : vw;
-            const mpH = (inputRotationDeg !== 0) ? (mpOffscreenCanvas.height || vh) : vh;
-            const vv = mpLandmarkNormToVideoNorm(p.x, p.y, vw, vh, inputRotationDeg, mpW, mpH);
+            const rotDeg = (Number.isFinite(latestFaceLandmarksInputRotDeg)) ? latestFaceLandmarksInputRotDeg : (inputRotationDeg || 0);
+            const mpW = (rotDeg !== 0) ? (latestFaceLandmarksMpW || mpOffscreenCanvas.width || vw) : vw;
+            const mpH = (rotDeg !== 0) ? (latestFaceLandmarksMpH || mpOffscreenCanvas.height || vh) : vh;
+
+            const vv = mpLandmarkNormToVideoNorm(p.x, p.y, vw, vh, rotDeg, mpW, mpH);
             if (!vv || !vv.ok) return null;
 
             return { x: rect.x + vv.x * rect.w, y: rect.y + vv.y * rect.h, vx: vv.x, vy: vv.y };
@@ -3779,49 +3885,68 @@ const CREAM_SHOT_COOLDOWN_MS = 320;
             const rect = getCreamVideoRect(cssW, cssH);
             if (!rect) return null;
             const lm = latestFaceLandmarks0;
-            const le0 = lm[33];
-            const re0 = lm[263];
-            const lm0 = lm[61];
-            const rm0 = lm[291];
-            if (!le0 || !re0 || !lm0 || !rm0) return null;
+
+            // Key landmarks in *screen space* (after the same mapping used for rendering).
+            // Build stable face-local axes even when the screen orientation is locked and the device is physically rotated.
+            const le0 = lm[33];   // left eye outer
+            const re0 = lm[263];  // right eye outer
+            const lm0 = lm[61];   // left mouth corner
+            const rm0 = lm[291];  // right mouth corner
+            const pf0 = lm[10];   // upper forehead
+            const pc0 = lm[152];  // chin
+            const pl0 = lm[234];  // left cheek (face oval)
+            const pr0 = lm[454];  // right cheek (face oval)
+
+            if (!le0 || !re0 || !lm0 || !rm0 || !pf0 || !pc0 || !pl0 || !pr0) return null;
 
             const le = mapMpLandmarkToScreenPx(le0, cssW, cssH, rect);
             const re = mapMpLandmarkToScreenPx(re0, cssW, cssH, rect);
             const ml = mapMpLandmarkToScreenPx(lm0, cssW, cssH, rect);
             const mr = mapMpLandmarkToScreenPx(rm0, cssW, cssH, rect);
-            if (!le || !re || !ml || !mr) return null;
+            const pf = mapMpLandmarkToScreenPx(pf0, cssW, cssH, rect);
+            const pc = mapMpLandmarkToScreenPx(pc0, cssW, cssH, rect);
+            const pl = mapMpLandmarkToScreenPx(pl0, cssW, cssH, rect);
+            const pr = mapMpLandmarkToScreenPx(pr0, cssW, cssH, rect);
+
+            if (!le || !re || !ml || !mr || !pf || !pc || !pl || !pr) return null;
 
             const eyeMid = { x: (le.x + re.x) * 0.5, y: (le.y + re.y) * 0.5 };
             const mouthMid = { x: (ml.x + mr.x) * 0.5, y: (ml.y + mr.y) * 0.5 };
 
-            const dx = (re.x - le.x);
-            const dy = (re.y - le.y);
-            const faceW = Math.max(12, Math.hypot(dx, dy));
-            let ux = dx / faceW;
-            let uy = dy / faceW;
+            // U axis: cheek L -> cheek R (stable across yaw and less noisy than eye corners on some devices)
+            let ux = (pr.x - pl.x);
+            let uy = (pr.y - pl.y);
+            let faceW = Math.max(12, Math.hypot(ux, uy));
+            ux /= faceW; uy /= faceW;
 
-            let vx = -uy;
-            let vy = ux;
+            // V axis: forehead -> chin (actual face "vertical" axis in screen space)
+            let vx = (pc.x - pf.x);
+            let vy = (pc.y - pf.y);
+            let faceH = Math.max(12, Math.hypot(vx, vy));
+            vx /= faceH; vy /= faceH;
 
-            const mdx = (mouthMid.x - eyeMid.x);
-            const mdy = (mouthMid.y - eyeMid.y);
-            if (mdx * vx + mdy * vy < 0) { vx = -vx; vy = -vy; }
+            // Stabilize U axis sign using eye direction (prevents random left/right flips)
+            const ex = (re.x - le.x), ey = (re.y - le.y);
+            if ((ux * ex + uy * ey) < 0) { ux = -ux; uy = -uy; }
 
-// Ensure +V always points downward in screen space (fixes top/bottom inversion on some rotations).
-if (vy < 0) { vx = -vx; vy = -vy; }
+            // Orthonormalize V against U to avoid skew (and sign ambiguity)
+            const dotVU = (vx * ux + vy * uy);
+            vx = vx - ux * dotVU;
+            vy = vy - uy * dotVU;
+            const vlen = Math.hypot(vx, vy);
+            if (vlen > 1e-6) { vx /= vlen; vy /= vlen; }
+            else { vx = -uy; vy = ux; }
 
-            
             const roll = Math.atan2(uy, ux);
 
-            // Pseudo depth: foreshorten UV axes based on face yaw/pitch so cream feels less "floating" during rotation.
+            // Pseudo depth: foreshorten UV axes based on face yaw/pitch so cream feels less "attached" during rotation.
             const k = Math.max(0, Math.min(1, (typeof creamZAttach !== 'undefined' ? (creamZAttach || 0) : 0)));
             const cy = Math.cos(Math.min(Math.abs(typeof latestFaceYawRad !== 'undefined' ? (latestFaceYawRad || 0) : 0), Math.PI / 2));
             const cp = Math.cos(Math.min(Math.abs(typeof latestFacePitchRad !== 'undefined' ? (latestFacePitchRad || 0) : 0), Math.PI / 2));
             const su = 1.0 - k + k * Math.max(0.35, cy);
             const sv = 1.0 - k + k * Math.max(0.35, cp);
 
-            return { rect, le, re, eyeMid, mouthMid, faceW, ux, uy, vx, vy, roll, su, sv };
-
+            return { rect, le, re, eyeMid, mouthMid, faceW, faceH, ux, uy, vx, vy, roll, su, sv };
         }
 
         function screenPxToFaceLocal(px, py, basis) {
@@ -3830,8 +3955,10 @@ if (vy < 0) { vx = -vx; vy = -vy; }
             const dy = py - basis.eyeMid.y;
             const su = (basis.su || 1.0);
             const sv = (basis.sv || 1.0);
-            const u = (dx * basis.ux + dy * basis.uy) / (basis.faceW * su);
-            const v = (dx * basis.vx + dy * basis.vy) / (basis.faceW * sv);
+            const fw = Math.max(1e-6, basis.faceW || 0);
+            const fh = Math.max(1e-6, basis.faceH || fw);
+            const u = (dx * basis.ux + dy * basis.uy) / (fw * su);
+            const v = (dx * basis.vx + dy * basis.vy) / (fh * sv);
             return { u, v };
         }
 
@@ -3839,9 +3966,11 @@ if (vy < 0) { vx = -vx; vy = -vy; }
             if (!basis) return null;
             const su = (basis.su || 1.0);
             const sv = (basis.sv || 1.0);
+            const fw = Math.max(1e-6, basis.faceW || 0);
+            const fh = Math.max(1e-6, basis.faceH || fw);
             return {
-                x: basis.eyeMid.x + (basis.ux * (localU * su) + basis.vx * (localV * sv)) * basis.faceW,
-                y: basis.eyeMid.y + (basis.uy * (localU * su) + basis.vy * (localV * sv)) * basis.faceW
+                x: basis.eyeMid.x + (basis.ux * (localU * su)) * fw + (basis.vx * (localV * sv)) * fh,
+                y: basis.eyeMid.y + (basis.uy * (localU * su)) * fw + (basis.vy * (localV * sv)) * fh
             };
         }
 
@@ -3852,16 +3981,24 @@ if (vy < 0) { vx = -vx; vy = -vy; }
             return { x: r.left + r.width * 0.5, y: r.top + r.height * 0.5 };
         }
         function sampleAutoCreamTargetPx(basis, cssW, cssH) {
-            if (!basis) return null;
+            if (!basis) {
+            if (debugTextEnabled) _dbgAutoLast = { kind: 'autoCream', mode: 'none', reason: 'no basis' };
+            return null;
+        }
 
-            // Prefer sampling in SCREEN space using face-oval landmarks so auto shots stay within the VRM face region.
-            // Also excludes the lower 10% region (near the chin/neck) by clamping Y.
+            // Prefer sampling in SCREEN space using face-oval landmarks so auto shots stay within the visible face region.
+            // When the device is rotated while the screen orientation is locked, some landmark->screen mappings can
+            // temporarily collapse (e.g., left/right cheeks map too close). In that case, fall back to robust face-local sampling.
             const lm = latestFaceLandmarks0;
             const rect = basis.rect;
+            const dbg = debugTextEnabled ? { kind: 'autoCream', rect: rect } : null;
             const idxForehead = 10;   // upper forehead
             const idxChin = 152;      // chin
             const idxCheekL = 234;    // left cheek (face oval)
             const idxCheekR = 454;    // right cheek (face oval)
+
+            let yTop = null;
+            let yMaxAllowed = null;
 
             if (lm && rect && lm[idxForehead] && lm[idxChin] && lm[idxCheekL] && lm[idxCheekR]) {
                 const pf = mapMpLandmarkToScreenPx(lm[idxForehead], cssW, cssH, rect);
@@ -3870,43 +4007,118 @@ if (vy < 0) { vx = -vx; vy = -vy; }
                 const pr = mapMpLandmarkToScreenPx(lm[idxCheekR], cssW, cssH, rect);
 
                 if (pf && pc && pl && pr) {
-                    const centerX = (pl.x + pr.x) * 0.5;
-                    const centerY = (pf.y + pc.y) * 0.5;
+                    const midCheekX = (pl.x + pr.x) * 0.5;
+                    const midCheekY = (pl.y + pr.y) * 0.5;
+                    const midFCX = (pf.x + pc.x) * 0.5;
+                    const midFCY = (pf.y + pc.y) * 0.5;
 
-                    const faceH = Math.max(12, Math.hypot(pc.x - pf.x, pc.y - pf.y));
-                    const faceW = Math.max(12, Math.hypot(pr.x - pl.x, pr.y - pl.y));
+                    // Build face axes in screen space (robust even when the screen orientation is locked)
+                    const vxX = (pr.x - pl.x), vxY = (pr.y - pl.y);
+                    const vyX = (pc.x - pf.x), vyY = (pc.y - pf.y);
 
-                    // Mildly follow the VRM head-scale slider (avoid expanding too far outside face).
-                    const s = Math.min(Math.max(getHeadOverlayScale(), 0.6), 1.35);
+                    const vxLen = Math.hypot(vxX, vxY);
+                    const vyLen = Math.hypot(vyX, vyY);
 
-                    // Ellipse that roughly fits the face oval in screen space.
-                    const aPx = (faceW * 0.55) * s;
-                    const bPx = (faceH * 0.55) * s;
+                    // Scale (pixels)
+                    const faceW = Math.max(12, vxLen);
+                    const faceH = Math.max(12, vyLen);
 
-                    const yTop = Math.min(pf.y, pc.y);
-                    const yBot = Math.max(pf.y, pc.y);
-                    const yMaxAllowed = yTop + (yBot - yTop) * 0.90; // exclude lower 10%
+                    // Unit X axis: cheekL -> cheekR (fallback to screen X)
+                    let axX = { x: 1, y: 0 };
+                    if (vxLen > 1e-4) axX = { x: vxX / vxLen, y: vxY / vxLen };
 
-                    let x = centerX, y = centerY;
-                    let tries = 0;
-                    do {
-                        const theta = Math.random() * Math.PI * 2;
-                        const rr = Math.sqrt(Math.random()); // uniform area
-                        x = centerX + aPx * rr * Math.cos(theta);
-                        y = centerY + bPx * rr * Math.sin(theta);
-                        tries++;
-                    } while (y > yMaxAllowed && tries < 18);
+                    // Unit "vertical" axis: forehead -> chin (fallback to screen Y)
+                    let vyUnit = { x: 0, y: 1 };
+                    if (vyLen > 1e-4) vyUnit = { x: vyX / vyLen, y: vyY / vyLen };
 
-                    y = Math.min(y, yMaxAllowed);
-                    x = Math.min(Math.max(x, 0), cssW);
-                    y = Math.min(Math.max(y, 0), cssH);
-                    return { x, y, yTop, yMaxAllowed };
+                    // Orthonormal Y axis for jitter (guaranteed unit). Keep its direction consistent with vyUnit.
+                    let ayx = vyUnit.x - (vyUnit.x * axX.x + vyUnit.y * axX.y) * axX.x;
+                    let ayy = vyUnit.y - (vyUnit.x * axX.x + vyUnit.y * axX.y) * axX.y;
+                    let ayLen = Math.hypot(ayx, ayy);
+                    if (ayLen < 1e-3) { ayx = -axX.y; ayy = axX.x; ayLen = 1.0; }
+                    if ((ayx * vyUnit.x + ayy * vyUnit.y) < 0) { ayx = -ayx; ayy = -ayy; }
+                    const axY = { x: ayx / ayLen, y: ayy / ayLen };
+
+                    // Center: bias slightly toward cheeks so shots stay on the visible face
+                    const centerX = (midCheekX * 0.60 + midFCX * 0.40);
+                    const centerY = (midCheekY * 0.60 + midFCY * 0.40);
+
+                    if (dbg) {
+                        dbg.pf = pf; dbg.pc = pc; dbg.pl = pl; dbg.pr = pr;
+                        dbg.center = { x: centerX, y: centerY };
+                        dbg.faceW = faceW; dbg.faceH = faceH;
+                        dbg.axX = axX; dbg.axY = axY; dbg.vyUnit = vyUnit;
+                    }
+
+                    // Limit "too low" along the face vertical axis (projection), not the screen Y axis.
+                    const tMaxAllowed = faceH * 0.90;
+                    if (dbg) { dbg.tMaxAllowed = tMaxAllowed; }
+
+                    // Optional simple screen-Y clamp only when face vertical axis is close to screen-Y.
+                    // (Avoids collapsing to a line when the camera view is rotated relative to the screen.)
+                    if (Math.abs(vyUnit.x) < 0.35) {
+                        yTop = Math.min(pf.y, pc.y);
+                        const yBot = Math.max(pf.y, pc.y);
+                        yMaxAllowed = yTop + (yBot - yTop) * 0.90; // exclude lower 10%
+                    } else {
+                        yTop = null;
+                        yMaxAllowed = null;
+                    }
+                    if (dbg) { dbg.yClamp = (yMaxAllowed !== null && Number.isFinite(yMaxAllowed)); }
+
+                    // If cheek width collapses (common when screen-locked rotation confuses mapping),
+                    // use face-local fallback instead of returning a near-line distribution.
+                    const collapsed = (!Number.isFinite(faceW) || !Number.isFinite(faceH) || faceW <= 16 || faceW < faceH * 0.22);
+                    if (dbg) { dbg.collapsed = collapsed; if (collapsed) dbg.reason = 'collapsed'; }
+
+                    if (!collapsed) {
+                        // Mildly follow the VRM head-scale slider (avoid expanding too far outside face).
+                        const s = Math.min(Math.max(getHeadOverlayScale(), 0.6), 1.35);
+
+                        // Ellipse that roughly fits the face oval in screen space.
+                        const aPx = (faceW * 0.55) * s;
+                        const bPx = (faceH * 0.55) * s;
+
+                        let x = centerX, y = centerY;
+                        let tries = 0;
+                        let t = 0;
+                        do {
+                            const theta = Math.random() * Math.PI * 2;
+                            const rr = Math.sqrt(Math.random()); // uniform area
+                            const u = aPx * rr * Math.cos(theta);
+                            const v = bPx * rr * Math.sin(theta);
+                            x = centerX + axX.x * u + axY.x * v;
+                            y = centerY + axX.y * u + axY.y * v;
+                            t = ((x - pf.x) * vyUnit.x + (y - pf.y) * vyUnit.y);
+                            tries++;
+                        } while (t > tMaxAllowed && tries < 18);
+
+                        // If we still exceed the lower-limit, project back onto the allowed boundary.
+                        if (t > tMaxAllowed) {
+                            const excess = (t - tMaxAllowed);
+                            x -= vyUnit.x * excess;
+                            y -= vyUnit.y * excess;
+                            t = tMaxAllowed;
+                        }
+
+                        // Only apply simple screen-Y clamp when it is meaningful (axis is near-vertical).
+                        if (Number.isFinite(yMaxAllowed)) {
+                            y = Math.min(y, yMaxAllowed);
+                        }
+                        x = Math.min(Math.max(x, 0), cssW);
+                        y = Math.min(Math.max(y, 0), cssH);
+                        if (dbg) { dbg.mode = 'screen'; dbg.out = { x, y }; dbg.t = t; dbg.yTop = yTop; dbg.yMaxAllowed = yMaxAllowed; _dbgAutoLast = dbg; }
+                        return { x, y, yTop, yMaxAllowed, axX, axY, faceW, faceH };
+                    }
                 }
             }
 
-            // Fallback (older face-local sampling)
+            // Robust fallback: sample in face-local coordinates using the eye-line basis.
+            // This stays stable even when screen orientation is locked and landmark->screen mapping jitters.
             const centerX = (basis.eyeMid.x * 0.55 + basis.mouthMid.x * 0.45);
             const centerY = (basis.eyeMid.y * 0.55 + basis.mouthMid.y * 0.45);
+
+            if (dbg) { dbg.modeCandidate = 'facelocal'; dbg.center = { x: centerX, y: centerY }; if (!dbg.reason) dbg.reason = 'fallback'; }
 
             const headS = getHeadOverlayScale();
             const a = 0.50 * headS;
@@ -3914,19 +4126,36 @@ if (vy < 0) { vx = -vx; vy = -vy; }
             const vCenter = 0.02;
             const vMaxAllowed = vCenter + b * 0.90;
 
-            let u = 0, v = 0;
+            // If we managed to compute a screen-space yMaxAllowed above, respect it here too.
+            // (This keeps shots from going too low near the chin/neck.)
             let tries = 0;
-            do {
+            while (tries < 18) {
                 const theta = Math.random() * Math.PI * 2;
                 const rr = Math.sqrt(Math.random());
-                u = a * rr * Math.cos(theta);
-                v = vCenter + (b * rr * Math.sin(theta));
-                tries++;
-            } while (v > vMaxAllowed && tries < 12);
+                const u = a * rr * Math.cos(theta);
+                let v = vCenter + (b * rr * Math.sin(theta));
+                v = Math.min(v, vMaxAllowed);
+                const pt = faceLocalToScreenPx(u, v, basis);
+                if (!pt) {
+                    tries++;
+                    continue;
+                }
+                let x = pt.x, y = pt.y;
+                if (yMaxAllowed !== null && Number.isFinite(yMaxAllowed)) {
+                    if (y > yMaxAllowed) {
+                        tries++;
+                        continue;
+                    }
+                }
+                x = Math.min(Math.max(x, 0), cssW);
+                y = Math.min(Math.max(y, 0), cssH);
+                if (dbg) { dbg.mode = 'facelocal'; dbg.out = { x, y }; _dbgAutoLast = dbg; }
+                return { x, y, axX: { x: (basis.ux || 1), y: (basis.uy || 0) }, axY: { x: (basis.vx || 0), y: (basis.vy || 1) }, faceW: (basis.faceW || 0), faceH: (basis.faceH || basis.faceW || 0) };
+            }
 
-            v = Math.min(v, vMaxAllowed);
-            const pt = faceLocalToScreenPx(u, v, basis);
-            return pt ? { x: pt.x, y: pt.y } : { x: centerX, y: centerY };
+            // Last resort
+            if (dbg) { dbg.mode = 'facelocal'; dbg.out = { x: centerX, y: centerY }; if (!dbg.reason) dbg.reason = 'last resort'; _dbgAutoLast = dbg; }
+            return { x: centerX, y: centerY, axX: { x: (basis.ux || 1), y: (basis.uy || 0) }, axY: { x: (basis.vx || 0), y: (basis.vy || 1) }, faceW: (basis.faceW || 0), faceH: (basis.faceH || basis.faceW || 0) };
         }
 
         // Compute screen-space shift (px) between tracked face origin and the user's model offsets.
@@ -4241,14 +4470,37 @@ function drawCreamDrip(ctx, x, y, w, h, opacity, angleRad) {
                             const yTopShift = (Number.isFinite(tgt.yTop) ? (tgt.yTop + sdy) : tgt.yTop);
                             const yMaxShift = (Number.isFinite(tgt.yMaxAllowed) ? (tgt.yMaxAllowed + sdy) : tgt.yMaxAllowed);
 
+                            if (debugTextEnabled) {
+                                if (!_dbgAutoLast) _dbgAutoLast = { kind: 'autoCream' };
+                                _dbgAutoLast.shift = { dx: sdx, dy: sdy };
+                                _dbgAutoLast.out = { x: tgt.x, y: tgt.y };
+                                _dbgAutoLast.outShifted = { x: (tgt.x + sdx), y: (tgt.y + sdy) };
+                                _dbgAutoLast.yTopShift = yTopShift;
+                                _dbgAutoLast.yMaxShift = yMaxShift;
+                            }
+
+
                             const gid = (creamNextPatchGroupId++);
                             for (let i = 0; i < shotCount; i++) {
-                                // Same hit randomness as manual tap: tiny horizontal, mostly vertical (slight down-bias)
-                                const dx = (Math.random() * 2 - 1) * 5.0;        // ±5px
-                                const dy = (Math.random() * 2 - 1) * 14.0 + 6.0; // mostly vertical
+                                // Scatter within a CIRCLE in face-space so it doesn't collapse to a line under screen rotation lock.
+                                const axXv = (tgt.axX && Number.isFinite(tgt.axX.x) && Number.isFinite(tgt.axX.y)) ? tgt.axX : { x: 1, y: 0 };
+                                const axYv = (tgt.axY && Number.isFinite(tgt.axY.x) && Number.isFinite(tgt.axY.y)) ? tgt.axY : { x: 0, y: 1 };
+                                const fw = (Number.isFinite(tgt.faceW) && tgt.faceW > 0) ? tgt.faceW : 120;
+                                const fh = (Number.isFinite(tgt.faceH) && tgt.faceH > 0) ? tgt.faceH : fw;
+                                const baseR = 0.12 * Math.min(fw, fh);
+                                const R = Math.min(60, Math.max(8, baseR + Math.max(0, baseCount - 1) * 2.5));
+                                const rr = Math.sqrt(Math.random()) * R;
+                                const th = Math.random() * Math.PI * 2.0;
+                                const ox = Math.cos(th) * rr;
+                                const oy = Math.sin(th) * rr;
+
+                                const dx = axXv.x * ox + axYv.x * oy;
+                                const dy = axXv.y * ox + axYv.y * oy;
+
                                 let ax = tgt.x + sdx + dx;
                                 let ay = tgt.y + sdy + dy;
-                                // Keep bounds AFTER jitter so the lower-10% exclusion stays effective.
+
+                                // Keep bounds AFTER jitter so the lower-10% exclusion stays effective when yClamp is active.
                                 if (Number.isFinite(yTopShift) && Number.isFinite(yMaxShift)) {
                                     ay = Math.min(Math.max(ay, yTopShift), yMaxShift);
                                 }
@@ -4319,6 +4571,8 @@ const ang = Math.atan2(dvy, dvx);
                                 u: local.u,
                                 v: local.v,
                                 v0: local.v,
+                                refW: (useBasis && useBasis.faceW) ? useBasis.faceW : null,
+                                refH: (useBasis && useBasis.faceH) ? useBasis.faceH : null,
                                 sizeU: patchSize,
                                 sizeV: patchSize * (1.40 + Math.random() * 0.85), // more vertical (liquid-like)
                                 rotRad: (Math.random() * 2 - 1) * (Math.PI / 180) * 5,
@@ -4346,6 +4600,8 @@ const ang = Math.atan2(dvy, dvx);
                                     u: local.u + (Math.random() - 0.5) * 0.10,
                                     v: local.v + (Math.random() - 0.5) * 0.10,
                                     v0: local.v + (Math.random() - 0.5) * 0.10,
+                                    refW: (useBasis && useBasis.faceW) ? useBasis.faceW : null,
+                                    refH: (useBasis && useBasis.faceH) ? useBasis.faceH : null,
                                     sizeU: su,
                                     sizeV: sv,
                                     // Smaller splashes slide faster
@@ -4397,9 +4653,19 @@ const ang = Math.atan2(dvy, dvx);
                 const narrowT  = Math.min(1, flowDist / 0.060);  // reach max narrowing after ~0.03v
                 const narrow   = Math.max(0.45, 1.0 - 0.55 * narrowT);
                 if (useBasis) {
-                    const pxy = faceLocalToScreenPx(s.u, s.v, useBasis);
+                    // Stabilize attached patch projection against yaw foreshortening:
+                    // keep horizontal scale based on the hit-time eye distance, but rescale uniformly by current faceH.
+                    const _bPatch = (s && s.refW && s.refH && useBasis && useBasis.faceH)
+                        ? (() => { 
+                            const _ratio = useBasis.faceH / Math.max(1e-6, s.refH);
+                            const _fw = Math.max(12, s.refW * _ratio);
+                            return { ...useBasis, faceW: _fw };
+                        })()
+                        : useBasis;
+
+                    const pxy = faceLocalToScreenPx(s.u, s.v, _bPatch);
                     if (pxy) {
-                        const r = useBasis.faceW * 0.18 * s.sizeU * spread;
+                        const r = (_bPatch.faceW || useBasis.faceW) * 0.18 * s.sizeU * spread;
                         const ang = (useBasis.roll || 0) + (s.rollBias || 0) + (s.rotRad || 0);
                         const baseStretch = (s.sizeV && s.sizeU) ? Math.min(3.0, Math.max(0.8, (s.sizeV / Math.max(1e-6, s.sizeU)))) : 1.0;
                         const stretchY = baseStretch * (1.0 + Math.max(0, (s.age - s.dripDelay) * (0.10 / ((typeof creamViscosity === 'number') ? Math.max(0.2, creamViscosity) : 1.0))));
@@ -4413,7 +4679,10 @@ const ang = Math.atan2(dvy, dvx);
                 keepP.push(s);
             }
             creamPatches = keepP;
-        }
+        
+
+            _updateDebugOverlayAutoCream({ cssW, cssH, pr });
+}
 
 
 
@@ -5119,6 +5388,14 @@ updateTransform();
                     if (faceLandmarker && videoEl.readyState >= 2) {
                         const res = faceLandmarker.detectForVideo(mpInput, performance.now());
                         latestFaceLandmarks0 = (res && res.faceLandmarks && res.faceLandmarks[0]) ? res.faceLandmarks[0] : null;
+                        // Capture the exact rotation and dimensions used for the landmark frame.
+                        // (These are required to map landmarks back to the original video consistently.)
+                        latestFaceLandmarksInputRotDeg = inputRotationDeg || 0;
+                        latestFaceLandmarksVideoW = videoEl.videoWidth || 0;
+                        latestFaceLandmarksVideoH = videoEl.videoHeight || 0;
+                        latestFaceLandmarksMpW = (latestFaceLandmarksInputRotDeg !== 0) ? (mpOffscreenCanvas.width || latestFaceLandmarksVideoW) : latestFaceLandmarksVideoW;
+                        latestFaceLandmarksMpH = (latestFaceLandmarksInputRotDeg !== 0) ? (mpOffscreenCanvas.height || latestFaceLandmarksVideoH) : latestFaceLandmarksVideoH;
+
                         
                         // Auto-rotation fallback (when screen orientation is locked and videoW/H alone can't detect rotation):
                         // Use eye-line angle in MediaPipe's normalized coordinates to detect if the frame is effectively rotated ~90deg.
@@ -5560,5 +5837,9 @@ scaleSlider.addEventListener('input', updateTransform);
         zSlider.addEventListener('input', updateTransform);
 
     </script>
+
+    <!-- Debug text overlay (shown only when enabled in Help) -->
+    <div id="debug-text-overlay" style="position:fixed; left:8px; top:8px; z-index:9999; background:rgba(0,0,0,0.55); color:#fff; font:12px/1.35 monospace; padding:6px 8px; border-radius:10px; white-space:pre; pointer-events:none; display:none; max-width:92vw; box-sizing:border-box;"></div>
+
 </body>
 </html>
