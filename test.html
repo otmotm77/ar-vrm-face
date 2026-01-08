@@ -3899,7 +3899,12 @@ const CREAM_SHOT_COOLDOWN_MS = 320;
             const eyeMid = { x: (le.x + re.x) * 0.5, y: (le.y + re.y) * 0.5 };
             const mouthMid = { x: (ml.x + mr.x) * 0.5, y: (ml.y + mr.y) * 0.5 };
 
-            const dx = (re.x - le.x);
+                        // Face "height" proxy (less sensitive to yaw foreshortening than eye distance)
+            const dhx = (mouthMid.x - eyeMid.x);
+            const dhy = (mouthMid.y - eyeMid.y);
+            const faceH = Math.max(12, Math.hypot(dhx, dhy));
+
+const dx = (re.x - le.x);
             const dy = (re.y - le.y);
             const faceW = Math.max(12, Math.hypot(dx, dy));
             let ux = dx / faceW;
@@ -3925,7 +3930,7 @@ if (vy < 0) { vx = -vx; vy = -vy; }
             const su = 1.0 - k + k * Math.max(0.35, cy);
             const sv = 1.0 - k + k * Math.max(0.35, cp);
 
-            return { rect, le, re, eyeMid, mouthMid, faceW, ux, uy, vx, vy, roll, su, sv };
+            return { rect, le, re, eyeMid, mouthMid, faceW, faceH, ux, uy, vx, vy, roll, su, sv };
 
         }
 
@@ -3935,8 +3940,10 @@ if (vy < 0) { vx = -vx; vy = -vy; }
             const dy = py - basis.eyeMid.y;
             const su = (basis.su || 1.0);
             const sv = (basis.sv || 1.0);
-            const u = (dx * basis.ux + dy * basis.uy) / (basis.faceW * su);
-            const v = (dx * basis.vx + dy * basis.vy) / (basis.faceW * sv);
+            const fw = Math.max(1e-6, basis.faceW || 0);
+            const fh = Math.max(1e-6, basis.faceH || fw);
+            const u = (dx * basis.ux + dy * basis.uy) / (fw * su);
+            const v = (dx * basis.vx + dy * basis.vy) / (fh * sv);
             return { u, v };
         }
 
@@ -3944,9 +3951,11 @@ if (vy < 0) { vx = -vx; vy = -vy; }
             if (!basis) return null;
             const su = (basis.su || 1.0);
             const sv = (basis.sv || 1.0);
+            const fw = Math.max(1e-6, basis.faceW || 0);
+            const fh = Math.max(1e-6, basis.faceH || fw);
             return {
-                x: basis.eyeMid.x + (basis.ux * (localU * su) + basis.vx * (localV * sv)) * basis.faceW,
-                y: basis.eyeMid.y + (basis.uy * (localU * su) + basis.vy * (localV * sv)) * basis.faceW
+                x: basis.eyeMid.x + (basis.ux * (localU * su)) * fw + (basis.vx * (localV * sv)) * fh,
+                y: basis.eyeMid.y + (basis.uy * (localU * su)) * fw + (basis.vy * (localV * sv)) * fh
             };
         }
 
@@ -4515,6 +4524,8 @@ const ang = Math.atan2(dvy, dvx);
                                 u: local.u,
                                 v: local.v,
                                 v0: local.v,
+                                refW: (useBasis && useBasis.faceW) ? useBasis.faceW : null,
+                                refH: (useBasis && useBasis.faceH) ? useBasis.faceH : null,
                                 sizeU: patchSize,
                                 sizeV: patchSize * (1.40 + Math.random() * 0.85), // more vertical (liquid-like)
                                 rotRad: (Math.random() * 2 - 1) * (Math.PI / 180) * 5,
@@ -4542,6 +4553,8 @@ const ang = Math.atan2(dvy, dvx);
                                     u: local.u + (Math.random() - 0.5) * 0.10,
                                     v: local.v + (Math.random() - 0.5) * 0.10,
                                     v0: local.v + (Math.random() - 0.5) * 0.10,
+                                    refW: (useBasis && useBasis.faceW) ? useBasis.faceW : null,
+                                    refH: (useBasis && useBasis.faceH) ? useBasis.faceH : null,
                                     sizeU: su,
                                     sizeV: sv,
                                     // Smaller splashes slide faster
@@ -4593,9 +4606,19 @@ const ang = Math.atan2(dvy, dvx);
                 const narrowT  = Math.min(1, flowDist / 0.060);  // reach max narrowing after ~0.03v
                 const narrow   = Math.max(0.45, 1.0 - 0.55 * narrowT);
                 if (useBasis) {
-                    const pxy = faceLocalToScreenPx(s.u, s.v, useBasis);
+                    // Stabilize attached patch projection against yaw foreshortening:
+                    // keep horizontal scale based on the hit-time eye distance, but rescale uniformly by current faceH.
+                    const _bPatch = (s && s.refW && s.refH && useBasis && useBasis.faceH)
+                        ? (() => { 
+                            const _ratio = useBasis.faceH / Math.max(1e-6, s.refH);
+                            const _fw = Math.max(12, s.refW * _ratio);
+                            return { ...useBasis, faceW: _fw };
+                        })()
+                        : useBasis;
+
+                    const pxy = faceLocalToScreenPx(s.u, s.v, _bPatch);
                     if (pxy) {
-                        const r = useBasis.faceW * 0.18 * s.sizeU * spread;
+                        const r = (_bPatch.faceW || useBasis.faceW) * 0.18 * s.sizeU * spread;
                         const ang = (useBasis.roll || 0) + (s.rollBias || 0) + (s.rotRad || 0);
                         const baseStretch = (s.sizeV && s.sizeU) ? Math.min(3.0, Math.max(0.8, (s.sizeV / Math.max(1e-6, s.sizeU)))) : 1.0;
                         const stretchY = baseStretch * (1.0 + Math.max(0, (s.age - s.dripDelay) * (0.10 / ((typeof creamViscosity === 'number') ? Math.max(0.2, creamViscosity) : 1.0))));
