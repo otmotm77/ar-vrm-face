@@ -1551,6 +1551,8 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
                 if (d.mode) lines.push(`mode=${d.mode}${d.reason ? ' ('+d.reason+')' : ''}`);
                 if (d.rect) lines.push(`rect x=${_fmt(d.rect.x,1)} y=${_fmt(d.rect.y,1)} w=${_fmt(d.rect.w,1)} h=${_fmt(d.rect.h,1)}`);
                 if (d.faceW || d.faceH) lines.push(`faceW=${_fmt(d.faceW,1)} faceH=${_fmt(d.faceH,1)} collapsed=${d.collapsed ? 'Y' : 'N'}`);
+                if (d.axX && d.axY) lines.push(`axX=(${_fmt(d.axX.x,2)},${_fmt(d.axX.y,2)}) axY=(${_fmt(d.axY.x,2)},${_fmt(d.axY.y,2)})`);
+                if (Number.isFinite(d.tMaxAllowed)) lines.push(`tMax=${_fmt(d.tMaxAllowed,1)} t=${_fmt(d.t,1)} yClamp=${d.yClamp ? 'Y' : 'N'}`);
                 if (d.pf && d.pc && d.pl && d.pr) {
                     lines.push(`pf=(${_fmt(d.pf.x,1)},${_fmt(d.pf.y,1)}) pc=(${_fmt(d.pc.x,1)},${_fmt(d.pc.y,1)})`);
                     lines.push(`pl=(${_fmt(d.pl.x,1)},${_fmt(d.pl.y,1)}) pr=(${_fmt(d.pr.x,1)},${_fmt(d.pr.y,1)})`);
@@ -3981,20 +3983,45 @@ if (vy < 0) { vx = -vx; vy = -vy; }
                 const pr = mapMpLandmarkToScreenPx(lm[idxCheekR], cssW, cssH, rect);
 
                 if (pf && pc && pl && pr) {
-                    const centerX = (pl.x + pr.x) * 0.5;
-                    const centerY = (pf.y + pc.y) * 0.5;
+                    const midCheekX = (pl.x + pr.x) * 0.5;
+                    const midCheekY = (pl.y + pr.y) * 0.5;
+                    const midFCX = (pf.x + pc.x) * 0.5;
+                    const midFCY = (pf.y + pc.y) * 0.5;
 
-                    const faceH = Math.max(12, Math.hypot(pc.x - pf.x, pc.y - pf.y));
-                    const faceW = Math.max(12, Math.hypot(pr.x - pl.x, pr.y - pl.y));
+                    // Build face axes in screen space (robust even when the screen orientation is locked)
+                    const vxX = (pr.x - pl.x), vxY = (pr.y - pl.y);
+                    const vyX = (pc.x - pf.x), vyY = (pc.y - pf.y);
+                    const faceW = Math.max(12, Math.hypot(vxX, vxY));
+                    const faceH = Math.max(12, Math.hypot(vyX, vyY));
+                    const axX = { x: vxX / faceW, y: vxY / faceW };
+                    const axY = { x: vyX / faceH, y: vyY / faceH };
+
+                    // Center: bias slightly toward cheeks so shots stay on the visible face
+                    const centerX = (midCheekX * 0.60 + midFCX * 0.40);
+                    const centerY = (midCheekY * 0.60 + midFCY * 0.40);
+
                     if (dbg) {
                         dbg.pf = pf; dbg.pc = pc; dbg.pl = pl; dbg.pr = pr;
                         dbg.center = { x: centerX, y: centerY };
                         dbg.faceW = faceW; dbg.faceH = faceH;
+                        dbg.axX = axX; dbg.axY = axY;
                     }
 
-                    yTop = Math.min(pf.y, pc.y);
-                    const yBot = Math.max(pf.y, pc.y);
-                    yMaxAllowed = yTop + (yBot - yTop) * 0.90; // exclude lower 10%
+                    // Limit "too low" along the face vertical axis (projection), not the screen Y axis.
+                    const tMaxAllowed = faceH * 0.90;
+                    if (dbg) { dbg.tMaxAllowed = tMaxAllowed; }
+
+                    // Optional simple screen-Y clamp only when face vertical axis is close to screen-Y.
+                    // (Avoids collapsing to a line when the camera view is rotated relative to the screen.)
+                    if (Math.abs(axY.x) < 0.35) {
+                        yTop = Math.min(pf.y, pc.y);
+                        const yBot = Math.max(pf.y, pc.y);
+                        yMaxAllowed = yTop + (yBot - yTop) * 0.90; // exclude lower 10%
+                    } else {
+                        yTop = null;
+                        yMaxAllowed = null;
+                    }
+                    if (dbg) { dbg.yClamp = (yMaxAllowed !== null && Number.isFinite(yMaxAllowed)); }
 
                     // If cheek width collapses (common when screen-locked rotation confuses mapping),
                     // use face-local fallback instead of returning a near-line distribution.
@@ -4011,18 +4038,33 @@ if (vy < 0) { vx = -vx; vy = -vy; }
 
                         let x = centerX, y = centerY;
                         let tries = 0;
+                        let t = 0;
                         do {
                             const theta = Math.random() * Math.PI * 2;
                             const rr = Math.sqrt(Math.random()); // uniform area
-                            x = centerX + aPx * rr * Math.cos(theta);
-                            y = centerY + bPx * rr * Math.sin(theta);
+                            const u = aPx * rr * Math.cos(theta);
+                            const v = bPx * rr * Math.sin(theta);
+                            x = centerX + axX.x * u + axY.x * v;
+                            y = centerY + axX.y * u + axY.y * v;
+                            t = ((x - pf.x) * axY.x + (y - pf.y) * axY.y);
                             tries++;
-                        } while (y > yMaxAllowed && tries < 18);
+                        } while (t > tMaxAllowed && tries < 18);
 
-                        y = Math.min(y, yMaxAllowed);
+                        // If we still exceed the lower-limit, project back onto the allowed boundary.
+                        if (t > tMaxAllowed) {
+                            const excess = (t - tMaxAllowed);
+                            x -= axY.x * excess;
+                            y -= axY.y * excess;
+                            t = tMaxAllowed;
+                        }
+
+                        // Only apply simple screen-Y clamp when it is meaningful (axis is near-vertical).
+                        if (Number.isFinite(yMaxAllowed)) {
+                            y = Math.min(y, yMaxAllowed);
+                        }
                         x = Math.min(Math.max(x, 0), cssW);
                         y = Math.min(Math.max(y, 0), cssH);
-                        if (dbg) { dbg.mode = 'screen'; dbg.out = { x, y }; dbg.yTop = yTop; dbg.yMaxAllowed = yMaxAllowed; _dbgAutoLast = dbg; }
+                        if (dbg) { dbg.mode = 'screen'; dbg.out = { x, y }; dbg.t = t; dbg.yTop = yTop; dbg.yMaxAllowed = yMaxAllowed; _dbgAutoLast = dbg; }
                         return { x, y, yTop, yMaxAllowed };
                     }
                 }
