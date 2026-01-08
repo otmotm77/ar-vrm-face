@@ -954,8 +954,8 @@
     <script type="module">
         
 // ===== App Version (single source of truth) =====
-const APP_VERSION = "v6.01.23";
-const APP_VERSION_NOTE = "Camera switch: reliable first-frame + reset";
+const APP_VERSION = "v6.01.24";
+const APP_VERSION_NOTE = "Landmark mapping uses captured rotation/video size to stabilize auto targeting; Camera switch: reliable first-frame + reset";
 
 
 function getOverlayPixelRatio() {
@@ -1011,6 +1011,14 @@ let renderer = null;
         let latestMouthCenterVideoY = 0.6;
         let latestMouthCenterVideoValid = false;
         let latestFaceLandmarks0 = null; // MediaPipe faceLandmarks[0] for 2D overlays (blush/breath)
+        // Store the rotation that was used to generate the MediaPipe input for these landmarks.
+        // Auto-cream (and other 2D overlays) must map landmarks back to the ORIGINAL video frame using
+        // the SAME rotation, otherwise mappings can collapse (e.g., when screen rotation is locked).
+        let latestFaceLandmarksInputRotDeg = 0;
+        let latestFaceLandmarksVideoW = 0;
+        let latestFaceLandmarksVideoH = 0;
+        let latestFaceLandmarksMpW = 0;
+        let latestFaceLandmarksMpH = 0;
 
 
         let isFaceVisible = false;
@@ -3754,21 +3762,27 @@ const CREAM_SHOT_COOLDOWN_MS = 320;
 
         function getCreamVideoRect(cssW, cssH) {
             if (!videoEl) return null;
-            const vw = videoEl.videoWidth || 0;
-            const vh = videoEl.videoHeight || 0;
+            // Use landmark-captured video size when available (prevents mismatch during camera/orientation transitions).
+            const vw = (latestFaceLandmarksVideoW && latestFaceLandmarksVideoW > 0) ? latestFaceLandmarksVideoW : (videoEl.videoWidth || 0);
+            const vh = (latestFaceLandmarksVideoH && latestFaceLandmarksVideoH > 0) ? latestFaceLandmarksVideoH : (videoEl.videoHeight || 0);
             if (vw <= 0 || vh <= 0) return null;
             return computeContainRect(cssW, cssH, vw, vh);
         }
 
         function mapMpLandmarkToScreenPx(p, cssW, cssH, rect) {
             if (!p || !videoEl || !rect) return null;
-            const vw = videoEl.videoWidth || 0;
-            const vh = videoEl.videoHeight || 0;
+
+            // Use the same rotation/dimensions that were used when these landmarks were produced.
+            // (If inputRotationDeg changes after detection, mapping with the "current" value can collapse.)
+            const vw = (latestFaceLandmarksVideoW && latestFaceLandmarksVideoW > 0) ? latestFaceLandmarksVideoW : (videoEl.videoWidth || 0);
+            const vh = (latestFaceLandmarksVideoH && latestFaceLandmarksVideoH > 0) ? latestFaceLandmarksVideoH : (videoEl.videoHeight || 0);
             if (vw <= 0 || vh <= 0) return null;
 
-            const mpW = (inputRotationDeg !== 0) ? (mpOffscreenCanvas.width || vw) : vw;
-            const mpH = (inputRotationDeg !== 0) ? (mpOffscreenCanvas.height || vh) : vh;
-            const vv = mpLandmarkNormToVideoNorm(p.x, p.y, vw, vh, inputRotationDeg, mpW, mpH);
+            const rotDeg = (Number.isFinite(latestFaceLandmarksInputRotDeg)) ? latestFaceLandmarksInputRotDeg : (inputRotationDeg || 0);
+            const mpW = (rotDeg !== 0) ? (latestFaceLandmarksMpW || mpOffscreenCanvas.width || vw) : vw;
+            const mpH = (rotDeg !== 0) ? (latestFaceLandmarksMpH || mpOffscreenCanvas.height || vh) : vh;
+
+            const vv = mpLandmarkNormToVideoNorm(p.x, p.y, vw, vh, rotDeg, mpW, mpH);
             if (!vv || !vv.ok) return null;
 
             return { x: rect.x + vv.x * rect.w, y: rect.y + vv.y * rect.h, vx: vv.x, vy: vv.y };
@@ -5119,6 +5133,14 @@ updateTransform();
                     if (faceLandmarker && videoEl.readyState >= 2) {
                         const res = faceLandmarker.detectForVideo(mpInput, performance.now());
                         latestFaceLandmarks0 = (res && res.faceLandmarks && res.faceLandmarks[0]) ? res.faceLandmarks[0] : null;
+                        // Capture the exact rotation and dimensions used for the landmark frame.
+                        // (These are required to map landmarks back to the original video consistently.)
+                        latestFaceLandmarksInputRotDeg = inputRotationDeg || 0;
+                        latestFaceLandmarksVideoW = videoEl.videoWidth || 0;
+                        latestFaceLandmarksVideoH = videoEl.videoHeight || 0;
+                        latestFaceLandmarksMpW = (latestFaceLandmarksInputRotDeg !== 0) ? (mpOffscreenCanvas.width || latestFaceLandmarksVideoW) : latestFaceLandmarksVideoW;
+                        latestFaceLandmarksMpH = (latestFaceLandmarksInputRotDeg !== 0) ? (mpOffscreenCanvas.height || latestFaceLandmarksVideoH) : latestFaceLandmarksVideoH;
+
                         
                         // Auto-rotation fallback (when screen orientation is locked and videoW/H alone can't detect rotation):
                         // Use eye-line angle in MediaPipe's normalized coordinates to detect if the frame is effectively rotated ~90deg.
