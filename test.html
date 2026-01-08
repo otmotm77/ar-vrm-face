@@ -3884,46 +3884,61 @@ const CREAM_SHOT_COOLDOWN_MS = 320;
             const rect = getCreamVideoRect(cssW, cssH);
             if (!rect) return null;
             const lm = latestFaceLandmarks0;
-            const le0 = lm[33];
-            const re0 = lm[263];
-            const lm0 = lm[61];
-            const rm0 = lm[291];
-            if (!le0 || !re0 || !lm0 || !rm0) return null;
+
+            // Key landmarks in *screen space* (after the same mapping used for rendering).
+            // Build stable face-local axes even when the screen orientation is locked and the device is physically rotated.
+            const le0 = lm[33];   // left eye outer
+            const re0 = lm[263];  // right eye outer
+            const lm0 = lm[61];   // left mouth corner
+            const rm0 = lm[291];  // right mouth corner
+            const pf0 = lm[10];   // upper forehead
+            const pc0 = lm[152];  // chin
+            const pl0 = lm[234];  // left cheek (face oval)
+            const pr0 = lm[454];  // right cheek (face oval)
+
+            if (!le0 || !re0 || !lm0 || !rm0 || !pf0 || !pc0 || !pl0 || !pr0) return null;
 
             const le = mapMpLandmarkToScreenPx(le0, cssW, cssH, rect);
             const re = mapMpLandmarkToScreenPx(re0, cssW, cssH, rect);
             const ml = mapMpLandmarkToScreenPx(lm0, cssW, cssH, rect);
             const mr = mapMpLandmarkToScreenPx(rm0, cssW, cssH, rect);
-            if (!le || !re || !ml || !mr) return null;
+            const pf = mapMpLandmarkToScreenPx(pf0, cssW, cssH, rect);
+            const pc = mapMpLandmarkToScreenPx(pc0, cssW, cssH, rect);
+            const pl = mapMpLandmarkToScreenPx(pl0, cssW, cssH, rect);
+            const pr = mapMpLandmarkToScreenPx(pr0, cssW, cssH, rect);
+
+            if (!le || !re || !ml || !mr || !pf || !pc || !pl || !pr) return null;
 
             const eyeMid = { x: (le.x + re.x) * 0.5, y: (le.y + re.y) * 0.5 };
             const mouthMid = { x: (ml.x + mr.x) * 0.5, y: (ml.y + mr.y) * 0.5 };
 
-                        // Face "height" proxy (less sensitive to yaw foreshortening than eye distance)
-            const dhx = (mouthMid.x - eyeMid.x);
-            const dhy = (mouthMid.y - eyeMid.y);
-            const faceH = Math.max(12, Math.hypot(dhx, dhy));
+            // U axis: cheek L -> cheek R (stable across yaw and less noisy than eye corners on some devices)
+            let ux = (pr.x - pl.x);
+            let uy = (pr.y - pl.y);
+            let faceW = Math.max(12, Math.hypot(ux, uy));
+            ux /= faceW; uy /= faceW;
 
-const dx = (re.x - le.x);
-            const dy = (re.y - le.y);
-            const faceW = Math.max(12, Math.hypot(dx, dy));
-            let ux = dx / faceW;
-            let uy = dy / faceW;
+            // V axis: forehead -> chin (actual face "vertical" axis in screen space)
+            let vx = (pc.x - pf.x);
+            let vy = (pc.y - pf.y);
+            let faceH = Math.max(12, Math.hypot(vx, vy));
+            vx /= faceH; vy /= faceH;
 
-            let vx = -uy;
-            let vy = ux;
+            // Stabilize U axis sign using eye direction (prevents random left/right flips)
+            const ex = (re.x - le.x), ey = (re.y - le.y);
+            if ((ux * ex + uy * ey) < 0) { ux = -ux; uy = -uy; }
 
-            const mdx = (mouthMid.x - eyeMid.x);
-            const mdy = (mouthMid.y - eyeMid.y);
-            if (mdx * vx + mdy * vy < 0) { vx = -vx; vy = -vy; }
+            // Orthonormalize V against U to avoid skew (and sign ambiguity)
+            const dotVU = (vx * ux + vy * uy);
+            vx = vx - ux * dotVU;
+            vy = vy - uy * dotVU;
+            const vlen = Math.hypot(vx, vy);
+            if (vlen > 1e-6) { vx /= vlen; vy /= vlen; }
+            else { vx = -uy; vy = ux; }
 
-// Ensure +V always points downward in screen space (fixes top/bottom inversion on some rotations).
-if (vy < 0) { vx = -vx; vy = -vy; }
-
-            
             const roll = Math.atan2(uy, ux);
 
-            // Pseudo depth: foreshorten UV axes based on face yaw/pitch so cream feels less "floating" during rotation.
+            // Pseudo depth: foreshorten UV axes based on face yaw/pitch so cream feels less "attached" during rotation.
             const k = Math.max(0, Math.min(1, (typeof creamZAttach !== 'undefined' ? (creamZAttach || 0) : 0)));
             const cy = Math.cos(Math.min(Math.abs(typeof latestFaceYawRad !== 'undefined' ? (latestFaceYawRad || 0) : 0), Math.PI / 2));
             const cp = Math.cos(Math.min(Math.abs(typeof latestFacePitchRad !== 'undefined' ? (latestFacePitchRad || 0) : 0), Math.PI / 2));
@@ -3931,7 +3946,6 @@ if (vy < 0) { vx = -vx; vy = -vy; }
             const sv = 1.0 - k + k * Math.max(0.35, cp);
 
             return { rect, le, re, eyeMid, mouthMid, faceW, faceH, ux, uy, vx, vy, roll, su, sv };
-
         }
 
         function screenPxToFaceLocal(px, py, basis) {
