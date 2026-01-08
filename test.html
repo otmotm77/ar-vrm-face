@@ -815,6 +815,16 @@
                         <li>VRM読み込み後の設定は、読み込んだ<strong>VRMごとに保存されます</strong>。</li>
                         <li>「<strong>デフォルトオプションとして保存</strong>」を実行すると、現在のVRM設定がデフォルトに上書きされます。</li>
                     </ul>
+                    <div class="slider-container" style="margin-top:10px;">
+                        <label class="toggle-label">
+                            <input type="checkbox" id="debugtext-toggle" class="toggle-checkbox">
+                            デバッグ表示
+                        </label>
+                        <div style="font-size:11px; opacity:0.85; margin-top:4px; line-height:1.4;">
+                            自動射出などの内部値を画面上に表示します（不具合切り分け用）。
+                        </div>
+                    </div>
+
                 </div>
             </details>
 
@@ -1482,6 +1492,85 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
             // UI state should be global (not per-VRM) so section open/close is consistent.
             return `ui_${suffix}`;
         }
+
+        // --- Debug text overlay (controlled via Help section toggle) ---
+        const debugTextToggle = document.getElementById('debugtext-toggle');
+        const debugTextOverlay = document.getElementById('debug-text-overlay');
+        let debugTextEnabled = false;
+
+        // Auto-cream debug snapshot (updated by auto targeting)
+        let _dbgAutoLast = null;
+        let _dbgLastUpdateMs = 0;
+
+        function _setDebugOverlayVisible(on) {
+            if (!debugTextOverlay) return;
+            debugTextOverlay.style.display = on ? 'block' : 'none';
+            if (!on) debugTextOverlay.textContent = '';
+        }
+
+        function setDebugTextEnabled(on) {
+            debugTextEnabled = !!on;
+            try { localStorage.setItem(_uiKey('debug_text'), debugTextEnabled ? '1' : '0'); } catch(e) {}
+            _setDebugOverlayVisible(debugTextEnabled);
+        }
+
+        function _initDebugTextToggle() {
+            try { debugTextEnabled = (localStorage.getItem(_uiKey('debug_text')) === '1'); } catch(e) { debugTextEnabled = false; }
+            if (debugTextToggle) {
+                debugTextToggle.checked = !!debugTextEnabled;
+                debugTextToggle.addEventListener('change', () => setDebugTextEnabled(debugTextToggle.checked));
+            }
+            _setDebugOverlayVisible(!!debugTextEnabled);
+        }
+
+        function _fmt(n, d=1) {
+            return (Number.isFinite(n) ? n.toFixed(d) : 'NaN');
+        }
+
+        function _updateDebugOverlayAutoCream(context) {
+            if (!debugTextEnabled || !debugTextOverlay) return;
+            const now = performance.now();
+            if (now - _dbgLastUpdateMs < 120) return;
+            _dbgLastUpdateMs = now;
+
+            const lines = [];
+            lines.push('[Debug] AutoCream');
+            if (context) {
+                lines.push(`css=${_fmt(context.cssW,1)}x${_fmt(context.cssH,1)} pr=${_fmt(context.pr,2)}`);
+            }
+            if (videoEl) {
+                lines.push(`video=${videoEl.videoWidth||0}x${videoEl.videoHeight||0}`);
+            }
+            if (typeof deviceBeta !== 'undefined' || typeof deviceGamma !== 'undefined') {
+                lines.push(`tilt beta=${_fmt(deviceBeta,1)} gamma=${_fmt(deviceGamma,1)}`);
+            }
+            lines.push(`inputRot=${_fmt(inputRotationDeg,0)} lmRot=${_fmt((typeof latestFaceLandmarksInputRotDeg!=='undefined'? latestFaceLandmarksInputRotDeg : NaN),0)}`);
+
+            const d = _dbgAutoLast;
+            if (d) {
+                if (d.mode) lines.push(`mode=${d.mode}${d.reason ? ' ('+d.reason+')' : ''}`);
+                if (d.rect) lines.push(`rect x=${_fmt(d.rect.x,1)} y=${_fmt(d.rect.y,1)} w=${_fmt(d.rect.w,1)} h=${_fmt(d.rect.h,1)}`);
+                if (d.faceW || d.faceH) lines.push(`faceW=${_fmt(d.faceW,1)} faceH=${_fmt(d.faceH,1)} collapsed=${d.collapsed ? 'Y' : 'N'}`);
+                if (d.pf && d.pc && d.pl && d.pr) {
+                    lines.push(`pf=(${_fmt(d.pf.x,1)},${_fmt(d.pf.y,1)}) pc=(${_fmt(d.pc.x,1)},${_fmt(d.pc.y,1)})`);
+                    lines.push(`pl=(${_fmt(d.pl.x,1)},${_fmt(d.pl.y,1)}) pr=(${_fmt(d.pr.x,1)},${_fmt(d.pr.y,1)})`);
+                }
+                if (d.center) lines.push(`center=(${_fmt(d.center.x,1)},${_fmt(d.center.y,1)})`);
+                if (d.out) lines.push(`tgt=(${_fmt(d.out.x,1)},${_fmt(d.out.y,1)})`);
+                if (d.shift) lines.push(`shift dx=${_fmt(d.shift.dx,1)} dy=${_fmt(d.shift.dy,1)}`);
+                if (d.outShifted) lines.push(`tgt+shift=(${_fmt(d.outShifted.x,1)},${_fmt(d.outShifted.y,1)})`);
+                if (Number.isFinite(d.yTopShift) || Number.isFinite(d.yMaxShift)) {
+                    lines.push(`yTop=${_fmt(d.yTopShift,1)} yMax=${_fmt(d.yMaxShift,1)}`);
+                }
+            } else {
+                lines.push('(no sample yet)');
+            }
+
+            debugTextOverlay.textContent = lines.join('\n');
+        }
+
+        _initDebugTextToggle();
+
 
         // Prevent accordion 'toggle' handlers from saving while we are restoring state
         let _uiRestoring = false;
@@ -3866,13 +3955,17 @@ if (vy < 0) { vx = -vx; vy = -vy; }
             return { x: r.left + r.width * 0.5, y: r.top + r.height * 0.5 };
         }
         function sampleAutoCreamTargetPx(basis, cssW, cssH) {
-            if (!basis) return null;
+            if (!basis) {
+            if (debugTextEnabled) _dbgAutoLast = { kind: 'autoCream', mode: 'none', reason: 'no basis' };
+            return null;
+        }
 
             // Prefer sampling in SCREEN space using face-oval landmarks so auto shots stay within the visible face region.
             // When the device is rotated while the screen orientation is locked, some landmark->screen mappings can
             // temporarily collapse (e.g., left/right cheeks map too close). In that case, fall back to robust face-local sampling.
             const lm = latestFaceLandmarks0;
             const rect = basis.rect;
+            const dbg = debugTextEnabled ? { kind: 'autoCream', rect: rect } : null;
             const idxForehead = 10;   // upper forehead
             const idxChin = 152;      // chin
             const idxCheekL = 234;    // left cheek (face oval)
@@ -3893,6 +3986,11 @@ if (vy < 0) { vx = -vx; vy = -vy; }
 
                     const faceH = Math.max(12, Math.hypot(pc.x - pf.x, pc.y - pf.y));
                     const faceW = Math.max(12, Math.hypot(pr.x - pl.x, pr.y - pl.y));
+                    if (dbg) {
+                        dbg.pf = pf; dbg.pc = pc; dbg.pl = pl; dbg.pr = pr;
+                        dbg.center = { x: centerX, y: centerY };
+                        dbg.faceW = faceW; dbg.faceH = faceH;
+                    }
 
                     yTop = Math.min(pf.y, pc.y);
                     const yBot = Math.max(pf.y, pc.y);
@@ -3901,6 +3999,7 @@ if (vy < 0) { vx = -vx; vy = -vy; }
                     // If cheek width collapses (common when screen-locked rotation confuses mapping),
                     // use face-local fallback instead of returning a near-line distribution.
                     const collapsed = (!Number.isFinite(faceW) || !Number.isFinite(faceH) || faceW <= 16 || faceW < faceH * 0.22);
+                    if (dbg) { dbg.collapsed = collapsed; if (collapsed) dbg.reason = 'collapsed'; }
 
                     if (!collapsed) {
                         // Mildly follow the VRM head-scale slider (avoid expanding too far outside face).
@@ -3923,6 +4022,7 @@ if (vy < 0) { vx = -vx; vy = -vy; }
                         y = Math.min(y, yMaxAllowed);
                         x = Math.min(Math.max(x, 0), cssW);
                         y = Math.min(Math.max(y, 0), cssH);
+                        if (dbg) { dbg.mode = 'screen'; dbg.out = { x, y }; dbg.yTop = yTop; dbg.yMaxAllowed = yMaxAllowed; _dbgAutoLast = dbg; }
                         return { x, y, yTop, yMaxAllowed };
                     }
                 }
@@ -3932,6 +4032,8 @@ if (vy < 0) { vx = -vx; vy = -vy; }
             // This stays stable even when screen orientation is locked and landmark->screen mapping jitters.
             const centerX = (basis.eyeMid.x * 0.55 + basis.mouthMid.x * 0.45);
             const centerY = (basis.eyeMid.y * 0.55 + basis.mouthMid.y * 0.45);
+
+            if (dbg) { dbg.modeCandidate = 'facelocal'; dbg.center = { x: centerX, y: centerY }; if (!dbg.reason) dbg.reason = 'fallback'; }
 
             const headS = getHeadOverlayScale();
             const a = 0.50 * headS;
@@ -3962,10 +4064,12 @@ if (vy < 0) { vx = -vx; vy = -vy; }
                 }
                 x = Math.min(Math.max(x, 0), cssW);
                 y = Math.min(Math.max(y, 0), cssH);
+                if (dbg) { dbg.mode = 'facelocal'; dbg.out = { x, y }; _dbgAutoLast = dbg; }
                 return { x, y };
             }
 
             // Last resort
+            if (dbg) { dbg.mode = 'facelocal'; dbg.out = { x: centerX, y: centerY }; if (!dbg.reason) dbg.reason = 'last resort'; _dbgAutoLast = dbg; }
             return { x: centerX, y: centerY };
         }
 
@@ -4281,6 +4385,16 @@ function drawCreamDrip(ctx, x, y, w, h, opacity, angleRad) {
                             const yTopShift = (Number.isFinite(tgt.yTop) ? (tgt.yTop + sdy) : tgt.yTop);
                             const yMaxShift = (Number.isFinite(tgt.yMaxAllowed) ? (tgt.yMaxAllowed + sdy) : tgt.yMaxAllowed);
 
+                            if (debugTextEnabled) {
+                                if (!_dbgAutoLast) _dbgAutoLast = { kind: 'autoCream' };
+                                _dbgAutoLast.shift = { dx: sdx, dy: sdy };
+                                _dbgAutoLast.out = { x: tgt.x, y: tgt.y };
+                                _dbgAutoLast.outShifted = { x: (tgt.x + sdx), y: (tgt.y + sdy) };
+                                _dbgAutoLast.yTopShift = yTopShift;
+                                _dbgAutoLast.yMaxShift = yMaxShift;
+                            }
+
+
                             const gid = (creamNextPatchGroupId++);
                             for (let i = 0; i < shotCount; i++) {
                                 // Same hit randomness as manual tap: tiny horizontal, mostly vertical (slight down-bias)
@@ -4453,7 +4567,10 @@ const ang = Math.atan2(dvy, dvx);
                 keepP.push(s);
             }
             creamPatches = keepP;
-        }
+        
+
+            _updateDebugOverlayAutoCream({ cssW, cssH, pr });
+}
 
 
 
@@ -5608,5 +5725,9 @@ scaleSlider.addEventListener('input', updateTransform);
         zSlider.addEventListener('input', updateTransform);
 
     </script>
+
+    <!-- Debug text overlay (shown only when enabled in Help) -->
+    <div id="debug-text-overlay" style="position:fixed; left:8px; top:8px; z-index:9999; background:rgba(0,0,0,0.55); color:#fff; font:12px/1.35 monospace; padding:6px 8px; border-radius:10px; white-space:pre; pointer-events:none; display:none; max-width:92vw; box-sizing:border-box;"></div>
+
 </body>
 </html>
