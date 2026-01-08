@@ -4015,9 +4015,17 @@ const CREAM_SHOT_COOLDOWN_MS = 320;
                     const vxX = (pr.x - pl.x), vxY = (pr.y - pl.y);
                     const vyX = (pc.x - pf.x), vyY = (pc.y - pf.y);
                     const faceW = Math.max(12, Math.hypot(vxX, vxY));
-                    const faceH = Math.max(12, Math.hypot(vyX, vyY));
+                    const faceH0 = Math.max(12, Math.hypot(vyX, vyY));
+                    // Screen-space face axes (unit). Make them stable/orthonormal so jitter works under orientation lock.
                     const axX = { x: vxX / faceW, y: vxY / faceW };
-                    const axY = { x: vyX / faceH, y: vyY / faceH };
+                    // Orthonormalize Y against X to avoid axis swapping / collapse under rotation lock.
+                    let ayx = (vyX / faceH0);
+                    let ayy = (vyY / faceH0);
+                    const dot = (ayx * axX.x + ayy * axX.y);
+                    ayx -= dot * axX.x;
+                    ayy -= dot * axX.y;
+                    const faceH = Math.max(12, Math.hypot(ayx, ayy));
+                    const axY = { x: ayx / faceH, y: ayy / faceH };
 
                     // Center: bias slightly toward cheeks so shots stay on the visible face
                     const centerX = (midCheekX * 0.60 + midFCX * 0.40);
@@ -4088,7 +4096,7 @@ const CREAM_SHOT_COOLDOWN_MS = 320;
                         x = Math.min(Math.max(x, 0), cssW);
                         y = Math.min(Math.max(y, 0), cssH);
                         if (dbg) { dbg.mode = 'screen'; dbg.out = { x, y }; dbg.t = t; dbg.yTop = yTop; dbg.yMaxAllowed = yMaxAllowed; _dbgAutoLast = dbg; }
-                        return { x, y, yTop, yMaxAllowed };
+                        return { x, y, yTop, yMaxAllowed, axX, axY, faceW, faceH };
                     }
                 }
             }
@@ -4130,12 +4138,12 @@ const CREAM_SHOT_COOLDOWN_MS = 320;
                 x = Math.min(Math.max(x, 0), cssW);
                 y = Math.min(Math.max(y, 0), cssH);
                 if (dbg) { dbg.mode = 'facelocal'; dbg.out = { x, y }; _dbgAutoLast = dbg; }
-                return { x, y };
+                return { x, y, axX: { x: (basis.ux || 1), y: (basis.uy || 0) }, axY: { x: (basis.vx || 0), y: (basis.vy || 1) }, faceW: (basis.faceW || 0), faceH: (basis.faceH || basis.faceW || 0) };
             }
 
             // Last resort
             if (dbg) { dbg.mode = 'facelocal'; dbg.out = { x: centerX, y: centerY }; if (!dbg.reason) dbg.reason = 'last resort'; _dbgAutoLast = dbg; }
-            return { x: centerX, y: centerY };
+            return { x: centerX, y: centerY, axX: { x: (basis.ux || 1), y: (basis.uy || 0) }, axY: { x: (basis.vx || 0), y: (basis.vy || 1) }, faceW: (basis.faceW || 0), faceH: (basis.faceH || basis.faceW || 0) };
         }
 
         // Compute screen-space shift (px) between tracked face origin and the user's model offsets.
@@ -4462,12 +4470,25 @@ function drawCreamDrip(ctx, x, y, w, h, opacity, angleRad) {
 
                             const gid = (creamNextPatchGroupId++);
                             for (let i = 0; i < shotCount; i++) {
-                                // Same hit randomness as manual tap: tiny horizontal, mostly vertical (slight down-bias)
-                                const dx = (Math.random() * 2 - 1) * 5.0;        // ±5px
-                                const dy = (Math.random() * 2 - 1) * 14.0 + 6.0; // mostly vertical
+                                // Scatter within a CIRCLE in face-space so it doesn't collapse to a line under screen rotation lock.
+                                const axXv = (tgt.axX && Number.isFinite(tgt.axX.x) && Number.isFinite(tgt.axX.y)) ? tgt.axX : { x: 1, y: 0 };
+                                const axYv = (tgt.axY && Number.isFinite(tgt.axY.x) && Number.isFinite(tgt.axY.y)) ? tgt.axY : { x: 0, y: 1 };
+                                const fw = (Number.isFinite(tgt.faceW) && tgt.faceW > 0) ? tgt.faceW : 120;
+                                const fh = (Number.isFinite(tgt.faceH) && tgt.faceH > 0) ? tgt.faceH : fw;
+                                const baseR = 0.12 * Math.min(fw, fh);
+                                const R = Math.min(60, Math.max(8, baseR + Math.max(0, baseCount - 1) * 2.5));
+                                const rr = Math.sqrt(Math.random()) * R;
+                                const th = Math.random() * Math.PI * 2.0;
+                                const ox = Math.cos(th) * rr;
+                                const oy = Math.sin(th) * rr;
+
+                                const dx = axXv.x * ox + axYv.x * oy;
+                                const dy = axXv.y * ox + axYv.y * oy;
+
                                 let ax = tgt.x + sdx + dx;
                                 let ay = tgt.y + sdy + dy;
-                                // Keep bounds AFTER jitter so the lower-10% exclusion stays effective.
+
+                                // Keep bounds AFTER jitter so the lower-10% exclusion stays effective when yClamp is active.
                                 if (Number.isFinite(yTopShift) && Number.isFinite(yMaxShift)) {
                                     ay = Math.min(Math.max(ay, yTopShift), yMaxShift);
                                 }
