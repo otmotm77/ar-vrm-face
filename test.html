@@ -69,7 +69,7 @@
             display: flex;
             align-items: center;
             justify-content: flex-end; /* zoomが無い場合でもアイコンを右寄せ */
-            gap: 12px;
+            gap: 6px;
             pointer-events: auto;
             z-index: 2001;
         }
@@ -86,7 +86,7 @@
             display: flex;
             align-items: center;
             justify-content: flex-start;
-            gap: 6px; /* 数値との余白を詰める */
+            gap: 3px; /* 数値との余白をさらに詰める */
             padding: 0;
             background: transparent;
             border-radius: 0;
@@ -95,7 +95,7 @@
             flex: 1 1 auto;
             min-width: 0;
             margin-right: auto; /* 左寄せ固定 */
-            max-width: 360px; /* 上限 */
+            max-width: 180px; /* 上限 */
 }
         .zoom-control.hidden{ display:none; }
         .zoom-control input[type="range"]{
@@ -1059,8 +1059,8 @@
     <script type="module">
         
 // ===== App Version (single source of truth) =====
-const APP_VERSION = "v6.01.38";
-const APP_VERSION_NOTE = "Zoom bar responsive width (avoid clipping)";
+const APP_VERSION = "v6.01.39";
+const APP_VERSION_NOTE = "Zoom max-width 180 + tighter gaps";
 
 
 function getOverlayPixelRatio() {
