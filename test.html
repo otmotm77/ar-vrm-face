@@ -838,6 +838,23 @@
             </div>
 
             <div class="slider-container">
+                <span class="slider-label">解像度</span>
+                <select id="camera-res-select" class="select-control">
+                    <option value="__max__">最大（推奨）</option>
+                    <option value="1920x1080">1080p</option>
+                    <option value="1280x720">720p</option>
+                    <option value="640x480">480p</option>
+                </select>
+            </div>
+            <div class="slider-container">
+                <span class="slider-label">映像表示</span>
+                <select id="bg-fit-select" class="select-control">
+                    <option value="cover">画面いっぱい（クロップ）</option>
+                    <option value="contain">全体表示（レターボックス）</option>
+                </select>
+            </div>
+
+            <div class="slider-container">
                 <label class="toggle-label">
                     <input type="checkbox" id="tracking-mirror-toggle" class="toggle-checkbox">
                     ミラー表示
@@ -1020,7 +1037,7 @@
     <script type="module">
         
 // ===== App Version (single source of truth) =====
-const APP_VERSION = "v6.01.27";
+const APP_VERSION = "v6.01.34";
 const APP_VERSION_NOTE = "Zoom UI init on start; capability debug";
 
 
@@ -1128,6 +1145,10 @@ let videoTexture = null; // THREE.CanvasTexture
         let currentFacingMode = 'user'; // カメラの向き (user / environment)
         const LS_CAMERA_DEVICE_ID = 'camera_device_id';
         let cameraDeviceId = localStorage.getItem(LS_CAMERA_DEVICE_ID) || '';
+        const LS_CAMERA_RES = 'camera_res';
+        const LS_BG_FIT = 'bg_fit';
+        let cameraRes = localStorage.getItem(LS_CAMERA_RES) || '__max__';
+        let bgFitMode = localStorage.getItem(LS_BG_FIT) || 'cover';
         let mirrorEnabled = true; // デフォルト: インカメはミラー
         let mirrorUserOverride = false; // 手動切替したら自動追従しない
 
@@ -1684,6 +1705,7 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
             }
             if (videoEl) {
                 lines.push(`video=${videoEl.videoWidth||0}x${videoEl.videoHeight||0}`);
+            try { lines.push(`prefRes=${cameraRes || '__max__'} bgFit=${bgFitMode || ''}`); } catch (_) {}
             }
             // Camera capabilities (to debug zoom availability)
             try {
@@ -1698,6 +1720,9 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
                         lines.push(`capsKeys=${keys.slice(0,12).join(',')}${keys.length>12?'...':''}`);
                         const z = caps.zoom ? caps.zoom : null;
                         lines.push(`caps.zoom=${z ? (_fmt(z.min,2)+'..'+_fmt(z.max,2)+' step='+_fmt(z.step ?? 0,2)) : 'N'}`);
+                        if (caps.width && caps.height) lines.push(`caps.size=${caps.width.min||'?'}..${caps.width.max||'?'} x ${caps.height.min||'?'}..${caps.height.max||'?'}`);
+                        if (caps.aspectRatio) lines.push(`caps.ar=${_fmt(caps.aspectRatio.min,3)}..${_fmt(caps.aspectRatio.max,3)}`);
+
                         if ('torch' in caps) lines.push(`caps.torch=${caps.torch ? 'Y' : 'N'}`);
                     } else {
                         lines.push('caps=null');
@@ -2376,6 +2401,8 @@ document.getElementById('toggle-menu-btn').addEventListener('click', () => {
         const mirrorToggle = document.getElementById('tracking-mirror-toggle');
         const cameraSelect = document.getElementById('camera-device-select');
         let __updatingCameraSelect = false;
+        const cameraResSelect = document.getElementById('camera-res-select');
+        const bgFitSelect = document.getElementById('bg-fit-select');
 
         const syncCameraSelectUI = () => {
             if (facingToggle) facingToggle.disabled = !!cameraDeviceId; // individual device selection disables facing toggle
@@ -2386,6 +2413,27 @@ document.getElementById('toggle-menu-btn').addEventListener('click', () => {
                 cameraSelect.disabled = !navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices;
             }
         };
+
+        // Apply persisted camera/resolution + background fit selections
+        try {
+            if (cameraResSelect) {
+                cameraResSelect.value = cameraRes || '__max__';
+                cameraResSelect.addEventListener('change', () => {
+                    cameraRes = cameraResSelect.value || '__max__';
+                    try { localStorage.setItem(LS_CAMERA_RES, cameraRes); } catch (_) {}
+                    showToast('解像度を変更しました。再起動して反映します');
+                    if (stream) restartAR();
+                });
+            }
+            if (bgFitSelect) {
+                bgFitSelect.value = bgFitMode || 'cover';
+                bgFitSelect.addEventListener('change', () => {
+                    bgFitMode = bgFitSelect.value || 'cover';
+                    try { localStorage.setItem(LS_BG_FIT, bgFitMode); } catch (_) {}
+                    try { handleViewportResize(); } catch (_) {}
+                });
+            }
+        } catch (_) {}
 
         const refreshCameraDeviceList = async () => {
             if (!cameraSelect || !navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
@@ -2568,9 +2616,10 @@ const waitForFirstFrame = async (el, timeoutMs=2000) => {
                     v.width  = { ideal: vwHint };
                     v.height = { ideal: vhHint };
                 } else {
-                    // Use a reasonable default hint only
-                    v.width  = { ideal: 1280 };
-                    v.height = { ideal: 720 };
+                    // Use preferred base resolution hint
+                    const base = getBaseVideoConstraints();
+                    v.width = base.width;
+                    v.height = base.height;
                 }
                 return { video: v, audio: false };
             };
@@ -3018,12 +3067,26 @@ await waitForVideoEvent
             const vpAspect = vp.width / vp.height;
 
             let planeW, planeH;
-            if (videoAspect > vpAspect) {
-                planeW = vp.width;
-                planeH = vp.width / videoAspect;
+            if (bgFitMode === 'cover') {
+                // Cover: fill viewport, crop overflow
+                if (videoAspect > vpAspect) {
+                    // video is wider -> match height
+                    planeH = vp.height;
+                    planeW = vp.height * videoAspect;
+                } else {
+                    // video is taller -> match width
+                    planeW = vp.width;
+                    planeH = vp.width / videoAspect;
+                }
             } else {
-                planeH = vp.height;
-                planeW = vp.height * videoAspect;
+                // Contain: show full video, letterbox/pillarbox
+                if (videoAspect > vpAspect) {
+                    planeW = vp.width;
+                    planeH = vp.width / videoAspect;
+                } else {
+                    planeH = vp.height;
+                    planeW = vp.height * videoAspect;
+                }
             }
 
             bgPlane.position.set(0, 0, -depth);
@@ -5426,7 +5489,52 @@ if (videoTexture) videoTexture.needsUpdate = true;
             });
         }
 
-        async function startAR(isRestart = false) {
+        
+        // Build base getUserMedia constraints from the user's preferred resolution
+        function getBaseVideoConstraints() {
+            if (cameraRes && cameraRes !== '__max__') {
+                const parts = String(cameraRes).split('x');
+                const w = parseInt(parts[0], 10);
+                const h = parseInt(parts[1], 10);
+                if (Number.isFinite(w) && Number.isFinite(h) && w > 0 && h > 0) {
+                    return { width: { ideal: w }, height: { ideal: h } };
+                }
+            }
+            // "__max__": use large ideals (won't throw, but nudges towards higher res)
+            return { width: { ideal: 4096 }, height: { ideal: 2160 } };
+        }
+
+        async function applyPreferredResolutionToTrack(tr) {
+            if (!tr || !tr.applyConstraints) return;
+            try {
+                if (cameraRes && cameraRes !== '__max__') {
+                    const parts = String(cameraRes).split('x');
+                    const w = parseInt(parts[0], 10);
+                    const h = parseInt(parts[1], 10);
+                    if (Number.isFinite(w) && Number.isFinite(h) && w > 0 && h > 0) {
+                        await tr.applyConstraints({ width: { ideal: w }, height: { ideal: h } });
+                    }
+                    return;
+                }
+                // "__max__": if caps are available, try to request max
+                const caps = tr.getCapabilities ? tr.getCapabilities() : null;
+                if (caps && caps.width && caps.height) {
+                    const wMax = caps.width.max;
+                    const hMax = caps.height.max;
+                    if (Number.isFinite(wMax) && Number.isFinite(hMax)) {
+                        try {
+                            await tr.applyConstraints({ width: { exact: wMax }, height: { exact: hMax } });
+                        } catch (_) {
+                            await tr.applyConstraints({ width: { ideal: wMax }, height: { ideal: hMax } });
+                        }
+                    }
+                }
+            } catch (_) {
+                // ignore
+            }
+        }
+
+async function startAR(isRestart = false) {
             let startTimeout;
 
             try {
@@ -5452,10 +5560,7 @@ if (videoTexture) videoTexture.needsUpdate = true;
                 }
 
                 // --- getUserMedia (supports manual camera device selection) ---
-const baseVideo = {
-    width: { ideal: 1280 },
-    height: { ideal: 720 }
-};
+const baseVideo = getBaseVideoConstraints();
 
 const attempts = [];
 if (cameraDeviceId) {
@@ -5480,6 +5585,9 @@ for (let i = 0; i < attempts.length; i++) {
     }
 }
 if (!stream) throw lastErr;
+
+// Apply preferred resolution to the active track (best-effort)
+try { await applyPreferredResolutionToTrack(stream.getVideoTracks()[0]); } catch (_) {}
 
 // If deviceId selection failed and we fell back, clear the invalid selection
 if (cameraDeviceId && pickedIndex >= 2) {
