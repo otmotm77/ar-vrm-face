@@ -95,7 +95,8 @@
             flex: 1 1 auto;
             min-width: 0;
             margin-right: auto; /* 左寄せ固定 */
-        }
+            max-width: 360px; /* 上限 */
+}
         .zoom-control.hidden{ display:none; }
         .zoom-control input[type="range"]{
             flex: 1 1 auto;
@@ -1058,7 +1059,7 @@
     <script type="module">
         
 // ===== App Version (single source of truth) =====
-const APP_VERSION = "v6.01.37";
+const APP_VERSION = "v6.01.38";
 const APP_VERSION_NOTE = "Zoom bar responsive width (avoid clipping)";
 
 
