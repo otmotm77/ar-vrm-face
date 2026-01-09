@@ -61,14 +61,67 @@
             pointer-events: none;
         }
 
-        .icon-buttons {
+        .top-controls{
             position: absolute;
             top: 10px;
+            left: 10px;
             right: 10px;
             display: flex;
-            gap: 10px;
+            align-items: center;
+            justify-content: flex-end; /* zoomが無い場合でもアイコンを右寄せ */
+            gap: 6px;
             pointer-events: auto;
             z-index: 2001;
+        }
+        .top-controls.has-zoom{
+            justify-content: flex-end; /* zoomがある場合も右寄せを維持(zoomはmargin-right:autoで左に固定) */
+        }
+        .icon-buttons {
+            position: static;
+            display: flex;
+            gap: 10px;
+            flex: 0 0 auto;
+        }
+        .zoom-control{
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
+            gap: 3px; /* 数値との余白をさらに詰める */
+            padding: 0;
+            background: transparent;
+            border-radius: 0;
+            backdrop-filter: none;
+            -webkit-backdrop-filter: none;
+            flex: 1 1 auto;
+            min-width: 0;
+            margin-right: auto; /* 左寄せ固定 */
+            max-width: 180px; /* 上限 */
+}
+        .zoom-control.hidden{ display:none; }
+        .zoom-control input[type="range"]{
+            flex: 1 1 auto;
+            width: auto;
+            min-width: 120px;
+            max-width: 100%;
+        }
+        .zoom-control .zoom-value{
+            min-width: 3.2em;
+            text-align: right;
+            font-variant-numeric: tabular-nums;
+            font-size: 14px;
+            opacity: 0.9;
+            color: rgba(0,0,0,0.92);
+            /* 白い縁取り(テキストシャドウ) */
+            text-shadow:
+              -1px -1px 0 rgba(255,255,255,0.90),
+               1px -1px 0 rgba(255,255,255,0.90),
+              -1px  1px 0 rgba(255,255,255,0.90),
+               1px  1px 0 rgba(255,255,255,0.90),
+               0px  0px 2px rgba(255,255,255,0.95);
+        }
+        @media (max-width: 480px){
+            .zoom-control input[type="range"]{ min-width: 96px; }
+            .zoom-control .zoom-value{ font-size: 13px; }
         }
 
         
@@ -442,6 +495,15 @@
 
 
         .acc-section > *:not(summary) { padding: 8px 12px 10px 12px; }
+
+        .select-control{
+            width: 100%;
+            padding: 8px 10px;
+            border-radius: 10px;
+            border: 1px solid rgba(0,0,0,0.15);
+            background: rgba(255,255,255,0.9);
+            font-size: 14px;
+        }
 </style>
 
     <script type="importmap">
@@ -472,10 +534,16 @@
     </div>
 
     <div id="ui-container" style="display:none;">
-        <div class="icon-buttons">
-            <button id="toggle-light-btn" class="icon-btn" title="照明・画質設定">💡</button>
+        <div class="top-controls">
+            <div id="zoom-control" class="zoom-control hidden" title="ズーム">
+                                <input id="zoom-slider" type="range" min="1" max="1" step="0.1" value="1" />
+                <span id="zoom-value" class="zoom-value">1.0×</span>
+            </div>
+            <div class="icon-buttons">
+<button id="toggle-light-btn" class="icon-btn" title="照明・画質設定">💡</button>
             <button id="toggle-menu-btn" class="icon-btn" title="全般オプション">⚙️</button>
             <button id="toggle-fullscreen-btn" class="icon-btn" title="全画面表示切替">⛶</button>
+        </div>
         </div>
 
         <!-- Left-bottom toggle button: Auto cream shot -->
@@ -782,6 +850,33 @@
                 </label>
             </div>
             <div class="slider-container">
+                <span class="slider-label">カメラ選択</span>
+                <select id="camera-device-select" class="select-control" disabled>
+                    <option value="__auto__">自動（イン/アウト）</option>
+                </select>
+            </div>
+            <div class="help-text" style="margin-top:-6px; margin-bottom:6px; font-size:12px; opacity:0.75;">
+                ※一覧はカメラ許可後に表示されます。個別選択中は「アウトカメラ」切替は無効になります。
+            </div>
+
+            <div class="slider-container">
+                <span class="slider-label">解像度</span>
+                <select id="camera-res-select" class="select-control">
+                    <option value="__max__">最大（推奨）</option>
+                    <option value="1920x1080">1080p</option>
+                    <option value="1280x720">720p</option>
+                    <option value="640x480">480p</option>
+                </select>
+            </div>
+            <div class="slider-container">
+                <span class="slider-label">映像表示</span>
+                <select id="bg-fit-select" class="select-control">
+                    <option value="cover">画面いっぱい（クロップ）</option>
+                    <option value="contain">全体表示（レターボックス）</option>
+                </select>
+            </div>
+
+            <div class="slider-container">
                 <label class="toggle-label">
                     <input type="checkbox" id="tracking-mirror-toggle" class="toggle-checkbox">
                     ミラー表示
@@ -964,8 +1059,8 @@
     <script type="module">
         
 // ===== App Version (single source of truth) =====
-const APP_VERSION = "v6.01.25";
-const APP_VERSION_NOTE = "Landmark mapping uses captured rotation/video size to stabilize auto targeting; Camera switch: reliable first-frame + reset";
+const APP_VERSION = "v6.01.39";
+const APP_VERSION_NOTE = "Zoom max-width 180 + tighter gaps";
 
 
 function getOverlayPixelRatio() {
@@ -1070,6 +1165,12 @@ let videoTexture = null; // THREE.CanvasTexture
         let appliedBeta = 0.04;
         let currentFileName = "";
         let currentFacingMode = 'user'; // カメラの向き (user / environment)
+        const LS_CAMERA_DEVICE_ID = 'camera_device_id';
+        let cameraDeviceId = localStorage.getItem(LS_CAMERA_DEVICE_ID) || '';
+        const LS_CAMERA_RES = 'camera_res';
+        const LS_BG_FIT = 'bg_fit';
+        let cameraRes = localStorage.getItem(LS_CAMERA_RES) || '__max__';
+        let bgFitMode = localStorage.getItem(LS_BG_FIT) || 'cover';
         let mirrorEnabled = true; // デフォルト: インカメはミラー
         let mirrorUserOverride = false; // 手動切替したら自動追従しない
 
@@ -1487,6 +1588,94 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
         const uiContainer = document.getElementById('ui-container');
         const controlPanel = document.getElementById('control-panel');
         const lightPanel = document.getElementById('light-panel');
+
+        // --- Camera Zoom (global) ---
+        const zoomControlEl = document.getElementById('zoom-control');
+        const zoomSliderEl = document.getElementById('zoom-slider');
+        const zoomValueEl = document.getElementById('zoom-value');
+        const topControlsEl = document.querySelector('.top-controls');
+        const LS_CAMERA_ZOOM = 'camera_zoom';
+        let cameraZoom = parseFloat(localStorage.getItem(LS_CAMERA_ZOOM) || '1');
+        if (!isFinite(cameraZoom) || cameraZoom <= 0) cameraZoom = 1;
+
+        let activeVideoTrack = null;
+        let __updatingZoomUI = false;
+
+        const _clamp = (v, mn, mx) => Math.min(mx, Math.max(mn, v));
+
+        const setZoomVisible = (visible) => {
+            if (zoomControlEl) zoomControlEl.classList.toggle('hidden', !visible);
+            // zoomがある時だけ左(ズーム) + 右(アイコン)のレイアウトにする
+            if (topControlsEl) topControlsEl.classList.toggle('has-zoom', !!visible);
+        };
+
+        const setZoomValueText = (z) => {
+            if (!zoomValueEl) return;
+            const zz = Math.round(z * 10) / 10;
+            zoomValueEl.textContent = `${zz.toFixed(1)}×`;
+        };
+
+        const applyZoomToTrack = async (track, z) => {
+            if (!track) return;
+            try {
+                const caps = track.getCapabilities ? track.getCapabilities() : null;
+                if (!caps || !caps.zoom) return;
+                const zoomMin = caps.zoom.min ?? 1;
+                const zoomMax = caps.zoom.max ?? 1;
+                const zz = _clamp(z, zoomMin, zoomMax);
+                await track.applyConstraints({ advanced: [{ zoom: zz }] });
+            } catch (e) {
+                // Some devices/browsers reject zoom constraints; ignore silently
+            }
+        };
+
+        const initZoomControlFromTrack = async (track) => {
+            activeVideoTrack = track || null;
+            if (!zoomControlEl || !zoomSliderEl || !activeVideoTrack) {
+                setZoomVisible(false);
+                return;
+            }
+            const caps = activeVideoTrack.getCapabilities ? activeVideoTrack.getCapabilities() : null;
+            if (!caps || !caps.zoom) {
+                setZoomVisible(false);
+                return;
+            }
+
+            const zoomMin = caps.zoom.min ?? 1;
+            const zoomMax = caps.zoom.max ?? 1;
+            const zoomStep = caps.zoom.step ?? 0.1;
+
+            __updatingZoomUI = true;
+            zoomSliderEl.min = String(zoomMin);
+            zoomSliderEl.max = String(zoomMax);
+            zoomSliderEl.step = String(zoomStep);
+
+            // Prefer stored zoom; if outside range, use current settings or clamp.
+            let target = cameraZoom;
+            const st = activeVideoTrack.getSettings ? activeVideoTrack.getSettings() : null;
+            if ((!isFinite(target) || target <= 0) && st && isFinite(st.zoom)) target = st.zoom;
+            target = _clamp(target, zoomMin, zoomMax);
+
+            zoomSliderEl.value = String(target);
+            setZoomValueText(target);
+            __updatingZoomUI = false;
+
+            setZoomVisible(true);
+            await applyZoomToTrack(activeVideoTrack, target);
+        };
+
+        if (zoomSliderEl) {
+            zoomSliderEl.addEventListener('input', async () => {
+                if (__updatingZoomUI) return;
+                const v = parseFloat(zoomSliderEl.value);
+                if (!isFinite(v)) return;
+                cameraZoom = v;
+                localStorage.setItem(LS_CAMERA_ZOOM, String(cameraZoom));
+                setZoomValueText(cameraZoom);
+                await applyZoomToTrack(activeVideoTrack, cameraZoom);
+            }, { passive: true });
+        }
+
         // --- UI state helpers: accordion + scroll restore ---
         function _uiKey(suffix) {
             // UI state should be global (not per-VRM) so section open/close is consistent.
@@ -1540,7 +1729,43 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
             }
             if (videoEl) {
                 lines.push(`video=${videoEl.videoWidth||0}x${videoEl.videoHeight||0}`);
+            try { lines.push(`prefRes=${cameraRes || '__max__'} bgFit=${bgFitMode || ''}`); } catch (_) {}
             }
+            // Camera capabilities (to debug zoom availability)
+            try {
+                const tr = activeVideoTrack || (videoEl && videoEl.srcObject && videoEl.srcObject.getVideoTracks ? (videoEl.srcObject.getVideoTracks()[0] || null) : null);
+                if (tr) {
+                    lines.push(`track=${(tr.label || '').slice(0,60)}`);
+                    const caps = tr.getCapabilities ? tr.getCapabilities() : null;
+                    const sets = tr.getSettings ? tr.getSettings() : null;
+
+                    if (caps) {
+const z = caps.zoom ? caps.zoom : null;
+                        lines.push(`caps.zoom=${z ? (_fmt(z.min,2)+'..'+_fmt(z.max,2)+' step='+_fmt(z.step ?? 0,2)) : 'N'}`);
+                        if (caps.width && caps.height) lines.push(`caps.size=${caps.width.min||'?'}..${caps.width.max||'?'} x ${caps.height.min||'?'}..${caps.height.max||'?'}`);
+                        if (caps.aspectRatio) lines.push(`caps.ar=${_fmt(caps.aspectRatio.min,3)}..${_fmt(caps.aspectRatio.max,3)}`);
+
+                        if ('torch' in caps) lines.push(`caps.torch=${caps.torch ? 'Y' : 'N'}`);
+                    } else {
+                        lines.push('caps=null');
+                    }
+
+                    if (sets) {
+                        const zset = (typeof sets.zoom === 'number') ? sets.zoom : NaN;
+                        lines.push(`set.facing=${sets.facingMode || ''} zoom=${Number.isFinite(zset) ? _fmt(zset,2) : 'N'}`);
+                        if (sets.width && sets.height) lines.push(`set.size=${sets.width}x${sets.height}`);
+                        if (sets.frameRate) lines.push(`set.fps=${_fmt(sets.frameRate,1)}`);
+                    }
+
+                    const zEl = document.getElementById('zoom-control');
+                    if (zEl) lines.push(`zoomUI=${zEl.classList.contains('hidden') ? 'hidden' : 'show'}`);
+                } else {
+                    lines.push('track=null');
+                }
+            } catch (e) {
+                lines.push(`capsErr=${(e && e.message) ? e.message : e}`);
+            }
+
             if (typeof deviceBeta !== 'undefined' || typeof deviceGamma !== 'undefined') {
                 lines.push(`tilt beta=${_fmt(deviceBeta,1)} gamma=${_fmt(deviceGamma,1)}`);
             }
@@ -2196,10 +2421,96 @@ document.getElementById('toggle-menu-btn').addEventListener('click', () => {
         // ===== Tracking UI: Camera (in/out) + Mirror toggles (moved into main menu > Tracking) =====
         const facingToggle = document.getElementById('tracking-facing-toggle');
         const mirrorToggle = document.getElementById('tracking-mirror-toggle');
+        const cameraSelect = document.getElementById('camera-device-select');
+        let __updatingCameraSelect = false;
+        const cameraResSelect = document.getElementById('camera-res-select');
+        const bgFitSelect = document.getElementById('bg-fit-select');
+
+        const syncCameraSelectUI = () => {
+            if (facingToggle) facingToggle.disabled = !!cameraDeviceId; // individual device selection disables facing toggle
+            if (cameraSelect) {
+                // Keep selection without triggering handler during refresh
+                if (__updatingCameraSelect) return;
+                // if options not ready yet, just keep disabled state
+                cameraSelect.disabled = !navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices;
+            }
+        };
+
+        // Apply persisted camera/resolution + background fit selections
+        try {
+            if (cameraResSelect) {
+                cameraResSelect.value = cameraRes || '__max__';
+                cameraResSelect.addEventListener('change', () => {
+                    cameraRes = cameraResSelect.value || '__max__';
+                    try { localStorage.setItem(LS_CAMERA_RES, cameraRes); } catch (_) {}
+                    showToast('解像度を変更しました。再起動して反映します');
+                    if (stream) restartAR();
+                });
+            }
+            if (bgFitSelect) {
+                bgFitSelect.value = bgFitMode || 'cover';
+                bgFitSelect.addEventListener('change', () => {
+                    bgFitMode = bgFitSelect.value || 'cover';
+                    try { localStorage.setItem(LS_BG_FIT, bgFitMode); } catch (_) {}
+                    try { handleViewportResize(); } catch (_) {}
+                });
+            }
+        } catch (_) {}
+
+        const refreshCameraDeviceList = async () => {
+            if (!cameraSelect || !navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
+            try {
+                __updatingCameraSelect = true;
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                const cams = devices.filter(d => d.kind === 'videoinput');
+
+                const prev = cameraSelect.value;
+                cameraSelect.innerHTML = '';
+                cameraSelect.appendChild(new Option('自動（イン/アウト）', '__auto__'));
+
+                cams.forEach((d, i) => {
+                    const label = d.label ? d.label : ('カメラ' + (i + 1));
+                    cameraSelect.appendChild(new Option(label, d.deviceId));
+                });
+
+                // Restore selection
+                if (cameraDeviceId && cams.some(d => d.deviceId === cameraDeviceId)) {
+                    cameraSelect.value = cameraDeviceId;
+                } else {
+                    cameraSelect.value = '__auto__';
+                    if (cameraDeviceId) {
+                        // device disappeared
+                        cameraDeviceId = '';
+                        localStorage.removeItem(LS_CAMERA_DEVICE_ID);
+                    }
+                }
+            } catch (e) {
+                // ignore
+            } finally {
+                __updatingCameraSelect = false;
+                syncCameraSelectUI();
+            }
+        };
+
+        if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
+            navigator.mediaDevices.addEventListener('devicechange', () => {
+                refreshCameraDeviceList();
+            });
+        }
+
+
 
         const syncTrackingTogglesFromState = () => {
-            if (facingToggle) facingToggle.checked = (currentFacingMode === 'environment');
+            if (facingToggle) {
+                facingToggle.checked = (currentFacingMode === 'environment');
+                facingToggle.disabled = !!cameraDeviceId; // device selection overrides facing toggle
+            }
             if (mirrorToggle) mirrorToggle.checked = !!mirrorEnabled;
+            if (cameraSelect && !__updatingCameraSelect) {
+                // Keep dropdown consistent if options are already populated
+                if (cameraDeviceId) cameraSelect.value = cameraDeviceId;
+                else if (cameraSelect.value !== '__auto__') cameraSelect.value = '__auto__';
+            }
         };
 
         const applyMirrorFromToggle = () => {
@@ -2327,9 +2638,10 @@ const waitForFirstFrame = async (el, timeoutMs=2000) => {
                     v.width  = { ideal: vwHint };
                     v.height = { ideal: vhHint };
                 } else {
-                    // Use a reasonable default hint only
-                    v.width  = { ideal: 1280 };
-                    v.height = { ideal: 720 };
+                    // Use preferred base resolution hint
+                    const base = getBaseVideoConstraints();
+                    v.width = base.width;
+                    v.height = base.height;
                 }
                 return { video: v, audio: false };
             };
@@ -2438,7 +2750,14 @@ videoEl.srcObject = newStream;
 
                     // Wait for metadata / canplay (best-effort)
                     await waitForVideoEvent(videoEl, 'loadedmetadata', 2000);
-                    try { await videoEl.play(); } catch (_) {}
+                    try { await videoEl.play();
+
+                // Init zoom control (if supported)
+                try {
+                    const vt = stream && stream.getVideoTracks ? stream.getVideoTracks()[0] : null;
+                    await initZoomControlFromTrack(vt);
+                } catch(_) {}
+ } catch (_) {}
 
                     // Ensure at least one frame becomes available so drawVideoToDisplayCanvas can update
                     const gotFrame = await waitForFirstFrame(videoEl, 2200);
@@ -2566,6 +2885,13 @@ await waitForVideoEvent
         if (facingToggle) {
             let __cameraRestarting = false;
             facingToggle.addEventListener('change', async () => {
+            // If user toggles facing, switch to AUTO camera selection
+            if (cameraDeviceId) {
+                cameraDeviceId = '';
+                localStorage.removeItem(LS_CAMERA_DEVICE_ID);
+                if (cameraSelect && !__updatingCameraSelect) cameraSelect.value = '__auto__';
+            }
+
                 const want = facingToggle.checked ? 'environment' : 'user';
 
                 // If AR isn't started yet, just update state (startAR() will pick it up)
@@ -2608,6 +2934,50 @@ await waitForVideoEvent
                 }
             });
         }
+
+        if (cameraSelect) {
+            // Initial UI state (before permission labels are available)
+            cameraSelect.disabled = true;
+
+            cameraSelect.addEventListener('change', async () => {
+                if (__updatingCameraSelect) return;
+
+                const val = cameraSelect.value;
+                if (val === '__auto__') {
+                    cameraDeviceId = '';
+                    localStorage.removeItem(LS_CAMERA_DEVICE_ID);
+                    if (facingToggle) facingToggle.disabled = false;
+                    showToast('カメラ: 自動');
+                } else {
+                    cameraDeviceId = val;
+                    localStorage.setItem(LS_CAMERA_DEVICE_ID, cameraDeviceId);
+                    if (facingToggle) facingToggle.disabled = true;
+                    showToast('カメラを選択しました');
+                }
+
+                // Persist (so reload keeps it)
+                try { saveSettings(); } catch (_) {}
+
+                // If AR is running, apply via restart (same as "設定を適用して再起動する")
+                if (stream && videoEl && renderer) {
+                    if (__cameraRestarting) return;
+                    __cameraRestarting = true;
+                    try {
+                        await restartAR();
+                    } catch (e) {
+                        console.error(e);
+                        showToast('カメラ適用に失敗しました');
+                    } finally {
+                        __cameraRestarting = false;
+                        syncTrackingTogglesFromState();
+                    }
+                } else {
+                    // Not started yet; it will apply on start
+                    syncTrackingTogglesFromState();
+                }
+            });
+        }
+
 
         // Backward compatibility: if old icon buttons exist (older HTML), wire them too.
         const oldMirrorBtn = document.getElementById('toggle-mirror-btn');
@@ -2719,12 +3089,26 @@ await waitForVideoEvent
             const vpAspect = vp.width / vp.height;
 
             let planeW, planeH;
-            if (videoAspect > vpAspect) {
-                planeW = vp.width;
-                planeH = vp.width / videoAspect;
+            if (bgFitMode === 'cover') {
+                // Cover: fill viewport, crop overflow
+                if (videoAspect > vpAspect) {
+                    // video is wider -> match height
+                    planeH = vp.height;
+                    planeW = vp.height * videoAspect;
+                } else {
+                    // video is taller -> match width
+                    planeW = vp.width;
+                    planeH = vp.width / videoAspect;
+                }
             } else {
-                planeH = vp.height;
-                planeW = vp.height * videoAspect;
+                // Contain: show full video, letterbox/pillarbox
+                if (videoAspect > vpAspect) {
+                    planeW = vp.width;
+                    planeH = vp.width / videoAspect;
+                } else {
+                    planeH = vp.height;
+                    planeW = vp.height * videoAspect;
+                }
             }
 
             bgPlane.position.set(0, 0, -depth);
@@ -5078,6 +5462,9 @@ if (videoTexture) videoTexture.needsUpdate = true;
                 if (stream) {
                     stream.getTracks().forEach(t => t.stop());
                     stream = null;
+                    activeVideoTrack = null;
+                    setZoomVisible(false);
+
                 }
                 if (videoEl) {
                     videoEl.pause();
@@ -5124,7 +5511,52 @@ if (videoTexture) videoTexture.needsUpdate = true;
             });
         }
 
-        async function startAR(isRestart = false) {
+        
+        // Build base getUserMedia constraints from the user's preferred resolution
+        function getBaseVideoConstraints() {
+            if (cameraRes && cameraRes !== '__max__') {
+                const parts = String(cameraRes).split('x');
+                const w = parseInt(parts[0], 10);
+                const h = parseInt(parts[1], 10);
+                if (Number.isFinite(w) && Number.isFinite(h) && w > 0 && h > 0) {
+                    return { width: { ideal: w }, height: { ideal: h } };
+                }
+            }
+            // "__max__": use large ideals (won't throw, but nudges towards higher res)
+            return { width: { ideal: 4096 }, height: { ideal: 2160 } };
+        }
+
+        async function applyPreferredResolutionToTrack(tr) {
+            if (!tr || !tr.applyConstraints) return;
+            try {
+                if (cameraRes && cameraRes !== '__max__') {
+                    const parts = String(cameraRes).split('x');
+                    const w = parseInt(parts[0], 10);
+                    const h = parseInt(parts[1], 10);
+                    if (Number.isFinite(w) && Number.isFinite(h) && w > 0 && h > 0) {
+                        await tr.applyConstraints({ width: { ideal: w }, height: { ideal: h } });
+                    }
+                    return;
+                }
+                // "__max__": if caps are available, try to request max
+                const caps = tr.getCapabilities ? tr.getCapabilities() : null;
+                if (caps && caps.width && caps.height) {
+                    const wMax = caps.width.max;
+                    const hMax = caps.height.max;
+                    if (Number.isFinite(wMax) && Number.isFinite(hMax)) {
+                        try {
+                            await tr.applyConstraints({ width: { exact: wMax }, height: { exact: hMax } });
+                        } catch (_) {
+                            await tr.applyConstraints({ width: { ideal: wMax }, height: { ideal: hMax } });
+                        }
+                    }
+                }
+            } catch (_) {
+                // ignore
+            }
+        }
+
+async function startAR(isRestart = false) {
             let startTimeout;
 
             try {
@@ -5149,20 +5581,65 @@ if (videoTexture) videoTexture.needsUpdate = true;
                     stream = null;
                 }
 
-                stream = await navigator.mediaDevices.getUserMedia({
-                    audio: false,
-                    video: {
-                        facingMode: { ideal: currentFacingMode },
-                        width: { ideal: 1280 },
-                        height: { ideal: 720 }
-                    }
-                });
+                // --- getUserMedia (supports manual camera device selection) ---
+const baseVideo = getBaseVideoConstraints();
+
+const attempts = [];
+if (cameraDeviceId) {
+    // Prefer exact deviceId
+    attempts.push({ audio: false, video: { ...baseVideo, deviceId: { exact: cameraDeviceId } } });
+    // Some browsers accept plain deviceId
+    attempts.push({ audio: false, video: { ...baseVideo, deviceId: cameraDeviceId } });
+}
+// Fallback to facingMode
+attempts.push({ audio: false, video: { ...baseVideo, facingMode: { ideal: currentFacingMode } } });
+attempts.push({ audio: false, video: { ...baseVideo, facingMode: currentFacingMode } });
+
+let lastErr = null;
+let pickedIndex = -1;
+for (let i = 0; i < attempts.length; i++) {
+    try {
+        stream = await navigator.mediaDevices.getUserMedia(attempts[i]);
+        pickedIndex = i;
+        break;
+    } catch (e) {
+        lastErr = e;
+    }
+}
+if (!stream) throw lastErr;
+
+// Apply preferred resolution to the active track (best-effort)
+try { await applyPreferredResolutionToTrack(stream.getVideoTracks()[0]); } catch (_) {}
+
+// If deviceId selection failed and we fell back, clear the invalid selection
+if (cameraDeviceId && pickedIndex >= 2) {
+    cameraDeviceId = '';
+    localStorage.removeItem(LS_CAMERA_DEVICE_ID);
+    if (cameraSelect && !__updatingCameraSelect) cameraSelect.value = '__auto__';
+    showToast('選択カメラが使用できないため自動に戻しました');
+}
+
 
                 videoEl.srcObject = stream;
                 await new Promise(resolve => {
                     videoEl.onloadedmetadata = () => resolve();
                 });
                 await videoEl.play();
+
+                // Init zoom control (if supported)
+                try {
+                    const vt = stream && stream.getVideoTracks ? stream.getVideoTracks()[0] : null;
+                    await initZoomControlFromTrack(vt);
+                } catch (_) {}
+
+
+                // Populate camera list after permission is granted
+                if (cameraSelect) {
+                    cameraSelect.disabled = false;
+                    await refreshCameraDeviceList();
+                    syncTrackingTogglesFromState();
+                }
+
 
                 clearTimeout(startTimeout);
 
