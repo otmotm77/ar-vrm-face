@@ -68,10 +68,13 @@
             right: 10px;
             display: flex;
             align-items: center;
-            justify-content: space-between;
+            justify-content: flex-end; /* zoomが無い場合でもアイコンを右寄せ */
             gap: 12px;
             pointer-events: auto;
             z-index: 2001;
+        }
+        .top-controls.has-zoom{
+            justify-content: space-between; /* zoomがある場合は左(zoom)・右(アイコン)に分離 */
         }
         .icon-buttons {
             position: static;
@@ -82,7 +85,7 @@
             display: flex;
             align-items: center;
             justify-content: flex-start;
-            gap: 10px;
+            gap: 6px; /* 数値との余白を詰める */
             padding: 0;
             background: transparent;
             border-radius: 0;
@@ -92,11 +95,19 @@
         .zoom-control.hidden{ display:none; }
         .zoom-control input[type="range"]{ width: min(52vw, 280px); }
         .zoom-control .zoom-value{
-            min-width: 3.5em;
+            min-width: 3.2em;
             text-align: right;
             font-variant-numeric: tabular-nums;
             font-size: 14px;
-            opacity: 0.85;
+            opacity: 0.9;
+            color: rgba(0,0,0,0.92);
+            /* 白い縁取り(テキストシャドウ) */
+            text-shadow:
+              -1px -1px 0 rgba(255,255,255,0.90),
+               1px -1px 0 rgba(255,255,255,0.90),
+              -1px  1px 0 rgba(255,255,255,0.90),
+               1px  1px 0 rgba(255,255,255,0.90),
+               0px  0px 2px rgba(255,255,255,0.95);
         }
         @media (max-width: 480px){
             .zoom-control input[type="range"]{ width: min(48vw, 220px); }
@@ -1037,8 +1048,8 @@
     <script type="module">
         
 // ===== App Version (single source of truth) =====
-const APP_VERSION = "v6.01.35";
-const APP_VERSION_NOTE = "Zoom UI init on start; capability debug";
+const APP_VERSION = "v6.01.36";
+const APP_VERSION_NOTE = "Zoom UI align right when hidden; value outline & spacing";
 
 
 function getOverlayPixelRatio() {
@@ -1571,6 +1582,7 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
         const zoomControlEl = document.getElementById('zoom-control');
         const zoomSliderEl = document.getElementById('zoom-slider');
         const zoomValueEl = document.getElementById('zoom-value');
+        const topControlsEl = document.querySelector('.top-controls');
         const LS_CAMERA_ZOOM = 'camera_zoom';
         let cameraZoom = parseFloat(localStorage.getItem(LS_CAMERA_ZOOM) || '1');
         if (!isFinite(cameraZoom) || cameraZoom <= 0) cameraZoom = 1;
@@ -1581,8 +1593,9 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
         const _clamp = (v, mn, mx) => Math.min(mx, Math.max(mn, v));
 
         const setZoomVisible = (visible) => {
-            if (!zoomControlEl) return;
-            zoomControlEl.classList.toggle('hidden', !visible);
+            if (zoomControlEl) zoomControlEl.classList.toggle('hidden', !visible);
+            // zoomがある時だけ左(ズーム) + 右(アイコン)のレイアウトにする
+            if (topControlsEl) topControlsEl.classList.toggle('has-zoom', !!visible);
         };
 
         const setZoomValueText = (z) => {
