@@ -61,14 +61,44 @@
             pointer-events: none;
         }
 
-        .icon-buttons {
+        .top-controls{
             position: absolute;
             top: 10px;
             right: 10px;
             display: flex;
-            gap: 10px;
+            align-items: center;
+            gap: 12px;
             pointer-events: auto;
             z-index: 2001;
+        }
+        .icon-buttons {
+            position: static;
+            display: flex;
+            gap: 10px;
+        }
+        .zoom-control{
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
+            gap: 8px;
+            padding: 8px 10px;
+            background: rgba(255, 255, 255, 0.75);
+            border-radius: 999px;
+            backdrop-filter: blur(6px);
+            -webkit-backdrop-filter: blur(6px);
+        }
+        .zoom-control.hidden{ display:none; }
+        .zoom-control .zoom-label{ font-size: 16px; line-height: 1; }
+        .zoom-control input[type="range"]{ width: 160px; }
+        .zoom-control .zoom-value{
+            min-width: 3.5em;
+            text-align: right;
+            font-variant-numeric: tabular-nums;
+            font-size: 14px;
+            opacity: 0.85;
+        }
+        @media (max-width: 480px){
+            .zoom-control input[type="range"]{ width: 120px; }
         }
 
         
@@ -481,10 +511,17 @@
     </div>
 
     <div id="ui-container" style="display:none;">
-        <div class="icon-buttons">
-            <button id="toggle-light-btn" class="icon-btn" title="照明・画質設定">💡</button>
+        <div class="top-controls">
+            <div id="zoom-control" class="zoom-control hidden" title="ズーム">
+                <span class="zoom-label">🔎</span>
+                <input id="zoom-slider" type="range" min="1" max="1" step="0.1" value="1" />
+                <span id="zoom-value" class="zoom-value">1.0×</span>
+            </div>
+            <div class="icon-buttons">
+<button id="toggle-light-btn" class="icon-btn" title="照明・画質設定">💡</button>
             <button id="toggle-menu-btn" class="icon-btn" title="全般オプション">⚙️</button>
             <button id="toggle-fullscreen-btn" class="icon-btn" title="全画面表示切替">⛶</button>
+        </div>
         </div>
 
         <!-- Left-bottom toggle button: Auto cream shot -->
@@ -1508,6 +1545,92 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
         const uiContainer = document.getElementById('ui-container');
         const controlPanel = document.getElementById('control-panel');
         const lightPanel = document.getElementById('light-panel');
+
+        // --- Camera Zoom (global) ---
+        const zoomControlEl = document.getElementById('zoom-control');
+        const zoomSliderEl = document.getElementById('zoom-slider');
+        const zoomValueEl = document.getElementById('zoom-value');
+        const LS_CAMERA_ZOOM = 'camera_zoom';
+        let cameraZoom = parseFloat(localStorage.getItem(LS_CAMERA_ZOOM) || '1');
+        if (!isFinite(cameraZoom) || cameraZoom <= 0) cameraZoom = 1;
+
+        let activeVideoTrack = null;
+        let __updatingZoomUI = false;
+
+        const _clamp = (v, mn, mx) => Math.min(mx, Math.max(mn, v));
+
+        const setZoomVisible = (visible) => {
+            if (!zoomControlEl) return;
+            zoomControlEl.classList.toggle('hidden', !visible);
+        };
+
+        const setZoomValueText = (z) => {
+            if (!zoomValueEl) return;
+            const zz = Math.round(z * 10) / 10;
+            zoomValueEl.textContent = `${zz.toFixed(1)}×`;
+        };
+
+        const applyZoomToTrack = async (track, z) => {
+            if (!track) return;
+            try {
+                const caps = track.getCapabilities ? track.getCapabilities() : null;
+                if (!caps || !caps.zoom) return;
+                const zoomMin = caps.zoom.min ?? 1;
+                const zoomMax = caps.zoom.max ?? 1;
+                const zz = _clamp(z, zoomMin, zoomMax);
+                await track.applyConstraints({ advanced: [{ zoom: zz }] });
+            } catch (e) {
+                // Some devices/browsers reject zoom constraints; ignore silently
+            }
+        };
+
+        const initZoomControlFromTrack = async (track) => {
+            activeVideoTrack = track || null;
+            if (!zoomControlEl || !zoomSliderEl || !activeVideoTrack) {
+                setZoomVisible(false);
+                return;
+            }
+            const caps = activeVideoTrack.getCapabilities ? activeVideoTrack.getCapabilities() : null;
+            if (!caps || !caps.zoom) {
+                setZoomVisible(false);
+                return;
+            }
+
+            const zoomMin = caps.zoom.min ?? 1;
+            const zoomMax = caps.zoom.max ?? 1;
+            const zoomStep = caps.zoom.step ?? 0.1;
+
+            __updatingZoomUI = true;
+            zoomSliderEl.min = String(zoomMin);
+            zoomSliderEl.max = String(zoomMax);
+            zoomSliderEl.step = String(zoomStep);
+
+            // Prefer stored zoom; if outside range, use current settings or clamp.
+            let target = cameraZoom;
+            const st = activeVideoTrack.getSettings ? activeVideoTrack.getSettings() : null;
+            if ((!isFinite(target) || target <= 0) && st && isFinite(st.zoom)) target = st.zoom;
+            target = _clamp(target, zoomMin, zoomMax);
+
+            zoomSliderEl.value = String(target);
+            setZoomValueText(target);
+            __updatingZoomUI = false;
+
+            setZoomVisible(true);
+            await applyZoomToTrack(activeVideoTrack, target);
+        };
+
+        if (zoomSliderEl) {
+            zoomSliderEl.addEventListener('input', async () => {
+                if (__updatingZoomUI) return;
+                const v = parseFloat(zoomSliderEl.value);
+                if (!isFinite(v)) return;
+                cameraZoom = v;
+                localStorage.setItem(LS_CAMERA_ZOOM, String(cameraZoom));
+                setZoomValueText(cameraZoom);
+                await applyZoomToTrack(activeVideoTrack, cameraZoom);
+            }, { passive: true });
+        }
+
         // --- UI state helpers: accordion + scroll restore ---
         function _uiKey(suffix) {
             // UI state should be global (not per-VRM) so section open/close is consistent.
@@ -2522,7 +2645,14 @@ videoEl.srcObject = newStream;
 
                     // Wait for metadata / canplay (best-effort)
                     await waitForVideoEvent(videoEl, 'loadedmetadata', 2000);
-                    try { await videoEl.play(); } catch (_) {}
+                    try { await videoEl.play();
+
+                // Init zoom control (if supported)
+                try {
+                    const vt = stream && stream.getVideoTracks ? stream.getVideoTracks()[0] : null;
+                    await initZoomControlFromTrack(vt);
+                } catch(_) {}
+ } catch (_) {}
 
                     // Ensure at least one frame becomes available so drawVideoToDisplayCanvas can update
                     const gotFrame = await waitForFirstFrame(videoEl, 2200);
@@ -5213,6 +5343,9 @@ if (videoTexture) videoTexture.needsUpdate = true;
                 if (stream) {
                     stream.getTracks().forEach(t => t.stop());
                     stream = null;
+                    activeVideoTrack = null;
+                    setZoomVisible(false);
+
                 }
                 if (videoEl) {
                     videoEl.pause();
