@@ -74,12 +74,13 @@
             z-index: 2001;
         }
         .top-controls.has-zoom{
-            justify-content: space-between; /* zoomがある場合は左(zoom)・右(アイコン)に分離 */
+            justify-content: flex-end; /* zoomがある場合も右寄せを維持(zoomはmargin-right:autoで左に固定) */
         }
         .icon-buttons {
             position: static;
             display: flex;
             gap: 10px;
+            flex: 0 0 auto;
         }
         .zoom-control{
             display: flex;
@@ -91,9 +92,17 @@
             border-radius: 0;
             backdrop-filter: none;
             -webkit-backdrop-filter: none;
+            flex: 1 1 auto;
+            min-width: 0;
+            margin-right: auto; /* 左寄せ固定 */
         }
         .zoom-control.hidden{ display:none; }
-        .zoom-control input[type="range"]{ width: min(52vw, 280px); }
+        .zoom-control input[type="range"]{
+            flex: 1 1 auto;
+            width: auto;
+            min-width: 120px;
+            max-width: 100%;
+        }
         .zoom-control .zoom-value{
             min-width: 3.2em;
             text-align: right;
@@ -110,7 +119,8 @@
                0px  0px 2px rgba(255,255,255,0.95);
         }
         @media (max-width: 480px){
-            .zoom-control input[type="range"]{ width: min(48vw, 220px); }
+            .zoom-control input[type="range"]{ min-width: 96px; }
+            .zoom-control .zoom-value{ font-size: 13px; }
         }
 
         
@@ -1048,8 +1058,8 @@
     <script type="module">
         
 // ===== App Version (single source of truth) =====
-const APP_VERSION = "v6.01.36";
-const APP_VERSION_NOTE = "Zoom UI align right when hidden; value outline & spacing";
+const APP_VERSION = "v6.01.37";
+const APP_VERSION_NOTE = "Zoom bar responsive width (avoid clipping)";
 
 
 function getOverlayPixelRatio() {
