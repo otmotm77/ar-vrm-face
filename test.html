@@ -1020,8 +1020,8 @@
     <script type="module">
         
 // ===== App Version (single source of truth) =====
-const APP_VERSION = "v6.01.26";
-const APP_VERSION_NOTE = "Zoom slider + capability debug; Stable auto targeting + camera switch reset";
+const APP_VERSION = "v6.01.27";
+const APP_VERSION_NOTE = "Zoom UI init on start; capability debug";
 
 
 function getOverlayPixelRatio() {
@@ -5495,6 +5495,13 @@ if (cameraDeviceId && pickedIndex >= 2) {
                     videoEl.onloadedmetadata = () => resolve();
                 });
                 await videoEl.play();
+
+                // Init zoom control (if supported)
+                try {
+                    const vt = stream && stream.getVideoTracks ? stream.getVideoTracks()[0] : null;
+                    await initZoomControlFromTrack(vt);
+                } catch (_) {}
+
 
                 // Populate camera list after permission is granted
                 if (cameraSelect) {
