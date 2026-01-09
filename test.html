@@ -64,9 +64,11 @@
         .top-controls{
             position: absolute;
             top: 10px;
+            left: 10px;
             right: 10px;
             display: flex;
             align-items: center;
+            justify-content: space-between;
             gap: 12px;
             pointer-events: auto;
             z-index: 2001;
@@ -80,16 +82,15 @@
             display: flex;
             align-items: center;
             justify-content: flex-start;
-            gap: 8px;
-            padding: 8px 10px;
-            background: rgba(255, 255, 255, 0.75);
-            border-radius: 999px;
-            backdrop-filter: blur(6px);
-            -webkit-backdrop-filter: blur(6px);
+            gap: 10px;
+            padding: 0;
+            background: transparent;
+            border-radius: 0;
+            backdrop-filter: none;
+            -webkit-backdrop-filter: none;
         }
         .zoom-control.hidden{ display:none; }
-        .zoom-control .zoom-label{ font-size: 16px; line-height: 1; }
-        .zoom-control input[type="range"]{ width: 160px; }
+        .zoom-control input[type="range"]{ width: min(52vw, 280px); }
         .zoom-control .zoom-value{
             min-width: 3.5em;
             text-align: right;
@@ -98,7 +99,7 @@
             opacity: 0.85;
         }
         @media (max-width: 480px){
-            .zoom-control input[type="range"]{ width: 120px; }
+            .zoom-control input[type="range"]{ width: min(48vw, 220px); }
         }
 
         
@@ -513,8 +514,7 @@
     <div id="ui-container" style="display:none;">
         <div class="top-controls">
             <div id="zoom-control" class="zoom-control hidden" title="ズーム">
-                <span class="zoom-label">🔎</span>
-                <input id="zoom-slider" type="range" min="1" max="1" step="0.1" value="1" />
+                                <input id="zoom-slider" type="range" min="1" max="1" step="0.1" value="1" />
                 <span id="zoom-value" class="zoom-value">1.0×</span>
             </div>
             <div class="icon-buttons">
@@ -1037,7 +1037,7 @@
     <script type="module">
         
 // ===== App Version (single source of truth) =====
-const APP_VERSION = "v6.01.34";
+const APP_VERSION = "v6.01.35";
 const APP_VERSION_NOTE = "Zoom UI init on start; capability debug";
 
 
@@ -1716,9 +1716,7 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
                     const sets = tr.getSettings ? tr.getSettings() : null;
 
                     if (caps) {
-                        const keys = Object.keys(caps);
-                        lines.push(`capsKeys=${keys.slice(0,12).join(',')}${keys.length>12?'...':''}`);
-                        const z = caps.zoom ? caps.zoom : null;
+const z = caps.zoom ? caps.zoom : null;
                         lines.push(`caps.zoom=${z ? (_fmt(z.min,2)+'..'+_fmt(z.max,2)+' step='+_fmt(z.step ?? 0,2)) : 'N'}`);
                         if (caps.width && caps.height) lines.push(`caps.size=${caps.width.min||'?'}..${caps.width.max||'?'} x ${caps.height.min||'?'}..${caps.height.max||'?'}`);
                         if (caps.aspectRatio) lines.push(`caps.ar=${_fmt(caps.aspectRatio.min,3)}..${_fmt(caps.aspectRatio.max,3)}`);
