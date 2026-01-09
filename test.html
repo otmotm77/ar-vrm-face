@@ -1020,8 +1020,8 @@
     <script type="module">
         
 // ===== App Version (single source of truth) =====
-const APP_VERSION = "v6.01.25";
-const APP_VERSION_NOTE = "Landmark mapping uses captured rotation/video size to stabilize auto targeting; Camera switch: reliable first-frame + reset";
+const APP_VERSION = "v6.01.26";
+const APP_VERSION_NOTE = "Zoom slider + capability debug; Stable auto targeting + camera switch reset";
 
 
 function getOverlayPixelRatio() {
@@ -1685,6 +1685,40 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
             if (videoEl) {
                 lines.push(`video=${videoEl.videoWidth||0}x${videoEl.videoHeight||0}`);
             }
+            // Camera capabilities (to debug zoom availability)
+            try {
+                const tr = activeVideoTrack || (videoEl && videoEl.srcObject && videoEl.srcObject.getVideoTracks ? (videoEl.srcObject.getVideoTracks()[0] || null) : null);
+                if (tr) {
+                    lines.push(`track=${(tr.label || '').slice(0,60)}`);
+                    const caps = tr.getCapabilities ? tr.getCapabilities() : null;
+                    const sets = tr.getSettings ? tr.getSettings() : null;
+
+                    if (caps) {
+                        const keys = Object.keys(caps);
+                        lines.push(`capsKeys=${keys.slice(0,12).join(',')}${keys.length>12?'...':''}`);
+                        const z = caps.zoom ? caps.zoom : null;
+                        lines.push(`caps.zoom=${z ? (_fmt(z.min,2)+'..'+_fmt(z.max,2)+' step='+_fmt(z.step ?? 0,2)) : 'N'}`);
+                        if ('torch' in caps) lines.push(`caps.torch=${caps.torch ? 'Y' : 'N'}`);
+                    } else {
+                        lines.push('caps=null');
+                    }
+
+                    if (sets) {
+                        const zset = (typeof sets.zoom === 'number') ? sets.zoom : NaN;
+                        lines.push(`set.facing=${sets.facingMode || ''} zoom=${Number.isFinite(zset) ? _fmt(zset,2) : 'N'}`);
+                        if (sets.width && sets.height) lines.push(`set.size=${sets.width}x${sets.height}`);
+                        if (sets.frameRate) lines.push(`set.fps=${_fmt(sets.frameRate,1)}`);
+                    }
+
+                    const zEl = document.getElementById('zoom-control');
+                    if (zEl) lines.push(`zoomUI=${zEl.classList.contains('hidden') ? 'hidden' : 'show'}`);
+                } else {
+                    lines.push('track=null');
+                }
+            } catch (e) {
+                lines.push(`capsErr=${(e && e.message) ? e.message : e}`);
+            }
+
             if (typeof deviceBeta !== 'undefined' || typeof deviceGamma !== 'undefined') {
                 lines.push(`tilt beta=${_fmt(deviceBeta,1)} gamma=${_fmt(deviceGamma,1)}`);
             }
