@@ -442,6 +442,15 @@
 
 
         .acc-section > *:not(summary) { padding: 8px 12px 10px 12px; }
+
+        .select-control{
+            width: 100%;
+            padding: 8px 10px;
+            border-radius: 10px;
+            border: 1px solid rgba(0,0,0,0.15);
+            background: rgba(255,255,255,0.9);
+            font-size: 14px;
+        }
 </style>
 
     <script type="importmap">
@@ -782,6 +791,16 @@
                 </label>
             </div>
             <div class="slider-container">
+                <span class="slider-label">カメラ選択</span>
+                <select id="camera-device-select" class="select-control" disabled>
+                    <option value="__auto__">自動（イン/アウト）</option>
+                </select>
+            </div>
+            <div class="help-text" style="margin-top:-6px; margin-bottom:6px; font-size:12px; opacity:0.75;">
+                ※一覧はカメラ許可後に表示されます。個別選択中は「アウトカメラ」切替は無効になります。
+            </div>
+
+            <div class="slider-container">
                 <label class="toggle-label">
                     <input type="checkbox" id="tracking-mirror-toggle" class="toggle-checkbox">
                     ミラー表示
@@ -1070,6 +1089,8 @@ let videoTexture = null; // THREE.CanvasTexture
         let appliedBeta = 0.04;
         let currentFileName = "";
         let currentFacingMode = 'user'; // カメラの向き (user / environment)
+        const LS_CAMERA_DEVICE_ID = 'camera_device_id';
+        let cameraDeviceId = localStorage.getItem(LS_CAMERA_DEVICE_ID) || '';
         let mirrorEnabled = true; // デフォルト: インカメはミラー
         let mirrorUserOverride = false; // 手動切替したら自動追従しない
 
@@ -2196,10 +2217,73 @@ document.getElementById('toggle-menu-btn').addEventListener('click', () => {
         // ===== Tracking UI: Camera (in/out) + Mirror toggles (moved into main menu > Tracking) =====
         const facingToggle = document.getElementById('tracking-facing-toggle');
         const mirrorToggle = document.getElementById('tracking-mirror-toggle');
+        const cameraSelect = document.getElementById('camera-device-select');
+        let __updatingCameraSelect = false;
+
+        const syncCameraSelectUI = () => {
+            if (facingToggle) facingToggle.disabled = !!cameraDeviceId; // individual device selection disables facing toggle
+            if (cameraSelect) {
+                // Keep selection without triggering handler during refresh
+                if (__updatingCameraSelect) return;
+                // if options not ready yet, just keep disabled state
+                cameraSelect.disabled = !navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices;
+            }
+        };
+
+        const refreshCameraDeviceList = async () => {
+            if (!cameraSelect || !navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
+            try {
+                __updatingCameraSelect = true;
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                const cams = devices.filter(d => d.kind === 'videoinput');
+
+                const prev = cameraSelect.value;
+                cameraSelect.innerHTML = '';
+                cameraSelect.appendChild(new Option('自動（イン/アウト）', '__auto__'));
+
+                cams.forEach((d, i) => {
+                    const label = d.label ? d.label : ('カメラ' + (i + 1));
+                    cameraSelect.appendChild(new Option(label, d.deviceId));
+                });
+
+                // Restore selection
+                if (cameraDeviceId && cams.some(d => d.deviceId === cameraDeviceId)) {
+                    cameraSelect.value = cameraDeviceId;
+                } else {
+                    cameraSelect.value = '__auto__';
+                    if (cameraDeviceId) {
+                        // device disappeared
+                        cameraDeviceId = '';
+                        localStorage.removeItem(LS_CAMERA_DEVICE_ID);
+                    }
+                }
+            } catch (e) {
+                // ignore
+            } finally {
+                __updatingCameraSelect = false;
+                syncCameraSelectUI();
+            }
+        };
+
+        if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
+            navigator.mediaDevices.addEventListener('devicechange', () => {
+                refreshCameraDeviceList();
+            });
+        }
+
+
 
         const syncTrackingTogglesFromState = () => {
-            if (facingToggle) facingToggle.checked = (currentFacingMode === 'environment');
+            if (facingToggle) {
+                facingToggle.checked = (currentFacingMode === 'environment');
+                facingToggle.disabled = !!cameraDeviceId; // device selection overrides facing toggle
+            }
             if (mirrorToggle) mirrorToggle.checked = !!mirrorEnabled;
+            if (cameraSelect && !__updatingCameraSelect) {
+                // Keep dropdown consistent if options are already populated
+                if (cameraDeviceId) cameraSelect.value = cameraDeviceId;
+                else if (cameraSelect.value !== '__auto__') cameraSelect.value = '__auto__';
+            }
         };
 
         const applyMirrorFromToggle = () => {
@@ -2566,6 +2650,13 @@ await waitForVideoEvent
         if (facingToggle) {
             let __cameraRestarting = false;
             facingToggle.addEventListener('change', async () => {
+            // If user toggles facing, switch to AUTO camera selection
+            if (cameraDeviceId) {
+                cameraDeviceId = '';
+                localStorage.removeItem(LS_CAMERA_DEVICE_ID);
+                if (cameraSelect && !__updatingCameraSelect) cameraSelect.value = '__auto__';
+            }
+
                 const want = facingToggle.checked ? 'environment' : 'user';
 
                 // If AR isn't started yet, just update state (startAR() will pick it up)
@@ -2608,6 +2699,50 @@ await waitForVideoEvent
                 }
             });
         }
+
+        if (cameraSelect) {
+            // Initial UI state (before permission labels are available)
+            cameraSelect.disabled = true;
+
+            cameraSelect.addEventListener('change', async () => {
+                if (__updatingCameraSelect) return;
+
+                const val = cameraSelect.value;
+                if (val === '__auto__') {
+                    cameraDeviceId = '';
+                    localStorage.removeItem(LS_CAMERA_DEVICE_ID);
+                    if (facingToggle) facingToggle.disabled = false;
+                    showToast('カメラ: 自動');
+                } else {
+                    cameraDeviceId = val;
+                    localStorage.setItem(LS_CAMERA_DEVICE_ID, cameraDeviceId);
+                    if (facingToggle) facingToggle.disabled = true;
+                    showToast('カメラを選択しました');
+                }
+
+                // Persist (so reload keeps it)
+                try { saveSettings(); } catch (_) {}
+
+                // If AR is running, apply via restart (same as "設定を適用して再起動する")
+                if (stream && videoEl && renderer) {
+                    if (__cameraRestarting) return;
+                    __cameraRestarting = true;
+                    try {
+                        await restartAR();
+                    } catch (e) {
+                        console.error(e);
+                        showToast('カメラ適用に失敗しました');
+                    } finally {
+                        __cameraRestarting = false;
+                        syncTrackingTogglesFromState();
+                    }
+                } else {
+                    // Not started yet; it will apply on start
+                    syncTrackingTogglesFromState();
+                }
+            });
+        }
+
 
         // Backward compatibility: if old icon buttons exist (older HTML), wire them too.
         const oldMirrorBtn = document.getElementById('toggle-mirror-btn');
@@ -5149,20 +5284,58 @@ if (videoTexture) videoTexture.needsUpdate = true;
                     stream = null;
                 }
 
-                stream = await navigator.mediaDevices.getUserMedia({
-                    audio: false,
-                    video: {
-                        facingMode: { ideal: currentFacingMode },
-                        width: { ideal: 1280 },
-                        height: { ideal: 720 }
-                    }
-                });
+                // --- getUserMedia (supports manual camera device selection) ---
+const baseVideo = {
+    width: { ideal: 1280 },
+    height: { ideal: 720 }
+};
+
+const attempts = [];
+if (cameraDeviceId) {
+    // Prefer exact deviceId
+    attempts.push({ audio: false, video: { ...baseVideo, deviceId: { exact: cameraDeviceId } } });
+    // Some browsers accept plain deviceId
+    attempts.push({ audio: false, video: { ...baseVideo, deviceId: cameraDeviceId } });
+}
+// Fallback to facingMode
+attempts.push({ audio: false, video: { ...baseVideo, facingMode: { ideal: currentFacingMode } } });
+attempts.push({ audio: false, video: { ...baseVideo, facingMode: currentFacingMode } });
+
+let lastErr = null;
+let pickedIndex = -1;
+for (let i = 0; i < attempts.length; i++) {
+    try {
+        stream = await navigator.mediaDevices.getUserMedia(attempts[i]);
+        pickedIndex = i;
+        break;
+    } catch (e) {
+        lastErr = e;
+    }
+}
+if (!stream) throw lastErr;
+
+// If deviceId selection failed and we fell back, clear the invalid selection
+if (cameraDeviceId && pickedIndex >= 2) {
+    cameraDeviceId = '';
+    localStorage.removeItem(LS_CAMERA_DEVICE_ID);
+    if (cameraSelect && !__updatingCameraSelect) cameraSelect.value = '__auto__';
+    showToast('選択カメラが使用できないため自動に戻しました');
+}
+
 
                 videoEl.srcObject = stream;
                 await new Promise(resolve => {
                     videoEl.onloadedmetadata = () => resolve();
                 });
                 await videoEl.play();
+
+                // Populate camera list after permission is granted
+                if (cameraSelect) {
+                    cameraSelect.disabled = false;
+                    await refreshCameraDeviceList();
+                    syncTrackingTogglesFromState();
+                }
+
 
                 clearTimeout(startTimeout);
 
