@@ -1059,7 +1059,7 @@
     <script type="module">
         
 // ===== App Version (single source of truth) =====
-const APP_VERSION = "v6.01.39";
+const APP_VERSION = "v6.01.40";
 const APP_VERSION_NOTE = "Zoom max-width 180 + tighter gaps";
 
 
@@ -1724,6 +1724,7 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
 
             const lines = [];
             lines.push('[Debug] AutoCream');
+            lines.push(`wakelock=${_wakeLock ? 'ON' : 'OFF'}`);
             if (context) {
                 lines.push(`css=${_fmt(context.cssW,1)}x${_fmt(context.cssH,1)} pr=${_fmt(context.pr,2)}`);
             }
@@ -3023,6 +3024,7 @@ await waitForVideoEvent
         startBtn.addEventListener('click', async () => {
             startBtn.disabled = true;
             statusMsg.textContent = "カメラを起動中...";
+            try { await requestWakeLock(); } catch(_) {}
             try { await requestDeviceOrientationPermissionIfNeeded(); } catch(_) {}
 
             // Apply saved default options BEFORE starting the camera (startup defaults)
@@ -3047,6 +3049,45 @@ await waitForVideoEvent
             toast.className = "show";
             setTimeout(function(){ toast.className = toast.className.replace("show", ""); }, 3000);
         }
+
+        // --- Screen Wake Lock (prevent dimming while AR is running) ---
+        let _wakeLock = null;
+        let _wakeLockWanted = false;
+
+        async function requestWakeLock() {
+            _wakeLockWanted = true;
+            try {
+                if (!('wakeLock' in navigator)) return false;
+                // If already held, keep it.
+                if (_wakeLock) return true;
+                _wakeLock = await navigator.wakeLock.request('screen');
+                _wakeLock.addEventListener('release', () => {
+                    _wakeLock = null;
+                });
+                return true;
+            } catch (e) {
+                // Some devices/conditions (battery saver, etc.) may reject.
+                _wakeLock = null;
+                return false;
+            }
+        }
+
+        async function releaseWakeLock() {
+            try {
+                if (_wakeLock) {
+                    await _wakeLock.release();
+                    _wakeLock = null;
+                }
+            } catch (_) {}
+        }
+
+        // Re-acquire on tab becoming visible (Wake Lock is often released when hidden)
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible' && _wakeLockWanted) {
+                requestWakeLock();
+            }
+        });
+        window.addEventListener('pagehide', () => { releaseWakeLock(); });
 
 
         function applyMirrorToRenderer() {
