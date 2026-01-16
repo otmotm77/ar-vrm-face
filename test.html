@@ -1149,8 +1149,8 @@
     <script type="module">
         
 // ===== App Version (single source of truth) =====
-const APP_VERSION = "v6.01.43";
-const APP_VERSION_NOTE = "Auto-shot button sizing";
+const APP_VERSION = "v6.01.44";
+const APP_VERSION_NOTE = "Pause locks blush overlay";
 
 
 function getOverlayPixelRatio() {
@@ -1454,6 +1454,9 @@ let latestCheekLVideoX = 0.35; // normalized in ORIGINAL video frame (0..1)
 
                 let breathOverlayCtx = null;
         let blush2DDebug = null; // debug snapshot for 2D blush mapping/rotation
+        // Snapshot for 2D blush overlay positions (for tracking pause pose-lock)
+        let lastBlushOverlayState = null;
+        let pausedBlushOverlayState = null;
 
         let breathParticles2D = [];
         let lastMouthScreenX = 0;
@@ -1705,6 +1708,22 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
 
         function setTrackingPaused(enabled, silent = false){
             trackingPaused = !!enabled;
+	            // Freeze 2D blush overlay positions while paused (so it doesn't drift with live face landmarks)
+	            if (trackingPaused) {
+	                try {
+	                    if (lastBlushOverlayState) {
+	                        pausedBlushOverlayState = (typeof structuredClone === 'function')
+	                            ? structuredClone(lastBlushOverlayState)
+	                            : JSON.parse(JSON.stringify(lastBlushOverlayState));
+	                    } else {
+	                        pausedBlushOverlayState = null;
+	                    }
+	                } catch (_) {
+	                    pausedBlushOverlayState = lastBlushOverlayState || null;
+	                }
+	            } else {
+	                pausedBlushOverlayState = null;
+	            }
             if (trackingPauseBtn){
                 trackingPauseBtn.classList.toggle('active', trackingPaused);
                 trackingPauseBtn.setAttribute('aria-pressed', trackingPaused ? 'true' : 'false');
@@ -4041,8 +4060,79 @@ function updateBreathEffect(delta) {
             // Draw blush first (normal blend), then breath (screen blend)
             breathOverlayCtx.globalCompositeOperation = 'source-over';
             breathOverlayCtx.filter = 'none';
+
+            // Internal helper to draw the 2D blush overlay given resolved screen positions.
+            const _drawBlush2D = (L, R, roll, faceW) => {
+                if (!L || !R || !Number.isFinite(faceW) || faceW <= 0) return;
+                // Size
+                const r = faceW * 0.20 * Math.max(0.5, Math.min(2.5, blushSize));
+                const rw = r * 1.25;
+                const rh = r * 0.90;
+
+                // Composite: if "front" then normal overlay; else multiply for under-skin feel
+                breathOverlayCtx.save();
+                breathOverlayCtx.globalAlpha = Math.max(0, Math.min(1, blushStrength));
+                breathOverlayCtx.globalCompositeOperation = blushFront ? 'source-over' : 'multiply';
+
+                const baseC = hexToRgbSafe(blushColor || '#ff5fa0');
+                const whiteC = { r: 255, g: 255, b: 255 };
+                const softC0 = mixRgb(baseC, whiteC, 0.55);
+                const softC1 = mixRgb(baseC, whiteC, 0.75);
+
+                const drawOne = (cx, cy, flip) => {
+                    breathOverlayCtx.save();
+                    breathOverlayCtx.translate(cx, cy);
+                    breathOverlayCtx.rotate(roll);
+
+                    const grad = breathOverlayCtx.createRadialGradient(0, 0, 0, 0, 0, rw);
+                    grad.addColorStop(0.0, `rgba(${softC0.r}, ${softC0.g}, ${softC0.b}, 0.55)`);
+                    grad.addColorStop(0.55, `rgba(${softC1.r}, ${softC1.g}, ${softC1.b}, 0.22)`);
+                    grad.addColorStop(1.0, `rgba(${softC1.r}, ${softC1.g}, ${softC1.b}, 0.00)`);
+                    breathOverlayCtx.fillStyle = grad;
+                    breathOverlayCtx.beginPath();
+                    breathOverlayCtx.ellipse(0, 0, rw, rh, 0, 0, Math.PI * 2);
+                    breathOverlayCtx.fill();
+
+                    // hatch stripes clipped to ellipse
+                    breathOverlayCtx.beginPath();
+                    breathOverlayCtx.ellipse(0, 0, rw, rh, 0, 0, Math.PI * 2);
+                    breathOverlayCtx.clip();
+
+                    breathOverlayCtx.rotate((Math.PI / 4) * (flip ? -1 : 1)); // diagonal
+                    breathOverlayCtx.strokeStyle = `rgba(${baseC.r}, ${baseC.g}, ${baseC.b}, 0.45)`;
+                    breathOverlayCtx.lineWidth = Math.max(1, r * 0.08);
+                    const step = Math.max(6, r * 0.22);
+                    for (let x = -rw * 2; x <= rw * 2; x += step) {
+                        breathOverlayCtx.beginPath();
+                        breathOverlayCtx.moveTo(x, -rh * 2);
+                        breathOverlayCtx.lineTo(x, rh * 2);
+                        breathOverlayCtx.stroke();
+                    }
+
+                    breathOverlayCtx.restore();
+                };
+
+                drawOne(L.x, L.y, false);
+                drawOne(R.x, R.y, true);
+
+                breathOverlayCtx.restore();
+            };
             // --- Cheek blush (2D overlay; sticks to tracked face) ---
-            if (USE_BLUSH_2D_OVERLAY && isBlushEnabled && blushStrength > 0.001 && latestFaceLandmarks0 && videoEl) {
+            // When trackingPaused is ON, freeze blush position so it doesn't drift with live landmarks.
+            if (USE_BLUSH_2D_OVERLAY && isBlushEnabled && blushStrength > 0.001) {
+                if (trackingPaused && pausedBlushOverlayState && pausedBlushOverlayState.L && pausedBlushOverlayState.R) {
+                    try {
+                        const s = pausedBlushOverlayState;
+                        const sx = (s.w && s.w > 0) ? (w / s.w) : 1;
+                        const sy = (s.h && s.h > 0) ? (h / s.h) : 1;
+                        const L = { x: (s.L.x || 0) * sx, y: (s.L.y || 0) * sy };
+                        const R = { x: (s.R.x || 0) * sx, y: (s.R.y || 0) * sy };
+                        const roll = s.roll || 0;
+                        const scale = (sx + sy) * 0.5;
+                        const faceW = Math.max(10, (s.faceW || 10) * scale);
+                        _drawBlush2D(L, R, roll, faceW);
+                    } catch (_) {}
+                } else if (latestFaceLandmarks0 && videoEl) {
                 const vwB = videoEl.videoWidth || 0;
                 const vhB = videoEl.videoHeight || 0;
                 if (vwB > 0 && vhB > 0) {
@@ -4138,58 +4228,18 @@ function updateBreathEffect(delta) {
                         }
 
 
-                        // Size
-                        const r = faceW * 0.20 * Math.max(0.5, Math.min(2.5, blushSize));
-                        const rw = r * 1.25;
-                        const rh = r * 0.90;
+                        // Remember last resolved blush positions (for pose lock).
+                        if (!trackingPaused) {
+                            lastBlushOverlayState = {
+                                w, h,
+                                L: { x: L.x, y: L.y },
+                                R: { x: R.x, y: R.y },
+                                roll,
+                                faceW
+                            };
+                        }
 
-                        // Composite: if "front" then normal overlay; else multiply for under-skin feel
-                        breathOverlayCtx.save();
-                        breathOverlayCtx.globalAlpha = Math.max(0, Math.min(1, blushStrength));
-                        breathOverlayCtx.globalCompositeOperation = blushFront ? 'source-over' : 'multiply';
-
-                        const drawOne = (cx, cy, flip) => {
-                            breathOverlayCtx.save();
-                            breathOverlayCtx.translate(cx, cy);
-                            breathOverlayCtx.rotate(roll);
-
-                            // soft base
-                            const baseC = hexToRgbSafe(blushColor || '#ff5fa0');
-                            const whiteC = { r: 255, g: 255, b: 255 };
-                            const softC0 = mixRgb(baseC, whiteC, 0.55);
-                            const softC1 = mixRgb(baseC, whiteC, 0.75);
-                            const grad = breathOverlayCtx.createRadialGradient(0, 0, 0, 0, 0, rw);
-                            grad.addColorStop(0.0, `rgba(${softC0.r}, ${softC0.g}, ${softC0.b}, 0.55)`);
-                            grad.addColorStop(0.55, `rgba(${softC1.r}, ${softC1.g}, ${softC1.b}, 0.22)`);
-                            grad.addColorStop(1.0, `rgba(${softC1.r}, ${softC1.g}, ${softC1.b}, 0.00)`);
-                            breathOverlayCtx.fillStyle = grad;
-                            breathOverlayCtx.beginPath();
-                            breathOverlayCtx.ellipse(0, 0, rw, rh, 0, 0, Math.PI * 2);
-                            breathOverlayCtx.fill();
-
-                            // hatch stripes clipped to ellipse
-                            breathOverlayCtx.beginPath();
-                            breathOverlayCtx.ellipse(0, 0, rw, rh, 0, 0, Math.PI * 2);
-                            breathOverlayCtx.clip();
-
-                            breathOverlayCtx.rotate((Math.PI / 4) * (flip ? -1 : 1)); // diagonal
-                            breathOverlayCtx.strokeStyle = `rgba(${baseC.r}, ${baseC.g}, ${baseC.b}, 0.45)`;
-                            breathOverlayCtx.lineWidth = Math.max(1, r * 0.08);
-                            const step = Math.max(6, r * 0.22);
-                            for (let x = -rw * 2; x <= rw * 2; x += step) {
-                                breathOverlayCtx.beginPath();
-                                breathOverlayCtx.moveTo(x, -rh * 2);
-                                breathOverlayCtx.lineTo(x, rh * 2);
-                                breathOverlayCtx.stroke();
-                            }
-
-                            breathOverlayCtx.restore();
-                        };
-
-                        drawOne(L.x, L.y, false);
-                        drawOne(R.x, R.y, true);
-
-                        breathOverlayCtx.restore();
+                        _drawBlush2D(L, R, roll, faceW);
                     }
                 }
             }
