@@ -157,11 +157,10 @@
         body.ui-dim #toast,
         body.ui-dim #ui-container .top-controls,
         body.ui-dim #ui-container #auto-cream-toggle-btn,
-        body.ui-dim #ui-container .control-panel{
+        body.ui-dim #ui-container .control-panel,
+        body.ui-dim #ui-dim-toggle-btn,
+        body.ui-dim #tracking-pause-btn{
             opacity: 0.10;
-        }
-        body.ui-dim #ui-dim-toggle-btn{
-            opacity: 1.0;
         }
 
 
@@ -195,9 +194,7 @@
         }
         #tracking-pause-btn:active{ transform: scale(0.96); }
 
-        body.ui-dim #tracking-pause-btn{
-            opacity: 1.0;
-        }
+        /* (No exclusions) In dim mode, every UI element is faded */
 
         /* Left-bottom action button: Cream splash */
         .cream-shot-btn{
@@ -318,7 +315,8 @@
 
                 /* 端末によっては100vwが横スクロールを生むので保険 */
                 box-sizing: border-box;
-                border-radius: 0;
+                /* Slight rounding for the option panels */
+                border-radius: 12px 12px 0 0;
             }
         }
 
@@ -1149,8 +1147,8 @@
     <script type="module">
         
 // ===== App Version (single source of truth) =====
-const APP_VERSION = "v6.01.44";
-const APP_VERSION_NOTE = "Pause locks blush overlay";
+const APP_VERSION = "v6.01.45";
+const APP_VERSION_NOTE = "Dim affects all UI + panel rounding";
 
 
 function getOverlayPixelRatio() {
