@@ -124,6 +124,47 @@
             .zoom-control .zoom-value{ font-size: 13px; }
         }
 
+        /* UI dim toggle (bottom-right) */
+        #ui-dim-toggle-btn{
+            position: fixed;
+            right: 12px;
+            bottom: 12px;
+            width: 44px;
+            height: 44px;
+            border-radius: 999px;
+            border: none;
+            background: rgba(255,255,255,0.25);
+            backdrop-filter: blur(6px);
+            -webkit-backdrop-filter: blur(6px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: rgba(0,0,0,0.85);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+            pointer-events: auto;
+            z-index: 2002;
+            cursor: pointer;
+            transition: transform .12s ease, background .12s ease, opacity .12s ease;
+        }
+        #ui-dim-toggle-btn svg{ width: 22px; height: 22px; }
+        #ui-dim-toggle-btn.active{
+            background: rgba(0,0,0,0.18);
+            color: rgba(255,255,255,0.92);
+        }
+        #ui-dim-toggle-btn:active{ transform: scale(0.96); }
+
+        /* UI dim mode (keep interactions) */
+        body.ui-dim #toast,
+        body.ui-dim #ui-container .top-controls,
+        body.ui-dim #ui-container #auto-cream-toggle-btn,
+        body.ui-dim #ui-container .control-panel{
+            opacity: 0.10;
+        }
+        body.ui-dim #ui-dim-toggle-btn{
+            opacity: 1.0;
+        }
+
+
         
         /* Left-bottom action button: Cream splash */
         .cream-shot-btn{
@@ -548,6 +589,15 @@
 
         <!-- Left-bottom toggle button: Auto cream shot -->
         <button id="auto-cream-toggle-btn" class="cream-shot-btn" type="button" title="自動射出 ON/OFF">💧</button>
+
+        <!-- Right-bottom toggle button: UI dim -->
+        <button id="ui-dim-toggle-btn" type="button" title="UIを薄くする" aria-pressed="false">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="2"/>
+                <path d="M12 1v3M12 20v3M1 12h3M20 12h3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M19.8 4.2l-2.1 2.1M6.3 17.7l-2.1 2.1" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            </svg>
+        </button>
+
 
         <!-- メイン設定パネル -->
         <div class="control-panel" id="control-panel" style="display:none;">
@@ -1059,8 +1109,8 @@
     <script type="module">
         
 // ===== App Version (single source of truth) =====
-const APP_VERSION = "v6.01.40";
-const APP_VERSION_NOTE = "Zoom max-width 180 + tighter gaps";
+const APP_VERSION = "v6.01.41";
+const APP_VERSION_NOTE = "UI dim toggle";
 
 
 function getOverlayPixelRatio() {
@@ -1588,6 +1638,25 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
         const uiContainer = document.getElementById('ui-container');
         const controlPanel = document.getElementById('control-panel');
         const lightPanel = document.getElementById('light-panel');
+
+        // --- UI Dim Toggle (temporary) ---
+        const uiDimToggleBtn = document.getElementById('ui-dim-toggle-btn');
+        let uiDimEnabled = false;
+        function setUiDimEnabled(enabled){
+            uiDimEnabled = !!enabled;
+            document.body.classList.toggle('ui-dim', uiDimEnabled);
+            if (uiDimToggleBtn){
+                uiDimToggleBtn.classList.toggle('active', uiDimEnabled);
+                uiDimToggleBtn.setAttribute('aria-pressed', uiDimEnabled ? 'true' : 'false');
+            }
+        }
+        if (uiDimToggleBtn){
+            uiDimToggleBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                setUiDimEnabled(!uiDimEnabled);
+            });
+        }
+
 
         // --- Camera Zoom (global) ---
         const zoomControlEl = document.getElementById('zoom-control');
@@ -2342,7 +2411,7 @@ forceShadowToggle.addEventListener('change', () => {
         const fireCreamAtTap = (ev) => {
             // Ignore taps on UI elements (panels/buttons)
             const t = ev.target;
-            if (t && (t.closest?.('.control-panel') || t.closest?.('.icon-buttons') || t.closest?.('.panel') || t.id === 'auto-cream-toggle-btn' || t.closest?.('#auto-cream-toggle-btn'))) return;
+            if (t && (t.closest?.('.control-panel') || t.closest?.('.icon-buttons') || t.closest?.('.panel') || t.id === 'auto-cream-toggle-btn' || t.closest?.('#auto-cream-toggle-btn') || t.id === 'ui-dim-toggle-btn' || t.closest?.('#ui-dim-toggle-btn'))) return;
             if (!creamOverlayCanvas) return;
             const rect = creamOverlayCanvas.getBoundingClientRect();
             let x = ev.clientX - rect.left;
