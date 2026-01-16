@@ -166,6 +166,39 @@
 
 
         
+        /* Tracking pause toggle (bottom-right, left of UI dim) */
+        #tracking-pause-btn{
+            position: fixed;
+            right: 66px; /* 12 + 44 + 10 */
+            bottom: 12px;
+            width: 44px;
+            height: 44px;
+            border-radius: 999px;
+            border: none;
+            background: rgba(255,255,255,0.25);
+            backdrop-filter: blur(6px);
+            -webkit-backdrop-filter: blur(6px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: rgba(0,0,0,0.85);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+            pointer-events: auto;
+            z-index: 2002;
+            cursor: pointer;
+            transition: transform .12s ease, background .12s ease, opacity .12s ease;
+        }
+        #tracking-pause-btn svg{ width: 22px; height: 22px; }
+        #tracking-pause-btn.active{
+            background: rgba(0,0,0,0.18);
+            color: rgba(255,255,255,0.92);
+        }
+        #tracking-pause-btn:active{ transform: scale(0.96); }
+
+        body.ui-dim #tracking-pause-btn{
+            opacity: 1.0;
+        }
+
         /* Left-bottom action button: Cream splash */
         .cream-shot-btn{
             position: fixed;
@@ -589,6 +622,13 @@
 
         <!-- Left-bottom toggle button: Auto cream shot -->
         <button id="auto-cream-toggle-btn" class="cream-shot-btn" type="button" title="自動射出 ON/OFF">💧</button>
+
+        <!-- Right-bottom toggle button: Tracking pause -->
+        <button id="tracking-pause-btn" type="button" title="トラッキング一時停止" aria-pressed="false">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M7.5 6.5h3v11h-3zM13.5 6.5h3v11h-3z" fill="currentColor"/>
+            </svg>
+        </button>
 
         <!-- Right-bottom toggle button: UI dim -->
         <button id="ui-dim-toggle-btn" type="button" title="UIを薄くする" aria-pressed="false">
@@ -1109,8 +1149,8 @@
     <script type="module">
         
 // ===== App Version (single source of truth) =====
-const APP_VERSION = "v6.01.41";
-const APP_VERSION_NOTE = "UI dim toggle";
+const APP_VERSION = "v6.01.42";
+const APP_VERSION_NOTE = "Tracking pause";
 
 
 function getOverlayPixelRatio() {
@@ -1654,6 +1694,40 @@ let lightRelativePos = new THREE.Vector3(1, 1, 1);
             uiDimToggleBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 setUiDimEnabled(!uiDimEnabled);
+            });
+        }
+
+
+        // --- Tracking Pause Toggle (pose lock) ---
+        const trackingPauseBtn = document.getElementById('tracking-pause-btn');
+        let trackingPaused = false; // pose lock only; expressions/effects keep running
+        const pausedPivotMatrix = new THREE.Matrix4();
+
+        function setTrackingPaused(enabled, silent = false){
+            trackingPaused = !!enabled;
+            if (trackingPauseBtn){
+                trackingPauseBtn.classList.toggle('active', trackingPaused);
+                trackingPauseBtn.setAttribute('aria-pressed', trackingPaused ? 'true' : 'false');
+            }
+            if (!silent){
+                showToast(trackingPaused ? 'トラッキングを一時停止しました' : 'トラッキングを再開しました');
+            }
+        }
+
+        if (trackingPauseBtn){
+            trackingPauseBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                // Only allow pausing when we have a visible pose
+                if (!pivotGroup || !pivotGroup.visible){
+                    showToast('顔が検出されていません');
+                    setTrackingPaused(false, true);
+                    return;
+                }
+                const next = !trackingPaused;
+                if (next){
+                    try { pausedPivotMatrix.copy(pivotGroup.matrix); } catch(_) {}
+                }
+                setTrackingPaused(next);
             });
         }
 
@@ -2411,7 +2485,7 @@ forceShadowToggle.addEventListener('change', () => {
         const fireCreamAtTap = (ev) => {
             // Ignore taps on UI elements (panels/buttons)
             const t = ev.target;
-            if (t && (t.closest?.('.control-panel') || t.closest?.('.icon-buttons') || t.closest?.('.panel') || t.id === 'auto-cream-toggle-btn' || t.closest?.('#auto-cream-toggle-btn') || t.id === 'ui-dim-toggle-btn' || t.closest?.('#ui-dim-toggle-btn'))) return;
+            if (t && (t.closest?.('.control-panel') || t.closest?.('.icon-buttons') || t.closest?.('.panel') || t.id === 'auto-cream-toggle-btn' || t.closest?.('#auto-cream-toggle-btn') || t.id === 'ui-dim-toggle-btn' || t.closest?.('#ui-dim-toggle-btn') || t.id === 'tracking-pause-btn' || t.closest?.('#tracking-pause-btn'))) return;
             if (!creamOverlayCanvas) return;
             const rect = creamOverlayCanvas.getBoundingClientRect();
             let x = ev.clientX - rect.left;
@@ -5567,6 +5641,8 @@ if (videoTexture) videoTexture.needsUpdate = true;
             loadingText.style.display = 'block';
             loadingText.textContent = "Restarting AR...";
 
+            try { setTrackingPaused(false, true); } catch(_) {}
+
             try {
                 // Stop camera stream
                 if (stream) {
@@ -5667,6 +5743,7 @@ if (videoTexture) videoTexture.needsUpdate = true;
         }
 
 async function startAR(isRestart = false) {
+            try { setTrackingPaused(false, true); } catch(_) {}
             let startTimeout;
 
             try {
@@ -6040,7 +6117,13 @@ const tms = res && res.facialTransformationMatrixes;
                                 worldMatrix.premultiply(rotComp);
                             }
 
-                            pivotGroup.matrix.copy(worldMatrix);
+                            if (!trackingPaused) {
+                                pivotGroup.matrix.copy(worldMatrix);
+                                try { pausedPivotMatrix.copy(worldMatrix); } catch(_) {}
+                            } else {
+                                // Pose lock: keep the current matrix (captured when pausing).
+                                // Expressions/effects continue to update from MediaPipe results.
+                            }
                             if (!pivotGroup.visible) pivotGroup.visible = true;
                         } else {
                             // tracking lost: keep last pose visible
@@ -6120,6 +6203,12 @@ const tms = res && res.facialTransformationMatrixes;
                     }
 
                     lastFaceVisibleNow = isFaceVisible;
+
+                    // Reinforce pose lock (in case something else touched the matrix)
+                    if (trackingPaused && pivotGroup) {
+                        try { pivotGroup.matrix.copy(pausedPivotMatrix); } catch(_) {}
+                        if (!pivotGroup.visible) pivotGroup.visible = true;
+                    }
 
                     // Light follows pivot
                     if (pivotGroup && dirLight && pivotGroup.visible) {
