@@ -1147,7 +1147,7 @@
     <script type="module">
         
 // ===== App Version (single source of truth) =====
-const APP_VERSION = "v6.01.46";
+const APP_VERSION = "v6.01.47";
 const APP_VERSION_NOTE = "Fix: remove stray HTML comment; syntax guard";
 
 
@@ -4114,11 +4114,13 @@ function updateBreathEffect(delta) {
                 drawOne(R.x, R.y, true);
 
                 breathOverlayCtx.restore();
-            };
-            // --- Cheek blush (2D overlay; sticks to tracked face) ---
+            };            // --- Cheek blush (2D overlay; sticks to tracked face) ---
             // When trackingPaused is ON, freeze blush position so it doesn't drift with live landmarks.
             if (USE_BLUSH_2D_OVERLAY && isBlushEnabled && blushStrength > 0.001) {
-                if (trackingPaused && pausedBlushOverlayState && pausedBlushOverlayState.L && pausedBlushOverlayState.R) {
+                const hasPausedBlush = !!(trackingPaused && pausedBlushOverlayState && pausedBlushOverlayState.L && pausedBlushOverlayState.R);
+
+                if (hasPausedBlush) {
+                    // Draw from the snapshot taken at the moment tracking pause was enabled.
                     try {
                         const s = pausedBlushOverlayState;
                         const sx = (s.w && s.w > 0) ? (w / s.w) : 1;
@@ -4130,119 +4132,121 @@ function updateBreathEffect(delta) {
                         const faceW = Math.max(10, (s.faceW || 10) * scale);
                         _drawBlush2D(L, R, roll, faceW);
                     } catch (_) {}
-                } else if (latestFaceLandmarks0 && videoEl) {
-                const vwB = videoEl.videoWidth || 0;
-                const vhB = videoEl.videoHeight || 0;
-                if (vwB > 0 && vhB > 0) {
-                    const rectB = computeContainRect(w, h, vwB, vhB);
-                    // IMPORTANT (blush): Use the same coordinate system as the displayed video.
-                    // Landmarks are produced from the actual MediaPipe input (mpInput).
-                    // When inputRotationDeg==0, DO NOT apply autoInputRotationDeg here (it causes 90° drift on screen-locked rotation).
-                    const blushRotDeg = inputRotationDeg;
+                } else {
+                    // Live landmarks path
+                    if (latestFaceLandmarks0 && videoEl) {
+                        const vwB = videoEl.videoWidth || 0;
+                        const vhB = videoEl.videoHeight || 0;
+                        if (vwB > 0 && vhB > 0) {
+                            const rectB = computeContainRect(w, h, vwB, vhB);
+                            // IMPORTANT (blush): Use the same coordinate system as the displayed video.
+                            // Landmarks are produced from the actual MediaPipe input (mpInput).
+                            // When inputRotationDeg==0, DO NOT apply autoInputRotationDeg here (it causes 90° drift on screen-locked rotation).
+                            const blushRotDeg = inputRotationDeg;
 
-                    const lm = latestFaceLandmarks0;
-                    const pt = (i) => (lm && lm[i]) ? lm[i] : null;
+                            const lm = latestFaceLandmarks0;
+                            const pt = (i) => (lm && lm[i]) ? lm[i] : null;
 
-                    // Use stable points (eye outer, mouth corners, cheek-ish) and blend them inward.
-                    const pLEye = pt(33);
-                    const pREye = pt(263);
-                    const pLMouth = pt(61);
-                    const pRMouth = pt(291);
-                    const pLCheek = pt(205) || pt(50) || pt(234);
-                    const pRCheek = pt(425) || pt(280) || pt(454);
+                            // Use stable points (eye outer, mouth corners, cheek-ish) and blend them inward.
+                            const pLEye = pt(33);
+                            const pREye = pt(263);
+                            const pLMouth = pt(61);
+                            const pRMouth = pt(291);
+                            const pLCheek = pt(205) || pt(50) || pt(234);
+                            const pRCheek = pt(425) || pt(280) || pt(454);
 
-                    if (pLEye && pREye && pLMouth && pRMouth) {
-                        const mapXY = (p) => {
-                            // FaceLandmarker landmarks are normalized in the MediaPipe *input* canvas.
-                            // When we rotate the video into mpOffscreenCanvas (inputRotationDeg), we must
-                            // map them back into ORIGINAL video-frame normalized coords before drawing overlays.
-                            const mpW = (inputRotationDeg !== 0) ? (mpOffscreenCanvas.width || vwB) : vwB;
-                            const mpH = (inputRotationDeg !== 0) ? (mpOffscreenCanvas.height || vhB) : vhB;
-                            const vv = mpLandmarkNormToVideoNorm(p.x, p.y, vwB, vhB, blushRotDeg, mpW, mpH);
-                            const xx = rectB.x + vv.x * rectB.w;
-                            const yy = rectB.y + vv.y * rectB.h;
-                            return { x: xx, y: yy, vx: vv.x, vy: vv.y, mpW, mpH, rot: inputRotationDeg, vw: vwB, vh: vhB, rect: {x: rectB.x, y: rectB.y, w: rectB.w, h: rectB.h} };
-                        };
+                            if (pLEye && pREye && pLMouth && pRMouth) {
+                                const mapXY = (p) => {
+                                    // FaceLandmarker landmarks are normalized in the MediaPipe *input* canvas.
+                                    // When we rotate the video into mpOffscreenCanvas (inputRotationDeg), we must
+                                    // map them back into ORIGINAL video-frame normalized coords before drawing overlays.
+                                    const mpW = (inputRotationDeg !== 0) ? (mpOffscreenCanvas.width || vwB) : vwB;
+                                    const mpH = (inputRotationDeg !== 0) ? (mpOffscreenCanvas.height || vhB) : vhB;
+                                    const vv = mpLandmarkNormToVideoNorm(p.x, p.y, vwB, vhB, blushRotDeg, mpW, mpH);
+                                    const xx = rectB.x + vv.x * rectB.w;
+                                    const yy = rectB.y + vv.y * rectB.h;
+                                    return { x: xx, y: yy, vx: vv.x, vy: vv.y, mpW, mpH, rot: inputRotationDeg, vw: vwB, vh: vhB, rect: {x: rectB.x, y: rectB.y, w: rectB.w, h: rectB.h} };
+                                };
 
-                        const le = mapXY(pLEye), re = mapXY(pREye);
-                        const lm0 = mapXY(pLMouth), rm0 = mapXY(pRMouth);
-                        const lc = pLCheek ? mapXY(pLCheek) : null;
-                        const rc = pRCheek ? mapXY(pRCheek) : null;
+                                const le = mapXY(pLEye), re = mapXY(pREye);
+                                const lm0 = mapXY(pLMouth), rm0 = mapXY(pRMouth);
+                                const lc = pLCheek ? mapXY(pLCheek) : null;
+                                const rc = pRCheek ? mapXY(pRCheek) : null;
 
-                        // Face scale in pixels
-                        const faceW = Math.max(10, Math.hypot(re.x - le.x, re.y - le.y));
+                                // Face scale in pixels
+                                const faceW = Math.max(10, Math.hypot(re.x - le.x, re.y - le.y));
 
-                        // Cheek centers (weighted blend)
-                        const mix2 = (a, b, t) => ({ x: a.x * (1 - t) + b.x * t, y: a.y * (1 - t) + b.y * t });
-                        let L = mix2(lm0, le, 0.55);
-                        let R = mix2(rm0, re, 0.55);
-                        if (lc) L = { x: L.x * 0.70 + lc.x * 0.30, y: L.y * 0.70 + lc.y * 0.30 };
-                        if (rc) R = { x: R.x * 0.70 + rc.x * 0.30, y: R.y * 0.70 + rc.y * 0.30 };
+                                // Cheek centers (weighted blend)
+                                const mix2 = (a, b, t) => ({ x: a.x * (1 - t) + b.x * t, y: a.y * (1 - t) + b.y * t });
+                                let L = mix2(lm0, le, 0.55);
+                                let R = mix2(rm0, re, 0.55);
+                                if (lc) L = { x: L.x * 0.70 + lc.x * 0.30, y: L.y * 0.70 + lc.y * 0.30 };
+                                if (rc) R = { x: R.x * 0.70 + rc.x * 0.30, y: R.y * 0.70 + rc.y * 0.30 };
 
-                        // Apply VRM adjustment shift so blush follows your VRM height/position sliders.
-                        L.x += shiftX; L.y += shiftY;
-                        R.x += shiftX; R.y += shiftY;
+                                // Apply VRM adjustment shift so blush follows your VRM height/position sliders.
+                                L.x += shiftX; L.y += shiftY;
+                                R.x += shiftX; R.y += shiftY;
 
-                        // Apply user offsets in *face-local* pixel space (so it doesn't drift when the face rolls)
-                        // u: left->right direction along the eyes, v: u rotated +90deg (down relative to face)
-                        const ux = (re.x - le.x) / faceW;
-                        const uy = (re.y - le.y) / faceW;
-                        const vx = -uy;
-                        const vy = ux;
+                                // Apply user offsets in *face-local* pixel space (so it doesn't drift when the face rolls)
+                                // u: left->right direction along the eyes, v: u rotated +90deg (down relative to face)
+                                const ux = (re.x - le.x) / faceW;
+                                const uy = (re.y - le.y) / faceW;
+                                const vx = -uy;
+                                const vy = ux;
 
-                        const offU = blushOffX * faceW * 0.35;
-                        const offV = blushOffY * faceW * 0.35;
+                                const offU = blushOffX * faceW * 0.35;
+                                const offV = blushOffY * faceW * 0.35;
 
-                        L.x += ux * offU + vx * offV; L.y += uy * offU + vy * offV;
-                        R.x += ux * offU + vx * offV; R.y += uy * offU + vy * offV;
+                                L.x += ux * offU + vx * offV; L.y += uy * offU + vy * offV;
+                                R.x += ux * offU + vx * offV; R.y += uy * offU + vy * offV;
 
-                        // Spread nudges outward along face-local u axis
-                        const spreadN = Math.max(0.5, Math.min(6.0, blushSpread));
-                        const spreadU = (spreadN - 1.0) * faceW * 0.18;
-                        L.x -= ux * spreadU; L.y -= uy * spreadU;
-                        R.x += ux * spreadU; R.y += uy * spreadU;
+                                // Spread nudges outward along face-local u axis
+                                const spreadN = Math.max(0.5, Math.min(6.0, blushSpread));
+                                const spreadU = (spreadN - 1.0) * faceW * 0.18;
+                                L.x -= ux * spreadU; L.y -= uy * spreadU;
+                                R.x += ux * spreadU; R.y += uy * spreadU;
 
-// Roll angle from eyes
-                        const roll = Math.atan2((re.y - le.y), (re.x - le.x));
+                                // Roll angle from eyes
+                                const roll = Math.atan2((re.y - le.y), (re.x - le.x));
 
-                        if (blushDebugEnabled) {
-                            blush2DDebug = {
-                                inputRotationDeg,
-                                baseRotDeg: lastBaseInputRotDeg,
-                                autoRotDeg: autoInputRotationDeg,
-                                blushRotDeg,
-                                eyeAngleDeg,
-                                deviceBeta, deviceGamma,
-                                pageIsPortrait: (window.innerHeight >= window.innerWidth),
-                                videoW: vwB, videoH: vhB,
-                                mpW: ((inputRotationDeg !== 0) ? (mpOffscreenCanvas.width || vwB) : vwB),
-                                mpH: ((inputRotationDeg !== 0) ? (mpOffscreenCanvas.height || vhB) : vhB),
-                                le, re,
-                                L, R,
-                                rollRad: roll,
-                                rollDeg: (roll * 180 / Math.PI),
-                                shiftX, shiftY
-                            };
+                                if (blushDebugEnabled) {
+                                    blush2DDebug = {
+                                        inputRotationDeg,
+                                        baseRotDeg: lastBaseInputRotDeg,
+                                        autoRotDeg: autoInputRotationDeg,
+                                        blushRotDeg,
+                                        eyeAngleDeg,
+                                        deviceBeta, deviceGamma,
+                                        pageIsPortrait: (window.innerHeight >= window.innerWidth),
+                                        videoW: vwB, videoH: vhB,
+                                        mpW: ((inputRotationDeg !== 0) ? (mpOffscreenCanvas.width || vwB) : vwB),
+                                        mpH: ((inputRotationDeg !== 0) ? (mpOffscreenCanvas.height || vhB) : vhB),
+                                        le, re,
+                                        L, R,
+                                        rollRad: roll,
+                                        rollDeg: (roll * 180 / Math.PI),
+                                        shiftX, shiftY
+                                    };
+                                }
+
+                                // Remember last resolved blush positions (for pose lock).
+                                lastBlushOverlayState = {
+                                    w, h,
+                                    L: { x: L.x, y: L.y },
+                                    R: { x: R.x, y: R.y },
+                                    roll,
+                                    faceW
+                                };
+
+                                _drawBlush2D(L, R, roll, faceW);
+                            }
                         }
-
-
-                        // Remember last resolved blush positions (for pose lock).
-                        if (!trackingPaused) {
-                            lastBlushOverlayState = {
-                                w, h,
-                                L: { x: L.x, y: L.y },
-                                R: { x: R.x, y: R.y },
-                                roll,
-                                faceW
-                            };
-                        }
-
-                        _drawBlush2D(L, R, roll, faceW);
                     }
                 }
             }
 
-// Update mouth screen position from faceLandmarks (2D) + VRM adjustment shift (follows height slider).
+            // Update mouth screen position from faceLandmarks (2D) + VRM adjustment shift (follows height slider).
+
             const vw2 = videoEl ? (videoEl.videoWidth || 0) : 0;
             const vh2 = videoEl ? (videoEl.videoHeight || 0) : 0;
 
