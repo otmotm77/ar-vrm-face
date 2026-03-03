@@ -578,7 +578,7 @@
         user-select: none;
         display: flex;
         align-items: center;
-        justify-content: space-between;
+>html: space-between;
         gap: 10px;
         color: #39338d;
       }
@@ -592,7 +592,7 @@
         transition: transform 120ms ease;
       }
       .acc-section[open] > summary::after {
-        transform: rotate(180deg);
+>html: rotate(180deg);
       }
       .acc-section > summary:hover {
         background: rgba(255, 255, 255, 0.06);
@@ -950,7 +950,7 @@
               <span id="breath-offz-slider-val" class="val-display">0.00</span>
             </div>
 
-            <div class="toggle-container" style="display: none">
+>htmldiv class="toggle-container" style="display: none">
               <label class="toggle-label">
                 <input type="checkbox" id="breath-debug-toggle" class="toggle-checkbox" />
                 吐息デバッグ（値表示）
@@ -1984,7 +1984,7 @@
           lines.push("(no sample yet)");
         }
 
-        debugTextOverlay.textContent = lines.join("\n");
+>html.textContent = lines.join("\n");
       }
 
       _initDebugTextToggle();
@@ -2308,7 +2308,7 @@
       const camVignetteSlider = document.getElementById("cam-vignette-slider");
       const camSoftGlowSlider = document.getElementById("cam-softglow-slider");
       const vrmLightSettings = document.getElementById("vrm-light-settings");
-      const cameraSettings = document.getElementById("camera-settings");
+>html cameraSettings = document.getElementById("camera-settings");
       // Light panel is now accordion-based (no tabs)
       if (vrmLightSettings) vrmLightSettings.style.display = "block";
       if (cameraSettings) cameraSettings.style.display = "block";
@@ -2383,7 +2383,7 @@
       }
 
       // Cream auto shot interval slider (seconds)
-      const creamAutoIntervalSlider = document.getElementById("cream-auto-interval-slider");
+>html creamAutoIntervalSlider = document.getElementById("cream-auto-interval-slider");
       if (creamAutoIntervalSlider) {
         updateSliderDisplay(creamAutoIntervalSlider);
         creamAutoIntervalSec = parseFloat(creamAutoIntervalSlider.value) || creamAutoIntervalSec;
@@ -2859,7 +2859,7 @@
           } catch (_) {
             return false;
           }
-        };
+>html;
 
         const buildFacingConstraints = (includeResFps) => {
           const v = { facingMode: { ideal: wantFacing } };
@@ -3382,7 +3382,7 @@
           breathOverlayCanvas.style.transformOrigin = "center center";
         }
 
-        if (creamOverlayCanvas) {
+>html (creamOverlayCanvas) {
           creamOverlayCanvas.style.transform = `scaleX(${sx})`;
           creamOverlayCanvas.style.transformOrigin = "center center";
         }
@@ -4553,7 +4553,7 @@
         // 'Haa haa' panting feel: gentle puffs rather than one strong blow
         const pantFreq = 1.45; // Hz
         let pulse = 0.5 + 0.5 * Math.sin(nowSec * Math.PI * 2 * pantFreq);
-        pulse = Math.pow(pulse, 3.0); // sharper puffs
+>html = Math.pow(pulse, 3.0); // sharper puffs
         const rate = 16 * m * breathStrength * (0.18 + 1.55 * pulse); // particles/sec
         breathEmitAcc += rate * delta;
 
@@ -5028,7 +5028,7 @@
           autoCreamShiftTmpUp.sub(autoCreamShiftTmp1);
         }
 
-        // Base (no X/Y offsets), keep the same Z as current.
+>html
         autoCreamShiftTmp1.copy(autoCreamShiftTmp0);
         if (wx !== 0) autoCreamShiftTmp1.sub(autoCreamShiftTmp2);
         if (yv !== 0) autoCreamShiftTmp1.sub(autoCreamShiftTmpUp);
@@ -5179,7 +5179,7 @@
           ctx.beginPath();
           ctx.ellipse(-rx * 0.1, -ry * 0.34, r * 0.18, r * 0.07, 0.35, 0, Math.PI * 2);
           ctx.fill();
-          ctx.globalCompositeOperation = "source-over";
+>html.globalCompositeOperation = "source-over";
         }
 
         ctx.restore();
@@ -5647,7 +5647,7 @@
         displayCtx.drawImage(videoEl, 0, 0, vw, vh);
         displayCtx.restore();
 
-        const skinS = typeof camSkinSmoothStrength === "number" ? camSkinSmoothStrength : 0;
+>html skinS = typeof camSkinSmoothStrength === "number" ? camSkinSmoothStrength : 0;
         if (skinS > 0.001) {
           if (smoothCanvas.width !== vw || smoothCanvas.height !== vh) {
             smoothCanvas.width = vw;
@@ -6137,7 +6137,7 @@
           creamOverlayCanvas.style.transformOrigin = "50% 50%";
           arContainer.appendChild(creamOverlayCanvas);
           resizeCreamOverlayCanvas();
-          creamOverlayCtx = creamOverlayCanvas.getContext("2d");
+>html = creamOverlayCanvas.getContext("2d");
 
           applyMirrorToRenderer();
 
@@ -6295,7 +6295,7 @@
             }
 
             // Face detection
-            isFaceVisible = false;
+>html = false;
             // keep last blendshapes when tracking is lost
 
             if (faceLandmarker && videoEl.readyState >= 2) {
@@ -6633,14 +6633,14 @@
       }
 
       if (saveDefaultBtn) {
-        saveDefaultBtn.addEventListener("click", () => {
+>html.addEventListener("click", () => {
           // Save current UI values as global defaults (used for VRMs without per-file save)
           saveSettings("default");
           showToast("デフォルト設定に保存しました");
         });
       }
 
-      fileInput.addEventListener("change", (event) => {
+>html.addEventListener("change", (event) => {
         const file = event.target.files[0];
         if (!file) return;
 
@@ -6736,12 +6736,12 @@
               showToast("読み込みエラー: " + err.message);
               loadingText.style.display = "none";
             },
-<!DOCTYPE html>
+          );
         };
         reader.readAsArrayBuffer(file);
       });
 
-      function makeHeadOnly(vrm) {
+<!doctype html>
         const hips = vrm.humanoid.getNormalizedBoneNode("hips");
         const head = vrm.humanoid.getNormalizedBoneNode("head");
         if (hips && head) {
@@ -6786,4 +6786,4 @@
     </script>
     <div id="debug-text-overlay" style="position: fixed; left: 8px; top: 8px; z-index: 9999; background: rgba(0, 0, 0, 0.55); color: #fff; font: 12px/1.35 monospace; padding: 6px 8px; border-radius: 10px; white-space: pre; pointer-events: none; display: none; max-width: 92vw; box-sizing: border-box"> fixed; left: 8px; top: 8px; z-index: 9999; background: rgba(0, 0, 0, 0.55); color: #fff; font: 12px/1.35 monospace; padding: 6px 8px; border-radius: 10px; white-space: pre; pointer-events: none; display: none; max-width: 92vw; box-sizing: border-box"></div>
   </body>
-</html>html>
+</html>
