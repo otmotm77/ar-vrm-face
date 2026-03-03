@@ -1188,8 +1188,8 @@
 
     <script type="module">
       // ===== App Version (single source of truth) =====
-      const APP_VERSION = "v6.01.49";
-      const APP_VERSION_NOTE = "add red tint slider";
+      const APP_VERSION = "v6.01.50";
+      const APP_VERSION_NOTE = "improve skin smooth to multi-pass beauty filter";
 
       function getOverlayPixelRatio() {
         // Must match resizeCreamOverlayCanvas()/resizeBreathOverlayCanvas() DPR clamp for performance.
@@ -3789,7 +3789,7 @@
 
         // Mild tone tweak (keep subtle; main smoothing is a blur-blend pass in drawVideoToDisplayCanvas)
         if (skin > 0) {
-          b += skin * 0.12; // slight brighten
+          b += skin * 0.08; // slight brighten (reduced: Stage 3 screen glow adds luminance)
           s += skin * 0.08; // slight saturate
           c -= skin * 0.1; // soften contrast
         }
@@ -5665,17 +5665,33 @@
             smoothCanvas.width = vw;
             smoothCanvas.height = vh;
           }
+          // Stage 1: Macro smoothing (wrinkle/texture removal, large blur)
           smoothCtx.save();
           smoothCtx.clearRect(0, 0, vw, vh);
-          const blurPx = 0.5 + skinS * 6.0; // 0.5..6.5px
-          smoothCtx.filter = `blur(${blurPx}px)`;
+          smoothCtx.filter = `blur(${2 + skinS * 14}px)`; // 2..16px
           smoothCtx.drawImage(displayCanvas, 0, 0, vw, vh);
           smoothCtx.restore();
-
           displayCtx.save();
           displayCtx.globalCompositeOperation = "source-over";
-          displayCtx.globalAlpha = Math.min(0.65, skinS * 0.55);
+          displayCtx.globalAlpha = Math.min(0.72, skinS * 0.65);
           displayCtx.drawImage(smoothCanvas, 0, 0, vw, vh);
+          displayCtx.restore();
+          // Stage 2: Micro texture removal (soft-light targets midtones = skin)
+          smoothCtx.save();
+          smoothCtx.clearRect(0, 0, vw, vh);
+          smoothCtx.filter = `blur(${0.5 + skinS * 2.5}px)`; // 0.5..3px
+          smoothCtx.drawImage(displayCanvas, 0, 0, vw, vh);
+          smoothCtx.restore();
+          displayCtx.save();
+          displayCtx.globalCompositeOperation = "soft-light";
+          displayCtx.globalAlpha = Math.min(0.35, skinS * 0.30);
+          displayCtx.drawImage(smoothCanvas, 0, 0, vw, vh);
+          displayCtx.restore();
+          // Stage 3: Skin glow (beauty camera warm luminance)
+          displayCtx.save();
+          displayCtx.globalCompositeOperation = "screen";
+          displayCtx.fillStyle = `rgba(255, 235, 210, ${Math.min(0.12, skinS * 0.10)})`;
+          displayCtx.fillRect(0, 0, vw, vh);
           displayCtx.restore();
         }
 
