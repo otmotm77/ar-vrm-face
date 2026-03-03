@@ -1154,6 +1154,11 @@
               <input type="range" id="cam-temp-slider" min="0" max="100" step="1" value="50" />
               <span id="cam-temp-slider-val" class="val-display">50</span>
             </div>
+            <div class="slider-container" id="cam-red-container">
+              <span class="slider-label">赤み</span>
+              <input type="range" id="cam-red-slider" min="0" max="100" step="1" value="0" />
+              <span id="cam-red-slider-val" class="val-display">0</span>
+            </div>
             <div class="slider-container">
               <span class="slider-label">ビネット</span>
               <input type="range" id="cam-vignette-slider" min="0" max="100" step="1" value="0" />
@@ -1183,8 +1188,8 @@
 
     <script type="module">
       // ===== App Version (single source of truth) =====
-      const APP_VERSION = "v6.01.48";
-      const APP_VERSION_NOTE = "UI: portrait modal bottom corners rounded";
+      const APP_VERSION = "v6.01.49";
+      const APP_VERSION_NOTE = "add red tint slider";
 
       function getOverlayPixelRatio() {
         // Must match resizeCreamOverlayCanvas()/resizeBreathOverlayCanvas() DPR clamp for performance.
@@ -1261,6 +1266,7 @@
       let camSoftGlowStrength = 0; // 0..1
       let camBlackLiftStrength = 0; // 0..1 (lift shadows)
       let camTempStrength = 0; // -1..1 (warm(+)/cool(-))
+      let camRedStrength = 0; // 0..1
       let camSkinSmoothStrength = 0; // 0..1
       const glowCanvas = document.createElement("canvas");
       const glowCtx = glowCanvas.getContext("2d", { willReadFrequently: false });
@@ -2304,6 +2310,7 @@
       const camSepiaSlider = document.getElementById("cam-sepia-slider");
       const camBlackSlider = document.getElementById("cam-black-slider");
       const camTempSlider = document.getElementById("cam-temp-slider");
+      const camRedSlider = document.getElementById("cam-red-slider");
 
       const camVignetteSlider = document.getElementById("cam-vignette-slider");
       const camSoftGlowSlider = document.getElementById("cam-softglow-slider");
@@ -2331,6 +2338,7 @@
         camSepiaSlider,
         camBlackSlider,
         camTempSlider,
+        camRedSlider,
         camVignetteSlider,
         camSoftGlowSlider,
         occPosXSlider,
@@ -3476,6 +3484,7 @@
           camSepia: camSepiaSlider.value,
           camBlack: camBlackSlider ? camBlackSlider.value : "0",
           camTemp: camTempSlider ? camTempSlider.value : "50",
+          camRed: camRedSlider ? camRedSlider.value : "0",
           camVignette: camVignetteSlider ? camVignetteSlider.value : "0",
           camSoftGlow: camSoftGlowSlider ? camSoftGlowSlider.value : "0",
           // Breath (per-VRM)
@@ -3567,6 +3576,7 @@
               if (s.camSepia) camSepiaSlider.value = s.camSepia;
               if (Object.prototype.hasOwnProperty.call(s, "camBlack") && camBlackSlider) camBlackSlider.value = s.camBlack;
               if (Object.prototype.hasOwnProperty.call(s, "camTemp") && camTempSlider) camTempSlider.value = s.camTemp;
+              if (Object.prototype.hasOwnProperty.call(s, "camRed") && camRedSlider) camRedSlider.value = s.camRed;
               if (Object.prototype.hasOwnProperty.call(s, "camVignette") && camVignetteSlider) camVignetteSlider.value = s.camVignette;
               if (Object.prototype.hasOwnProperty.call(s, "camSoftGlow") && camSoftGlowSlider) camSoftGlowSlider.value = s.camSoftGlow;
 
@@ -3766,11 +3776,13 @@
         const gl = camSoftGlowSlider ? parseFloat(camSoftGlowSlider.value) : 0;
         const blk = camBlackSlider ? parseFloat(camBlackSlider.value) : 0;
         const tmp = camTempSlider ? parseFloat(camTempSlider.value) : 50;
+        const red = camRedSlider ? parseFloat(camRedSlider.value) : 0;
 
         camVignetteStrength = Math.max(0, Math.min(1, vg / 100));
         camSoftGlowStrength = Math.max(0, Math.min(1, gl / 100));
         camBlackLiftStrength = Math.max(0, Math.min(1, blk / 100));
         camTempStrength = Math.max(-1, Math.min(1, (tmp - 50) / 50));
+        camRedStrength = Math.max(0, Math.min(1, red / 100));
 
         const skin = skinSmoothSlider ? parseFloat(skinSmoothSlider.value) : 0;
         camSkinSmoothStrength = Math.max(0, Math.min(1, skin / 100));
@@ -5679,6 +5691,17 @@
           displayCtx.globalCompositeOperation = "soft-light";
           if (displayCtx.globalCompositeOperation !== "soft-light") displayCtx.globalCompositeOperation = "overlay";
           displayCtx.fillStyle = tint;
+          displayCtx.fillRect(0, 0, vw, vh);
+          displayCtx.restore();
+        }
+
+        // Red tint
+        const redS = typeof camRedStrength === "number" ? camRedStrength : 0;
+        if (redS > 0.001) {
+          const a = Math.min(0.4, redS * 0.35);
+          displayCtx.save();
+          displayCtx.globalCompositeOperation = "soft-light";
+          displayCtx.fillStyle = `rgba(255, 60, 60, ${a})`;
           displayCtx.fillRect(0, 0, vw, vh);
           displayCtx.restore();
         }
