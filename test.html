@@ -1188,8 +1188,8 @@
 
     <script type="module">
       // ===== App Version (single source of truth) =====
-      const APP_VERSION = "v6.01.50";
-      const APP_VERSION_NOTE = "improve skin smooth to multi-pass beauty filter";
+      const APP_VERSION = "v6.01.51";
+      const APP_VERSION_NOTE = "perf: half-res blur canvas + gradient cache + misc optimizations";
 
       function getOverlayPixelRatio() {
         // Must match resizeCreamOverlayCanvas()/resizeBreathOverlayCanvas() DPR clamp for performance.
@@ -1272,6 +1272,11 @@
       const glowCtx = glowCanvas.getContext("2d", { willReadFrequently: false });
       const smoothCanvas = document.createElement("canvas");
       const smoothCtx = smoothCanvas.getContext("2d", { willReadFrequently: false });
+      // Gradient caches (改善案B, C)
+      let _vigGradCache = null;
+      let _vigGradKey = "";
+      let _blushGradCache = null;
+      let _blushGradKey = "";
       let videoTexture = null; // THREE.CanvasTexture
       let cameraFilterStr = "none";
 
@@ -1329,6 +1334,7 @@
       let blushDebugEl = null;
       const blushDbgTmp = new THREE.Vector3();
       const blushDbgTmp2 = new THREE.Vector3();
+      const _dirLightPosTemp = new THREE.Vector3(); // 改善案D: pre-allocated to avoid per-frame GC
 
       function applyBlushRenderMode() {
         // Controls whether blush planes are drawn on top of the VRM (UI toggle).
@@ -4229,15 +4235,22 @@
           const softC0 = mixRgb(baseC, whiteC, 0.55);
           const softC1 = mixRgb(baseC, whiteC, 0.75);
 
+          // 改善案C: blush gradient cache — key on radius + color (position handled via translate)
+          const blushKey = `${Math.round(rw)},${blushColor}`;
+          if (!_blushGradCache || _blushGradKey !== blushKey) {
+            _blushGradCache = breathOverlayCtx.createRadialGradient(0, 0, 0, 0, 0, rw);
+            _blushGradCache.addColorStop(0.0, `rgba(${softC0.r}, ${softC0.g}, ${softC0.b}, 0.55)`);
+            _blushGradCache.addColorStop(0.55, `rgba(${softC1.r}, ${softC1.g}, ${softC1.b}, 0.22)`);
+            _blushGradCache.addColorStop(1.0, `rgba(${softC1.r}, ${softC1.g}, ${softC1.b}, 0.00)`);
+            _blushGradKey = blushKey;
+          }
+
           const drawOne = (cx, cy, flip) => {
             breathOverlayCtx.save();
             breathOverlayCtx.translate(cx, cy);
             breathOverlayCtx.rotate(roll);
 
-            const grad = breathOverlayCtx.createRadialGradient(0, 0, 0, 0, 0, rw);
-            grad.addColorStop(0.0, `rgba(${softC0.r}, ${softC0.g}, ${softC0.b}, 0.55)`);
-            grad.addColorStop(0.55, `rgba(${softC1.r}, ${softC1.g}, ${softC1.b}, 0.22)`);
-            grad.addColorStop(1.0, `rgba(${softC1.r}, ${softC1.g}, ${softC1.b}, 0.00)`);
+            const grad = _blushGradCache;
             breathOverlayCtx.fillStyle = grad;
             breathOverlayCtx.beginPath();
             breathOverlayCtx.ellipse(0, 0, rw, rh, 0, 0, Math.PI * 2);
@@ -5661,31 +5674,34 @@
 
         const skinS = typeof camSkinSmoothStrength === "number" ? camSkinSmoothStrength : 0;
         if (skinS > 0.001) {
-          if (smoothCanvas.width !== vw || smoothCanvas.height !== vh) {
-            smoothCanvas.width = vw;
-            smoothCanvas.height = vh;
+          // 改善案A: half-res blur — blur cost is proportional to area, 1/2 res = 1/4 cost
+          const SW = Math.ceil(vw / 2);
+          const SH = Math.ceil(vh / 2);
+          if (smoothCanvas.width !== SW || smoothCanvas.height !== SH) {
+            smoothCanvas.width = SW;
+            smoothCanvas.height = SH;
           }
           // Stage 1: Macro smoothing (wrinkle/texture removal, large blur)
           smoothCtx.save();
-          smoothCtx.clearRect(0, 0, vw, vh);
+          smoothCtx.clearRect(0, 0, SW, SH);
           smoothCtx.filter = `blur(${2 + skinS * 14}px)`; // 2..16px
-          smoothCtx.drawImage(displayCanvas, 0, 0, vw, vh);
+          smoothCtx.drawImage(displayCanvas, 0, 0, SW, SH);
           smoothCtx.restore();
           displayCtx.save();
           displayCtx.globalCompositeOperation = "source-over";
           displayCtx.globalAlpha = Math.min(0.72, skinS * 0.65);
-          displayCtx.drawImage(smoothCanvas, 0, 0, vw, vh);
+          displayCtx.drawImage(smoothCanvas, 0, 0, vw, vh); // upscale via bilinear
           displayCtx.restore();
           // Stage 2: Micro texture removal (soft-light targets midtones = skin)
           smoothCtx.save();
-          smoothCtx.clearRect(0, 0, vw, vh);
+          smoothCtx.clearRect(0, 0, SW, SH);
           smoothCtx.filter = `blur(${0.5 + skinS * 2.5}px)`; // 0.5..3px
-          smoothCtx.drawImage(displayCanvas, 0, 0, vw, vh);
+          smoothCtx.drawImage(displayCanvas, 0, 0, SW, SH);
           smoothCtx.restore();
           displayCtx.save();
           displayCtx.globalCompositeOperation = "soft-light";
           displayCtx.globalAlpha = Math.min(0.35, skinS * 0.30);
-          displayCtx.drawImage(smoothCanvas, 0, 0, vw, vh);
+          displayCtx.drawImage(smoothCanvas, 0, 0, vw, vh); // upscale via bilinear
           displayCtx.restore();
           // Stage 3: Skin glow (beauty camera warm luminance)
           displayCtx.save();
@@ -5736,21 +5752,24 @@
         // Soft Glow (cinematic bloom-ish)
         const glow = typeof camSoftGlowStrength === "number" ? camSoftGlowStrength : 0;
         if (glow > 0.001) {
-          if (glowCanvas.width !== vw || glowCanvas.height !== vh) {
-            glowCanvas.width = vw;
-            glowCanvas.height = vh;
+          // 改善案A: half-res blur for glow canvas
+          const GW = Math.ceil(vw / 2);
+          const GH = Math.ceil(vh / 2);
+          if (glowCanvas.width !== GW || glowCanvas.height !== GH) {
+            glowCanvas.width = GW;
+            glowCanvas.height = GH;
           }
           glowCtx.save();
-          glowCtx.clearRect(0, 0, vw, vh);
+          glowCtx.clearRect(0, 0, GW, GH);
           const blurPx = glow * 12; // 0..12px
           glowCtx.filter = `blur(${blurPx}px)`;
-          glowCtx.drawImage(displayCanvas, 0, 0, vw, vh);
+          glowCtx.drawImage(displayCanvas, 0, 0, GW, GH);
           glowCtx.restore();
 
           displayCtx.save();
           displayCtx.globalCompositeOperation = "screen";
           displayCtx.globalAlpha = glow * 0.65;
-          displayCtx.drawImage(glowCanvas, 0, 0, vw, vh);
+          displayCtx.drawImage(glowCanvas, 0, 0, vw, vh); // upscale via bilinear
           displayCtx.restore();
         }
 
@@ -5761,11 +5780,16 @@
           const cy = vh * 0.5;
           const inner = Math.min(vw, vh) * 0.25;
           const outer = Math.sqrt(vw * vw + vh * vh) * 0.5;
-          const g = displayCtx.createRadialGradient(cx, cy, inner, cx, cy, outer);
-          g.addColorStop(0, "rgba(0,0,0,0)");
-          g.addColorStop(1, `rgba(0,0,0,${0.85 * vig})`);
+          // 改善案B: cache gradient — regenerate only when size or strength changes
+          const vigKey = `${vw},${vh},${vig.toFixed(3)}`;
+          if (!_vigGradCache || _vigGradKey !== vigKey) {
+            _vigGradCache = displayCtx.createRadialGradient(cx, cy, inner, cx, cy, outer);
+            _vigGradCache.addColorStop(0, "rgba(0,0,0,0)");
+            _vigGradCache.addColorStop(1, `rgba(0,0,0,${0.85 * vig})`);
+            _vigGradKey = vigKey;
+          }
           displayCtx.save();
-          displayCtx.fillStyle = g;
+          displayCtx.fillStyle = _vigGradCache;
           displayCtx.fillRect(0, 0, vw, vh);
           displayCtx.restore();
         }
@@ -6299,6 +6323,9 @@
           const tmpEuler = new THREE.Euler();
           let latestFaceYawRad = 0.0;
           let latestFacePitchRad = 0.0;
+          // 改善案E: MediaPipe frame-skip state
+          let _mpFrameSkipCounter = 0;
+          let _mpLastResult = null;
 
           renderer.setAnimationLoop(() => {
             const delta = clock.getDelta();
@@ -6338,7 +6365,12 @@
             // keep last blendshapes when tracking is lost
 
             if (faceLandmarker && videoEl.readyState >= 2) {
-              const res = faceLandmarker.detectForVideo(mpInput, performance.now());
+              // 改善案E: skip detection every other frame to halve MediaPipe cost
+              _mpFrameSkipCounter = (_mpFrameSkipCounter + 1) | 0;
+              if (_mpFrameSkipCounter % 2 === 1) {
+                _mpLastResult = faceLandmarker.detectForVideo(mpInput, performance.now());
+              }
+              const res = _mpLastResult;
               latestFaceLandmarks0 = res && res.faceLandmarks && res.faceLandmarks[0] ? res.faceLandmarks[0] : null;
               // Capture the exact rotation and dimensions used for the landmark frame.
               // (These are required to map landmarks back to the original video consistently.)
@@ -6509,10 +6541,10 @@
 
             // Light follows pivot
             if (pivotGroup && dirLight && pivotGroup.visible) {
-              const pos = new THREE.Vector3();
-              pivotGroup.getWorldPosition(pos);
-              dirLight.target.position.copy(pos);
-              dirLight.position.copy(pos).add(lightRelativePos);
+              // 改善案D: reuse pre-allocated Vector3 instead of new each frame
+              pivotGroup.getWorldPosition(_dirLightPosTemp);
+              dirLight.target.position.copy(_dirLightPosTemp);
+              dirLight.position.copy(_dirLightPosTemp).add(lightRelativePos);
               dirLight.updateMatrixWorld();
               dirLight.target.updateMatrixWorld();
               if (lightHelper && lightHelper.visible) lightHelper.update();
