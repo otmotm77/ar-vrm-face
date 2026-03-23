@@ -173,8 +173,46 @@
       body.ui-dim #ui-container #auto-cream-toggle-btn,
       body.ui-dim #ui-container .control-panel,
       body.ui-dim #ui-dim-toggle-btn,
-      body.ui-dim #tracking-pause-btn {
+      body.ui-dim #tracking-pause-btn,
+      body.ui-dim #vrm-hide-btn {
         opacity: 0.1;
+      }
+
+      /* VRM hide toggle (bottom-right, left of tracking pause) */
+      #vrm-hide-btn {
+        position: fixed;
+        right: 120px; /* 66 + 44 + 10 */
+        bottom: 12px;
+        width: 44px;
+        height: 44px;
+        border-radius: 999px;
+        border: none;
+        background: rgba(255, 255, 255, 0.25);
+        backdrop-filter: blur(6px);
+        -webkit-backdrop-filter: blur(6px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: rgba(0, 0, 0, 0.85);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+        pointer-events: auto;
+        z-index: 2002;
+        cursor: pointer;
+        transition:
+          transform 0.12s ease,
+          background 0.12s ease,
+          opacity 0.12s ease;
+      }
+      #vrm-hide-btn svg {
+        width: 22px;
+        height: 22px;
+      }
+      #vrm-hide-btn.active {
+        background: rgba(0, 0, 0, 0.18);
+        color: rgba(255, 255, 255, 0.92);
+      }
+      #vrm-hide-btn:active {
+        transform: scale(0.96);
       }
 
       /* Tracking pause toggle (bottom-right, left of UI dim) */
@@ -667,6 +705,15 @@
 
       <!-- Left-bottom toggle button: Auto cream shot -->
       <button id="auto-cream-toggle-btn" class="cream-shot-btn" type="button" title="自動射出 ON/OFF">💧</button>
+
+      <!-- Right-bottom toggle button: VRM hide -->
+      <button id="vrm-hide-btn" type="button" title="VRM一時非表示" aria-pressed="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M1 1l22 22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+      </button>
 
       <!-- Right-bottom toggle button: Tracking pause -->
       <button id="tracking-pause-btn" type="button" title="トラッキング一時停止" aria-pressed="false">
@@ -1188,8 +1235,8 @@
 
     <script type="module">
       // ===== App Version (single source of truth) =====
-      const APP_VERSION = "v6.01.53";
-      const APP_VERSION_NOTE = "feat: red slider max 150, fix autosave for 5 cam sliders";
+      const APP_VERSION = "v6.01.54";
+      const APP_VERSION_NOTE = "feat: VRM hide toggle button";
 
       function getOverlayPixelRatio() {
         // Must match resizeCreamOverlayCanvas()/resizeBreathOverlayCanvas() DPR clamp for performance.
@@ -1775,6 +1822,27 @@
             } catch (_) {}
           }
           setTrackingPaused(next);
+        });
+      }
+
+      // --- VRM Hide Toggle ---
+      const vrmHideBtn = document.getElementById("vrm-hide-btn");
+      let vrmHidden = false;
+
+      function setVrmHidden(enabled) {
+        vrmHidden = !!enabled;
+        if (vrmHideBtn) {
+          vrmHideBtn.classList.toggle("active", vrmHidden);
+          vrmHideBtn.setAttribute("aria-pressed", vrmHidden ? "true" : "false");
+        }
+        if (vrmHidden && pivotGroup) pivotGroup.visible = false;
+        showToast(vrmHidden ? "VRMを非表示にしました" : "VRMを表示しました");
+      }
+
+      if (vrmHideBtn) {
+        vrmHideBtn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          setVrmHidden(!vrmHidden);
         });
       }
 
@@ -2580,7 +2648,7 @@
       const fireCreamAtTap = (ev) => {
         // Ignore taps on UI elements (panels/buttons)
         const t = ev.target;
-        if (t && (t.closest?.(".control-panel") || t.closest?.(".icon-buttons") || t.closest?.(".panel") || t.id === "auto-cream-toggle-btn" || t.closest?.("#auto-cream-toggle-btn") || t.id === "ui-dim-toggle-btn" || t.closest?.("#ui-dim-toggle-btn") || t.id === "tracking-pause-btn" || t.closest?.("#tracking-pause-btn"))) return;
+        if (t && (t.closest?.(".control-panel") || t.closest?.(".icon-buttons") || t.closest?.(".panel") || t.id === "auto-cream-toggle-btn" || t.closest?.("#auto-cream-toggle-btn") || t.id === "ui-dim-toggle-btn" || t.closest?.("#ui-dim-toggle-btn") || t.id === "tracking-pause-btn" || t.closest?.("#tracking-pause-btn") || t.id === "vrm-hide-btn" || t.closest?.("#vrm-hide-btn"))) return;
         if (!creamOverlayCanvas) return;
         const rect = creamOverlayCanvas.getBoundingClientRect();
         let x = ev.clientX - rect.left;
@@ -6445,7 +6513,7 @@
                   // Pose lock: keep the current matrix (captured when pausing).
                   // Expressions/effects continue to update from MediaPipe results.
                 }
-                if (!pivotGroup.visible) pivotGroup.visible = true;
+                if (!pivotGroup.visible && !vrmHidden) pivotGroup.visible = true;
               } else {
                 // tracking lost: keep last pose visible
                 // (do nothing)
