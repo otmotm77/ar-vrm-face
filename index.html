@@ -173,8 +173,46 @@
       body.ui-dim #ui-container #auto-cream-toggle-btn,
       body.ui-dim #ui-container .control-panel,
       body.ui-dim #ui-dim-toggle-btn,
-      body.ui-dim #tracking-pause-btn {
+      body.ui-dim #tracking-pause-btn,
+      body.ui-dim #vrm-hide-btn {
         opacity: 0.1;
+      }
+
+      /* VRM hide toggle (bottom-right, left of tracking pause) */
+      #vrm-hide-btn {
+        position: fixed;
+        right: 120px; /* 66 + 44 + 10 */
+        bottom: 12px;
+        width: 44px;
+        height: 44px;
+        border-radius: 999px;
+        border: none;
+        background: rgba(255, 255, 255, 0.25);
+        backdrop-filter: blur(6px);
+        -webkit-backdrop-filter: blur(6px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: rgba(0, 0, 0, 0.85);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+        pointer-events: auto;
+        z-index: 2002;
+        cursor: pointer;
+        transition:
+          transform 0.12s ease,
+          background 0.12s ease,
+          opacity 0.12s ease;
+      }
+      #vrm-hide-btn svg {
+        width: 22px;
+        height: 22px;
+      }
+      #vrm-hide-btn.active {
+        background: rgba(0, 0, 0, 0.18);
+        color: rgba(255, 255, 255, 0.92);
+      }
+      #vrm-hide-btn:active {
+        transform: scale(0.96);
       }
 
       /* Tracking pause toggle (bottom-right, left of UI dim) */
@@ -668,6 +706,15 @@
       <!-- Left-bottom toggle button: Auto cream shot -->
       <button id="auto-cream-toggle-btn" class="cream-shot-btn" type="button" title="自動射出 ON/OFF">💧</button>
 
+      <!-- Right-bottom toggle button: VRM hide -->
+      <button id="vrm-hide-btn" type="button" title="VRM一時非表示" aria-pressed="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M1 1l22 22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+      </button>
+
       <!-- Right-bottom toggle button: Tracking pause -->
       <button id="tracking-pause-btn" type="button" title="トラッキング一時停止" aria-pressed="false">
         <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
@@ -880,13 +927,8 @@
             </div>
             <div class="slider-container" id="blush-offy-container" style="opacity: 0.85">
               <span class="slider-label">紅潮位置Y</span>
-              <input type="range" id="blush-offy-slider" min="-2.0" max="2.0" step="0.01" value="0.00" />
+              <input type="range" id="blush-offy-slider" min="-2.0" max="4.0" step="0.01" value="0.00" />
               <span id="blush-offy-slider-val" class="val-display">0.00</span>
-            </div>
-            <div class="slider-container" id="blush-offz-container" style="opacity: 0.85">
-              <span class="slider-label">紅潮位置Z</span>
-              <input type="range" id="blush-offz-slider" min="-1.0" max="1.0" step="0.01" value="0.00" />
-              <span id="blush-offz-slider-val" class="val-display">0.00</span>
             </div>
             <div class="slider-container" id="blush-size-container" style="opacity: 0.85">
               <span class="slider-label">紅潮サイズ</span>
@@ -905,20 +947,6 @@
               <span id="blush-color-picker-val" class="val-display">#ff5fa0</span>
             </div>
 
-            <div class="toggle-container" style="opacity: 0.9; margin-top: 4px; margin-bottom: 4px">
-              <label class="toggle-label">
-                <input type="checkbox" id="blush-front-toggle" class="toggle-checkbox" checked />
-                紅潮を最前面に表示
-              </label>
-            </div>
-
-            <div class="toggle-container" style="opacity: 0.9; margin-top: 6px">
-              <label class="toggle-label">
-                <input type="checkbox" id="blush-debug-toggle" class="toggle-checkbox" />
-                紅潮デバッグ（表示）
-              </label>
-            </div>
-            <div id="blush-debug" style="display: none; font-family: monospace; font-size: 12px; line-height: 1.35; background: rgba(0, 0, 0, 0.55); color: #fff; padding: 6px; border-radius: 8px; margin-bottom: 10px; white-space: pre-wrap"></div>
           </div>
 
           <div class="slider-container">
@@ -941,7 +969,7 @@
             </div>
             <div class="slider-container" id="breath-offset-container-y" style="opacity: 0.9">
               <span class="slider-label">吐息位置Y</span>
-              <input type="range" id="breath-offy-slider" min="-1.0" max="1.0" step="0.01" value="0.00" />
+              <input type="range" id="breath-offy-slider" min="-2.0" max="2.0" step="0.01" value="0.00" />
               <span id="breath-offy-slider-val" class="val-display">0.00</span>
             </div>
             <div class="slider-container" id="breath-offset-container-z" style="opacity: 0.9">
@@ -1048,6 +1076,7 @@
               </label>
               <div style="font-size: 11px; opacity: 0.85; margin-top: 4px; line-height: 1.4">自動射出などの内部値を画面上に表示します（不具合切り分け用）。</div>
             </div>
+            <div id="blush-debug" style="display: none; font-family: monospace; font-size: 12px; line-height: 1.35; background: rgba(0, 0, 0, 0.55); color: #fff; padding: 6px; border-radius: 8px; margin-top: 6px; white-space: pre-wrap"></div>
           </div>
         </details>
 
@@ -1188,8 +1217,8 @@
 
     <script type="module">
       // ===== App Version (single source of truth) =====
-      const APP_VERSION = "v6.01.53";
-      const APP_VERSION_NOTE = "feat: red slider max 150, fix autosave for 5 cam sliders";
+      const APP_VERSION = "v6.01.54";
+      const APP_VERSION_NOTE = "feat: VRM hide toggle button";
 
       function getOverlayPixelRatio() {
         // Must match resizeCreamOverlayCanvas()/resizeBreathOverlayCanvas() DPR clamp for performance.
@@ -1313,10 +1342,10 @@
       let blushStripePattern = null;
       let blushOffX = 0.0; // common shift (unit multipliers)
       let blushOffY = 0.0;
-      let blushOffZ = 0.0;
+
       let blushSize = 1.0; // size multiplier
       let blushSpread = 1.0; // distance multiplier (cheek width)
-      let blushFront = true; // render blush on top (toggleable)
+      const blushFront = true; // always render blush on top
       let blushColor = "#ff5fa0"; // blush color (hex)
       let blushTexColor = null; // internal cache for blush texture color
       const USE_BLUSH_2D_OVERLAY = true; // robust: sticks to tracked face/video space
@@ -1778,6 +1807,27 @@
         });
       }
 
+      // --- VRM Hide Toggle ---
+      const vrmHideBtn = document.getElementById("vrm-hide-btn");
+      let vrmHidden = false;
+
+      function setVrmHidden(enabled) {
+        vrmHidden = !!enabled;
+        if (vrmHideBtn) {
+          vrmHideBtn.classList.toggle("active", vrmHidden);
+          vrmHideBtn.setAttribute("aria-pressed", vrmHidden ? "true" : "false");
+        }
+        if (vrmHidden && pivotGroup) pivotGroup.visible = false;
+        showToast(vrmHidden ? "VRMを非表示にしました" : "VRMを表示しました");
+      }
+
+      if (vrmHideBtn) {
+        vrmHideBtn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          setVrmHidden(!vrmHidden);
+        });
+      }
+
       // --- Camera Zoom (global) ---
       const zoomControlEl = document.getElementById("zoom-control");
       const zoomSliderEl = document.getElementById("zoom-slider");
@@ -1892,10 +1942,12 @@
 
       function setDebugTextEnabled(on) {
         debugTextEnabled = !!on;
+        blushDebugEnabled = !!on;
         try {
           localStorage.setItem(_uiKey("debug_text"), debugTextEnabled ? "1" : "0");
         } catch (e) {}
         _setDebugOverlayVisible(debugTextEnabled);
+        if (blushDebugEl) blushDebugEl.style.display = blushDebugEnabled ? "block" : "none";
       }
 
       function _initDebugTextToggle() {
@@ -2117,21 +2169,20 @@
 
       const blushOffXSlider = document.getElementById("blush-offx-slider");
       const blushOffYSlider = document.getElementById("blush-offy-slider");
-      const blushOffZSlider = document.getElementById("blush-offz-slider");
+
       const blushSizeSlider = document.getElementById("blush-size-slider");
       const blushSpreadSlider = document.getElementById("blush-spread-slider");
 
-      const blushFrontToggle = document.getElementById("blush-front-toggle");
+
       const blushOffXSliderVal = document.getElementById("blush-offx-slider-val");
       const blushOffYSliderVal = document.getElementById("blush-offy-slider-val");
-      const blushOffZSliderVal = document.getElementById("blush-offz-slider-val");
+
       const blushSizeSliderVal = document.getElementById("blush-size-slider-val");
       const blushSpreadSliderVal = document.getElementById("blush-spread-slider-val");
 
       const blushColorPicker = document.getElementById("blush-color-picker");
       const blushColorPickerVal = document.getElementById("blush-color-picker-val");
 
-      const blushDebugToggle = document.getElementById("blush-debug-toggle");
       blushDebugEl = document.getElementById("blush-debug");
 
       const breathToggle = document.getElementById("breath-toggle");
@@ -2165,10 +2216,8 @@
 
         blushOffX = blushOffXSlider ? parseFloat(blushOffXSlider.value) || 0 : 0;
         blushOffY = blushOffYSlider ? parseFloat(blushOffYSlider.value) || 0 : 0;
-        blushOffZ = blushOffZSlider ? parseFloat(blushOffZSlider.value) || 0 : 0;
         blushOffX = clamp(blushOffX, -2.0, 2.0);
-        blushOffY = clamp(blushOffY, -2.0, 2.0);
-        blushOffZ = clamp(blushOffZ, -1.0, 1.0);
+        blushOffY = clamp(blushOffY, -2.0, 4.0);
 
         blushSize = blushSizeSlider ? parseFloat(blushSizeSlider.value) || 1.0 : 1.0;
         blushSpread = blushSpreadSlider ? parseFloat(blushSpreadSlider.value) || 1.0 : 1.0;
@@ -2177,7 +2226,7 @@
 
         if (blushOffXSliderVal) blushOffXSliderVal.textContent = blushOffX.toFixed(2);
         if (blushOffYSliderVal) blushOffYSliderVal.textContent = blushOffY.toFixed(2);
-        if (blushOffZSliderVal) blushOffZSliderVal.textContent = blushOffZ.toFixed(2);
+
         if (blushSizeSliderVal) blushSizeSliderVal.textContent = blushSize.toFixed(2);
         if (blushSpreadSliderVal) blushSpreadSliderVal.textContent = blushSpread.toFixed(2);
         // Blush color (persisted per VRM)
@@ -2199,23 +2248,7 @@
 
         if (currentVrm && typeof updateBlushAnchorsFromVRM === "function") updateBlushAnchorsFromVRM(currentVrm);
 
-        // Front-most rendering toggle (persisted)
-        if (typeof blushFrontToggle !== "undefined" && blushFrontToggle) {
-          blushFront = !!blushFrontToggle.checked;
-          applyBlushRenderMode();
-        } else {
-          blushFront = true;
-          applyBlushRenderMode();
-        }
-
-        // Blush debug visibility (not persisted)
-        if (blushDebugToggle) {
-          blushDebugEnabled = !!blushDebugToggle.checked;
-          if (blushDebugEl) blushDebugEl.style.display = blushDebugEnabled ? "block" : "none";
-        } else {
-          blushDebugEnabled = false;
-          if (blushDebugEl) blushDebugEl.style.display = "none";
-        }
+        applyBlushRenderMode();
 
         if (!skipSave) saveSettings();
       }
@@ -2263,15 +2296,9 @@
       if (blushStrengthSlider) blushStrengthSlider.addEventListener("input", () => updateBlushUI(false));
       if (blushOffXSlider) blushOffXSlider.addEventListener("input", () => updateBlushUI(false));
       if (blushOffYSlider) blushOffYSlider.addEventListener("input", () => updateBlushUI(false));
-      if (blushOffZSlider) blushOffZSlider.addEventListener("input", () => updateBlushUI(false));
+
       if (blushSizeSlider) blushSizeSlider.addEventListener("input", () => updateBlushUI(false));
       if (blushSpreadSlider) blushSpreadSlider.addEventListener("input", () => updateBlushUI(false));
-      if (typeof blushFrontToggle !== "undefined" && blushFrontToggle) blushFrontToggle.addEventListener("change", () => updateBlushUI(false));
-      if (blushDebugToggle)
-        blushDebugToggle.addEventListener("change", () => {
-          blushDebugEnabled = !!blushDebugToggle.checked;
-          if (blushDebugEl) blushDebugEl.style.display = blushDebugEnabled ? "block" : "none";
-        });
 
       breathToggle.addEventListener("change", () => updateBreathUI(false));
       breathStrengthSlider.addEventListener("input", () => updateBreathUI(false));
@@ -2580,7 +2607,7 @@
       const fireCreamAtTap = (ev) => {
         // Ignore taps on UI elements (panels/buttons)
         const t = ev.target;
-        if (t && (t.closest?.(".control-panel") || t.closest?.(".icon-buttons") || t.closest?.(".panel") || t.id === "auto-cream-toggle-btn" || t.closest?.("#auto-cream-toggle-btn") || t.id === "ui-dim-toggle-btn" || t.closest?.("#ui-dim-toggle-btn") || t.id === "tracking-pause-btn" || t.closest?.("#tracking-pause-btn"))) return;
+        if (t && (t.closest?.(".control-panel") || t.closest?.(".icon-buttons") || t.closest?.(".panel") || t.id === "auto-cream-toggle-btn" || t.closest?.("#auto-cream-toggle-btn") || t.id === "ui-dim-toggle-btn" || t.closest?.("#ui-dim-toggle-btn") || t.id === "tracking-pause-btn" || t.closest?.("#tracking-pause-btn") || t.id === "vrm-hide-btn" || t.closest?.("#vrm-hide-btn"))) return;
         if (!creamOverlayCanvas) return;
         const rect = creamOverlayCanvas.getBoundingClientRect();
         let x = ev.clientX - rect.left;
@@ -3504,10 +3531,10 @@
           blushStrength: typeof blushStrengthSlider !== "undefined" && blushStrengthSlider ? blushStrengthSlider.value : "0.70",
           blushOffX: typeof blushOffXSlider !== "undefined" && blushOffXSlider ? blushOffXSlider.value : "0.00",
           blushOffY: typeof blushOffYSlider !== "undefined" && blushOffYSlider ? blushOffYSlider.value : "0.00",
-          blushOffZ: typeof blushOffZSlider !== "undefined" && blushOffZSlider ? blushOffZSlider.value : "0.00",
+
           blushSize: typeof blushSizeSlider !== "undefined" && blushSizeSlider ? blushSizeSlider.value : "1.00",
           blushSpread: typeof blushSpreadSlider !== "undefined" && blushSpreadSlider ? blushSpreadSlider.value : "1.00",
-          blushFront: typeof blushFrontToggle !== "undefined" && blushFrontToggle ? !!blushFrontToggle.checked : true,
+
           blushColor: typeof blushColorPicker !== "undefined" && blushColorPicker ? blushColorPicker.value : "#ff5fa0",
           // Cream shooting
           creamLife: typeof creamLifeSlider !== "undefined" && creamLifeSlider ? creamLifeSlider.value : String(creamLifetimeSec),
@@ -3600,10 +3627,10 @@
               if (Object.prototype.hasOwnProperty.call(s, "blushStrength") && blushStrengthSlider) blushStrengthSlider.value = s.blushStrength;
               if (Object.prototype.hasOwnProperty.call(s, "blushOffX") && blushOffXSlider) blushOffXSlider.value = s.blushOffX;
               if (Object.prototype.hasOwnProperty.call(s, "blushOffY") && blushOffYSlider) blushOffYSlider.value = s.blushOffY;
-              if (Object.prototype.hasOwnProperty.call(s, "blushOffZ") && blushOffZSlider) blushOffZSlider.value = s.blushOffZ;
+
               if (Object.prototype.hasOwnProperty.call(s, "blushSize") && blushSizeSlider) blushSizeSlider.value = s.blushSize;
               if (Object.prototype.hasOwnProperty.call(s, "blushSpread") && blushSpreadSlider) blushSpreadSlider.value = s.blushSpread;
-              if (Object.prototype.hasOwnProperty.call(s, "blushFront") && blushFrontToggle) blushFrontToggle.checked = !!s.blushFront;
+
               if (Object.prototype.hasOwnProperty.call(s, "blushColor") && typeof blushColorPicker !== "undefined" && blushColorPicker) blushColorPicker.value = s.blushColor;
 
               if (typeof updateBlushUI === "function")
@@ -4022,8 +4049,6 @@
         if (!Number.isFinite(baseZ) || Math.abs(baseZ) > unit * 6.0) baseZ = zSign * 1.2 * unit;
         const ox = blushOffX * unit;
         const oy = blushOffY * unit;
-        const oz = blushOffZ * unit;
-
         // Position & size
         const s = unit * 1.6 * Math.max(0.5, Math.min(2.5, blushSize));
 
@@ -4035,8 +4060,8 @@
         // We intentionally keep blush meshes in head-local space so they stick perfectly to the cheeks.
         // (Counter-scaling by head world scale makes the effect tiny / invisible.)
 
-        blushMeshL.position.set(-baseX + ox, baseY + oy, baseZ + oz);
-        blushMeshR.position.set(+baseX + ox, baseY + oy, baseZ + oz);
+        blushMeshL.position.set(-baseX + ox, baseY + oy, baseZ);
+        blushMeshR.position.set(+baseX + ox, baseY + oy, baseZ);
 
         const sLocal = s;
         blushMeshL.scale.set(sLocal, sLocal, sLocal);
@@ -4228,7 +4253,7 @@
           // Composite: if "front" then normal overlay; else multiply for under-skin feel
           breathOverlayCtx.save();
           breathOverlayCtx.globalAlpha = Math.max(0, Math.min(1, blushStrength));
-          breathOverlayCtx.globalCompositeOperation = blushFront ? "source-over" : "multiply";
+          breathOverlayCtx.globalCompositeOperation = "source-over";
 
           const baseC = hexToRgbSafe(blushColor || "#ff5fa0");
           const whiteC = { r: 255, g: 255, b: 255 };
@@ -4281,7 +4306,7 @@
           breathOverlayCtx.restore();
         }; // --- Cheek blush (2D overlay; sticks to tracked face) ---
         // When trackingPaused is ON, freeze blush position so it doesn't drift with live landmarks.
-        if (USE_BLUSH_2D_OVERLAY && isBlushEnabled && blushStrength > 0.001) {
+        if (USE_BLUSH_2D_OVERLAY && isBlushEnabled && blushStrength > 0.001 && !vrmHidden) {
           const hasPausedBlush = !!(trackingPaused && pausedBlushOverlayState && pausedBlushOverlayState.L && pausedBlushOverlayState.R);
 
           if (hasPausedBlush) {
@@ -4531,7 +4556,7 @@
         // - option enabled
         // - mouth position is known
         // - face is currently visible (prevents "ghost breathing" when tracking is lost)
-        if (!isBreathEnabled || !lastMouthScreenValid || !lastFaceVisibleNow) {
+        if (!isBreathEnabled || !lastMouthScreenValid || !lastFaceVisibleNow || vrmHidden) {
           if (breathDebugEnabled && breathDebugEl) {
             breathDebugEl.textContent =
               `mouth(smoothed): ${lastMouthOpenForEffects.toFixed(3)}
@@ -5586,7 +5611,7 @@
         lines.push(`parents: L=${parentL} R=${parentR}`);
         if (blushMatL) lines.push(`matL: op=${(blushMatL.opacity ?? 0).toFixed(2)} depthTest=${!!blushMatL.depthTest} polyOff=${!!blushMatL.polygonOffset}`);
         if (blushMatR) lines.push(`matR: op=${(blushMatR.opacity ?? 0).toFixed(2)} depthTest=${!!blushMatR.depthTest} polyOff=${!!blushMatR.polygonOffset}`);
-        lines.push(`params: off=(${blushOffX.toFixed(2)},${blushOffY.toFixed(2)},${blushOffZ.toFixed(2)}) size=${blushSize.toFixed(2)} spread=${blushSpread.toFixed(2)} unit=${blushUnit.toFixed(4)}`);
+        lines.push(`params: off=(${blushOffX.toFixed(2)},${blushOffY.toFixed(2)}) size=${blushSize.toFixed(2)} spread=${blushSpread.toFixed(2)} unit=${blushUnit.toFixed(4)}`);
         lines.push(`viewport: ${w}x${h}`);
 
         // 2D blush mapping debug (used in current implementation)
@@ -6445,7 +6470,7 @@
                   // Pose lock: keep the current matrix (captured when pausing).
                   // Expressions/effects continue to update from MediaPipe results.
                 }
-                if (!pivotGroup.visible) pivotGroup.visible = true;
+                if (!pivotGroup.visible && !vrmHidden) pivotGroup.visible = true;
               } else {
                 // tracking lost: keep last pose visible
                 // (do nothing)
