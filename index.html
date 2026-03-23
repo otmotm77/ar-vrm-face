@@ -1156,7 +1156,7 @@
             </div>
             <div class="slider-container" id="cam-red-container">
               <span class="slider-label">赤み</span>
-              <input type="range" id="cam-red-slider" min="0" max="100" step="1" value="0" />
+              <input type="range" id="cam-red-slider" min="0" max="150" step="1" value="0" />
               <span id="cam-red-slider-val" class="val-display">0</span>
             </div>
             <div class="slider-container">
@@ -1188,8 +1188,8 @@
 
     <script type="module">
       // ===== App Version (single source of truth) =====
-      const APP_VERSION = "v6.01.51";
-      const APP_VERSION_NOTE = "perf: half-res blur canvas + gradient cache + misc optimizations";
+      const APP_VERSION = "v6.01.53";
+      const APP_VERSION_NOTE = "feat: red slider max 150, fix autosave for 5 cam sliders";
 
       function getOverlayPixelRatio() {
         // Must match resizeCreamOverlayCanvas()/resizeBreathOverlayCanvas() DPR clamp for performance.
@@ -1221,8 +1221,8 @@
       import * as THREE from "three";
       import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
       import { VRMLoaderPlugin, VRMUtils } from "@pixiv/three-vrm";
-      // MediaPipe Tasks Vision (ESM via jsDelivr +esm)
-      const vision = await import("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/+esm");
+      // MediaPipe Tasks Vision (vision_bundle.mjs, pinned to 0.10.33)
+      const vision = await import("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.33/vision_bundle.mjs");
       const { FaceLandmarker, FilesetResolver } = vision;
 
       // Base scale factor used for tracked pose matrices.
@@ -3715,7 +3715,7 @@
         }
       }
 
-      [scaleSlider, xSlider, ySlider, zSlider, minCfSlider, betaSlider, mouthSensSlider, eyeSensSlider, lightIntSlider, ambIntSlider, lightYSlider, lightRotSlider, lightColorSlider, vrmSatSlider, skinSmoothSlider, camBrightSlider, camSatSlider, camContSlider, camBlurSlider, camSepiaSlider, occlusionToggle, forceShadowToggle, shadowSoftnessSlider, shadowDarknessSlider, shadowColorPicker, occPosXSlider, occPosYSlider, occPosZSlider, occSizeXSlider, occSizeYSlider, occSizeZSlider].forEach((el) => {
+      [scaleSlider, xSlider, ySlider, zSlider, minCfSlider, betaSlider, mouthSensSlider, eyeSensSlider, lightIntSlider, ambIntSlider, lightYSlider, lightRotSlider, lightColorSlider, vrmSatSlider, skinSmoothSlider, camBrightSlider, camSatSlider, camContSlider, camBlurSlider, camSepiaSlider, camBlackSlider, camTempSlider, camRedSlider, camVignetteSlider, camSoftGlowSlider, occlusionToggle, forceShadowToggle, shadowSoftnessSlider, shadowDarknessSlider, shadowColorPicker, occPosXSlider, occPosYSlider, occPosZSlider, occSizeXSlider, occSizeYSlider, occSizeZSlider].forEach((el) => {
         el.addEventListener("change", () => {
           saveSettings();
         });
@@ -3788,7 +3788,7 @@
         camSoftGlowStrength = Math.max(0, Math.min(1, gl / 100));
         camBlackLiftStrength = Math.max(0, Math.min(1, blk / 100));
         camTempStrength = Math.max(-1, Math.min(1, (tmp - 50) / 50));
-        camRedStrength = Math.max(0, Math.min(1, red / 100));
+        camRedStrength = Math.max(0, Math.min(1.5, red / 100));
 
         const skin = skinSmoothSlider ? parseFloat(skinSmoothSlider.value) : 0;
         camSkinSmoothStrength = Math.max(0, Math.min(1, skin / 100));
@@ -5730,7 +5730,7 @@
         // Red tint
         const redS = typeof camRedStrength === "number" ? camRedStrength : 0;
         if (redS > 0.001) {
-          const a = Math.min(0.4, redS * 0.35);
+          const a = Math.min(0.6, redS * 0.35);
           displayCtx.save();
           displayCtx.globalCompositeOperation = "soft-light";
           displayCtx.fillStyle = `rgba(255, 60, 60, ${a})`;
@@ -6298,7 +6298,7 @@
           }
 
           // --- MediaPipe FaceLandmarker init ---
-          const filesetResolver = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm");
+          const filesetResolver = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.33/wasm");
 
           faceLandmarker = await FaceLandmarker.createFromModelPath(filesetResolver, "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/latest/face_landmarker.task");
 
