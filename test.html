@@ -4349,7 +4349,7 @@
           breathOverlayCtx.restore();
         }; // --- Cheek blush (2D overlay; sticks to tracked face) ---
         // When trackingPaused is ON, freeze blush position so it doesn't drift with live landmarks.
-        if (USE_BLUSH_2D_OVERLAY && isBlushEnabled && blushStrength > 0.001) {
+        if (USE_BLUSH_2D_OVERLAY && isBlushEnabled && blushStrength > 0.001 && !vrmHidden) {
           const hasPausedBlush = !!(trackingPaused && pausedBlushOverlayState && pausedBlushOverlayState.L && pausedBlushOverlayState.R);
 
           if (hasPausedBlush) {
@@ -4599,7 +4599,7 @@
         // - option enabled
         // - mouth position is known
         // - face is currently visible (prevents "ghost breathing" when tracking is lost)
-        if (!isBreathEnabled || !lastMouthScreenValid || !lastFaceVisibleNow) {
+        if (!isBreathEnabled || !lastMouthScreenValid || !lastFaceVisibleNow || vrmHidden) {
           if (breathDebugEnabled && breathDebugEl) {
             breathDebugEl.textContent =
               `mouth(smoothed): ${lastMouthOpenForEffects.toFixed(3)}
