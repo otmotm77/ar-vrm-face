@@ -173,8 +173,91 @@
       body.ui-dim #ui-container #auto-cream-toggle-btn,
       body.ui-dim #ui-container .control-panel,
       body.ui-dim #ui-dim-toggle-btn,
-      body.ui-dim #tracking-pause-btn {
+      body.ui-dim #tracking-pause-btn,
+      body.ui-dim #vrm-hide-btn,
+      body.ui-dim #full-body-btn {
         opacity: 0.1;
+      }
+
+      /* Full-body mode toggle (bottom-right, left of VRM hide) */
+      #full-body-btn {
+        position: fixed;
+        right: 174px; /* 120 + 44 + 10 */
+        bottom: 12px;
+        width: 44px;
+        height: 44px;
+        border-radius: 999px;
+        border: none;
+        background: rgba(255, 255, 255, 0.25);
+        backdrop-filter: blur(6px);
+        -webkit-backdrop-filter: blur(6px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: rgba(0, 0, 0, 0.85);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+        pointer-events: auto;
+        z-index: 2002;
+        cursor: pointer;
+        transition:
+          transform 0.12s ease,
+          background 0.12s ease,
+          opacity 0.12s ease;
+      }
+      #full-body-btn svg {
+        width: 22px;
+        height: 22px;
+      }
+      #full-body-btn.active {
+        background: rgba(60, 120, 255, 0.45);
+        color: rgba(255, 255, 255, 0.95);
+      }
+      #full-body-btn:active {
+        transform: scale(0.96);
+      }
+      #full-body-btn.loading {
+        animation: fbPulse 0.8s ease-in-out infinite alternate;
+      }
+      @keyframes fbPulse {
+        from { opacity: 0.5; }
+        to { opacity: 1.0; }
+      }
+
+      /* VRM hide toggle (bottom-right, left of tracking pause) */
+      #vrm-hide-btn {
+        position: fixed;
+        right: 120px; /* 66 + 44 + 10 */
+        bottom: 12px;
+        width: 44px;
+        height: 44px;
+        border-radius: 999px;
+        border: none;
+        background: rgba(255, 255, 255, 0.25);
+        backdrop-filter: blur(6px);
+        -webkit-backdrop-filter: blur(6px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: rgba(0, 0, 0, 0.85);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+        pointer-events: auto;
+        z-index: 2002;
+        cursor: pointer;
+        transition:
+          transform 0.12s ease,
+          background 0.12s ease,
+          opacity 0.12s ease;
+      }
+      #vrm-hide-btn svg {
+        width: 22px;
+        height: 22px;
+      }
+      #vrm-hide-btn.active {
+        background: rgba(0, 0, 0, 0.18);
+        color: rgba(255, 255, 255, 0.92);
+      }
+      #vrm-hide-btn:active {
+        transform: scale(0.96);
       }
 
       /* Tracking pause toggle (bottom-right, left of UI dim) */
@@ -668,6 +751,26 @@
       <!-- Left-bottom toggle button: Auto cream shot -->
       <button id="auto-cream-toggle-btn" class="cream-shot-btn" type="button" title="自動射出 ON/OFF">💧</button>
 
+      <!-- Right-bottom toggle button: Full-body mode -->
+      <button id="full-body-btn" type="button" title="全身同期モード" aria-pressed="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <circle cx="12" cy="4" r="2.5" fill="none" stroke="currentColor" stroke-width="1.8"/>
+          <line x1="12" y1="6.5" x2="12" y2="15" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+          <line x1="7" y1="9.5" x2="17" y2="9.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+          <line x1="12" y1="15" x2="8" y2="21" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+          <line x1="12" y1="15" x2="16" y2="21" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+        </svg>
+      </button>
+
+      <!-- Right-bottom toggle button: VRM hide -->
+      <button id="vrm-hide-btn" type="button" title="VRM一時非表示" aria-pressed="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M1 1l22 22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+      </button>
+
       <!-- Right-bottom toggle button: Tracking pause -->
       <button id="tracking-pause-btn" type="button" title="トラッキング一時停止" aria-pressed="false">
         <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
@@ -1156,7 +1259,7 @@
             </div>
             <div class="slider-container" id="cam-red-container">
               <span class="slider-label">赤み</span>
-              <input type="range" id="cam-red-slider" min="0" max="100" step="1" value="0" />
+              <input type="range" id="cam-red-slider" min="0" max="150" step="1" value="0" />
               <span id="cam-red-slider-val" class="val-display">0</span>
             </div>
             <div class="slider-container">
@@ -1188,8 +1291,8 @@
 
     <script type="module">
       // ===== App Version (single source of truth) =====
-      const APP_VERSION = "v6.01.51";
-      const APP_VERSION_NOTE = "perf: half-res blur canvas + gradient cache + misc optimizations";
+      const APP_VERSION = "v6.02.00";
+      const APP_VERSION_NOTE = "feat: full-body sync mode (Phase 1)";
 
       function getOverlayPixelRatio() {
         // Must match resizeCreamOverlayCanvas()/resizeBreathOverlayCanvas() DPR clamp for performance.
@@ -1221,9 +1324,9 @@
       import * as THREE from "three";
       import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
       import { VRMLoaderPlugin, VRMUtils } from "@pixiv/three-vrm";
-      // MediaPipe Tasks Vision (ESM via jsDelivr +esm)
-      const vision = await import("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/+esm");
-      const { FaceLandmarker, FilesetResolver } = vision;
+      // MediaPipe Tasks Vision (vision_bundle.mjs, pinned to 0.10.33)
+      const vision = await import("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.33/vision_bundle.mjs");
+      const { FaceLandmarker, PoseLandmarker, FilesetResolver } = vision;
 
       // Base scale factor used for tracked pose matrices.
       const MODEL_BASE_SCALE = 40;
@@ -1291,6 +1394,14 @@
       let wrapperGroup;
       let pivotGroup;
       let adjustmentGroup;
+
+      // Full-body sync mode
+      let fullBodyMode = false;
+      let poseLandmarker = null;
+      let poseLandmarkerReady = false;
+      let _poseLastResult = null;
+      // Smoothed bone quaternions (SLERP targets)
+      const _smoothedBoneQuats = new Map();
 
       let appliedMinCF = 0.0005;
       let appliedBeta = 0.04;
@@ -1775,6 +1886,312 @@
             } catch (_) {}
           }
           setTrackingPaused(next);
+        });
+      }
+
+      // --- VRM Hide Toggle ---
+      const vrmHideBtn = document.getElementById("vrm-hide-btn");
+      let vrmHidden = false;
+
+      function setVrmHidden(enabled) {
+        vrmHidden = !!enabled;
+        if (vrmHideBtn) {
+          vrmHideBtn.classList.toggle("active", vrmHidden);
+          vrmHideBtn.setAttribute("aria-pressed", vrmHidden ? "true" : "false");
+        }
+        if (vrmHidden && pivotGroup) pivotGroup.visible = false;
+        showToast(vrmHidden ? "VRMを非表示にしました" : "VRMを表示しました");
+      }
+
+      if (vrmHideBtn) {
+        vrmHideBtn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          setVrmHidden(!vrmHidden);
+        });
+      }
+
+      // --- Full-Body Mode Toggle ---
+      const fullBodyBtn = document.getElementById("full-body-btn");
+
+      function showFullBody(vrm) {
+        if (!vrm || !vrm.humanoid) return;
+        const hips = vrm.humanoid.getNormalizedBoneNode("hips");
+        const head = vrm.humanoid.getNormalizedBoneNode("head");
+        if (hips && head) {
+          hips.scale.setScalar(1.0);
+          head.scale.setScalar(1.0);
+          hips.updateMatrixWorld(true);
+          head.updateMatrixWorld(true);
+        }
+        // Show all meshes
+        vrm.scene.traverse((obj) => {
+          if (obj.isMesh || obj.isSkinnedMesh) {
+            obj.visible = true;
+          }
+        });
+        // Re-center based on full body bounding box
+        vrm.scene.updateMatrixWorld(true);
+        const box = new THREE.Box3();
+        vrm.scene.traverse((obj) => {
+          if ((obj.isMesh || obj.isSkinnedMesh) && obj.visible) {
+            if (obj.geometry) obj.geometry.computeBoundingBox();
+            box.expandByObject(obj);
+          }
+        });
+        if (!box.isEmpty()) {
+          const center = new THREE.Vector3();
+          box.getCenter(center);
+          vrm.scene.position.set(0, 0, 0);
+          vrm.scene.position.sub(center);
+        }
+        // Update anchors
+        try { updateBreathEmitterFromVRM(vrm); } catch (_) {}
+        try { updateBlushAnchorsFromVRM(vrm); } catch (_) {}
+      }
+
+      function reapplyMakeHeadOnly(vrm) {
+        if (!vrm || !vrm.humanoid) return;
+        makeHeadOnly(vrm);
+        // Re-center based on head-only bounding box
+        vrm.scene.updateMatrixWorld(true);
+        const box = new THREE.Box3();
+        vrm.scene.traverse((obj) => {
+          if ((obj.isMesh || obj.isSkinnedMesh) && obj.visible) {
+            if (obj.geometry) obj.geometry.computeBoundingBox();
+            box.expandByObject(obj);
+          }
+        });
+        if (!box.isEmpty()) {
+          const center = new THREE.Vector3();
+          box.getCenter(center);
+          vrm.scene.position.set(0, 0, 0);
+          vrm.scene.position.sub(center);
+        } else {
+          const head = vrm.humanoid.getNormalizedBoneNode("head");
+          if (head) {
+            const pos = new THREE.Vector3();
+            head.getWorldPosition(pos);
+            vrm.scene.position.set(0, 0, 0);
+            vrm.scene.position.sub(pos);
+            vrm.scene.position.y -= 0.1;
+          }
+        }
+        // Update anchors
+        try { updateBreathEmitterFromVRM(vrm); } catch (_) {}
+        try { updateBlushAnchorsFromVRM(vrm); } catch (_) {}
+      }
+
+      async function initPoseLandmarker() {
+        if (poseLandmarker) return;
+        try {
+          const filesetResolver = await FilesetResolver.forVisionTasks(
+            "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.33/wasm"
+          );
+          poseLandmarker = await PoseLandmarker.createFromModelPath(
+            filesetResolver,
+            "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task"
+          );
+          await poseLandmarker.setOptions({
+            baseOptions: { delegate: "GPU" },
+            runningMode: "VIDEO",
+            numPoses: 1,
+          });
+          poseLandmarkerReady = true;
+        } catch (err) {
+          console.error("PoseLandmarker init failed:", err);
+          poseLandmarker = null;
+          poseLandmarkerReady = false;
+          throw err;
+        }
+      }
+
+      // Compute quaternion from two landmarks (bone direction)
+      const _poseVecA = new THREE.Vector3();
+      const _poseVecB = new THREE.Vector3();
+      const _poseQuat = new THREE.Quaternion();
+
+      function quatFromLandmarks(lms, idxA, idxB, restDir) {
+        const a = lms[idxA];
+        const b = lms[idxB];
+        if (!a || !b) return null;
+        // MediaPipe world landmarks: x=right, y=down, z=toward camera
+        // Convert to Three.js: x=right, y=up, z=toward camera
+        _poseVecA.set(b.x - a.x, -(b.y - a.y), -(b.z - a.z)).normalize();
+        _poseQuat.setFromUnitVectors(restDir, _poseVecA);
+        return _poseQuat.clone();
+      }
+
+      function smoothedBoneQuat(boneName, targetQuat, factor) {
+        if (!targetQuat) return null;
+        const prev = _smoothedBoneQuats.get(boneName);
+        if (prev) {
+          prev.slerp(targetQuat, factor);
+          return prev;
+        }
+        const q = targetQuat.clone();
+        _smoothedBoneQuats.set(boneName, q);
+        return q;
+      }
+
+      // Rest directions in T-pose (VRM standard: Y-up, Z-forward, arms along X)
+      const REST_DOWN = new THREE.Vector3(0, -1, 0); // spine→head (up in world = -Y in bone-local)
+      const REST_LEFT = new THREE.Vector3(-1, 0, 0); // right shoulder→elbow (VRM faces -Z, right arm = -X)
+      const REST_RIGHT = new THREE.Vector3(1, 0, 0); // left shoulder→elbow
+
+      function applyPoseToVRM(vrm, worldLandmarks) {
+        if (!vrm || !vrm.humanoid || !worldLandmarks || worldLandmarks.length < 25) return;
+
+        const wl = worldLandmarks;
+        const slerp = 0.4; // smoothing factor
+
+        // --- Spine / Chest ---
+        // hip midpoint → shoulder midpoint
+        const hipMidX = (wl[23].x + wl[24].x) * 0.5;
+        const hipMidY = (wl[23].y + wl[24].y) * 0.5;
+        const hipMidZ = (wl[23].z + wl[24].z) * 0.5;
+        const shoulderMidX = (wl[11].x + wl[12].x) * 0.5;
+        const shoulderMidY = (wl[11].y + wl[12].y) * 0.5;
+        const shoulderMidZ = (wl[11].z + wl[12].z) * 0.5;
+
+        _poseVecA.set(
+          shoulderMidX - hipMidX,
+          -(shoulderMidY - hipMidY),
+          -(shoulderMidZ - hipMidZ)
+        ).normalize();
+        const spineQuat = new THREE.Quaternion().setFromUnitVectors(
+          new THREE.Vector3(0, 1, 0), _poseVecA
+        );
+
+        // Apply to spine
+        const spineNode = vrm.humanoid.getNormalizedBoneNode("spine");
+        if (spineNode) {
+          const sq = smoothedBoneQuat("spine", spineQuat, slerp);
+          if (sq) spineNode.quaternion.copy(sq);
+        }
+
+        // Chest gets a lighter version (half the spine rotation to distribute)
+        const chestNode = vrm.humanoid.getNormalizedBoneNode("chest");
+        if (chestNode) {
+          const identity = new THREE.Quaternion();
+          const halfSpine = identity.clone().slerp(spineQuat, 0.5);
+          const cq = smoothedBoneQuat("chest", halfSpine, slerp);
+          if (cq) chestNode.quaternion.copy(cq);
+        }
+
+        // --- Left Upper Arm (#11 → #13) ---
+        // In MediaPipe: left = user's left = camera's right (positive X)
+        // VRM T-pose: left arm points in +X direction
+        const lUpperArmQ = quatFromLandmarks(wl, 11, 13, REST_RIGHT);
+        const lUpperArmNode = vrm.humanoid.getNormalizedBoneNode("leftUpperArm");
+        if (lUpperArmNode && lUpperArmQ) {
+          const sq = smoothedBoneQuat("leftUpperArm", lUpperArmQ, slerp);
+          if (sq) lUpperArmNode.quaternion.copy(sq);
+        }
+
+        // --- Left Lower Arm (#13 → #15) ---
+        const lLowerArmQ = quatFromLandmarks(wl, 13, 15, REST_RIGHT);
+        const lLowerArmNode = vrm.humanoid.getNormalizedBoneNode("leftLowerArm");
+        if (lLowerArmNode && lLowerArmQ) {
+          const sq = smoothedBoneQuat("leftLowerArm", lLowerArmQ, slerp);
+          if (sq) lLowerArmNode.quaternion.copy(sq);
+        }
+
+        // --- Right Upper Arm (#12 → #14) ---
+        // In MediaPipe: right = user's right = camera's left (negative X)
+        // VRM T-pose: right arm points in -X direction
+        const rUpperArmQ = quatFromLandmarks(wl, 12, 14, REST_LEFT);
+        const rUpperArmNode = vrm.humanoid.getNormalizedBoneNode("rightUpperArm");
+        if (rUpperArmNode && rUpperArmQ) {
+          const sq = smoothedBoneQuat("rightUpperArm", rUpperArmQ, slerp);
+          if (sq) rUpperArmNode.quaternion.copy(sq);
+        }
+
+        // --- Right Lower Arm (#14 → #16) ---
+        const rLowerArmQ = quatFromLandmarks(wl, 14, 16, REST_LEFT);
+        const rLowerArmNode = vrm.humanoid.getNormalizedBoneNode("rightLowerArm");
+        if (rLowerArmNode && rLowerArmQ) {
+          const sq = smoothedBoneQuat("rightLowerArm", rLowerArmQ, slerp);
+          if (sq) rLowerArmNode.quaternion.copy(sq);
+        }
+
+        // --- Head/Neck: skip, handled by FaceLandmarker transformationMatrix ---
+      }
+
+      // Full-body mode: compute world position from hip landmarks
+      function computeFullBodyPosition(normalizedLandmarks, camera) {
+        if (!normalizedLandmarks || normalizedLandmarks.length < 25) return null;
+        // Hip midpoint in normalized image coordinates
+        const hipLX = normalizedLandmarks[23];
+        const hipRX = normalizedLandmarks[24];
+        if (!hipLX || !hipRX) return null;
+        const nx = (hipLX.x + hipRX.x) * 0.5;
+        const ny = (hipLX.y + hipRX.y) * 0.5;
+        // Convert to NDC (-1..1)
+        const ndcX = (nx - 0.5) * 2;
+        const ndcY = -(ny - 0.5) * 2;
+        return new THREE.Vector3(ndcX, ndcY, 0);
+      }
+
+      async function toggleFullBodyMode() {
+        const next = !fullBodyMode;
+
+        if (next && !poseLandmarkerReady) {
+          // Lazy init PoseLandmarker
+          if (fullBodyBtn) fullBodyBtn.classList.add("loading");
+          showToast("全身モデルを読み込み中...");
+          try {
+            await initPoseLandmarker();
+          } catch (err) {
+            if (fullBodyBtn) fullBodyBtn.classList.remove("loading");
+            showToast("全身モード初期化に失敗しました: " + err.message);
+            return;
+          }
+          if (fullBodyBtn) fullBodyBtn.classList.remove("loading");
+        }
+
+        fullBodyMode = next;
+
+        if (fullBodyBtn) {
+          fullBodyBtn.classList.toggle("active", fullBodyMode);
+          fullBodyBtn.setAttribute("aria-pressed", fullBodyMode ? "true" : "false");
+        }
+
+        if (currentVrm) {
+          if (fullBodyMode) {
+            showFullBody(currentVrm);
+            // Switch pivotGroup to auto-update mode
+            if (pivotGroup) {
+              pivotGroup.matrixAutoUpdate = true;
+              pivotGroup.position.set(0, 0, 0);
+              pivotGroup.rotation.set(0, 0, 0);
+              pivotGroup.scale.set(MODEL_BASE_SCALE, MODEL_BASE_SCALE, MODEL_BASE_SCALE);
+            }
+          } else {
+            reapplyMakeHeadOnly(currentVrm);
+            // Reset bone rotations
+            _smoothedBoneQuats.clear();
+            const boneNames = ["spine", "chest", "leftUpperArm", "leftLowerArm", "rightUpperArm", "rightLowerArm"];
+            for (const name of boneNames) {
+              const node = currentVrm.humanoid.getNormalizedBoneNode(name);
+              if (node) node.quaternion.identity();
+            }
+            // Switch pivotGroup back to manual matrix mode
+            if (pivotGroup) {
+              pivotGroup.matrixAutoUpdate = false;
+              pivotGroup.matrix.identity();
+            }
+          }
+          try { updateTransform(); } catch (_) {}
+        }
+
+        saveSettings();
+        showToast(fullBodyMode ? "全身同期モード ON" : "全身同期モード OFF");
+      }
+
+      if (fullBodyBtn) {
+        fullBodyBtn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          toggleFullBodyMode();
         });
       }
 
@@ -2580,7 +2997,7 @@
       const fireCreamAtTap = (ev) => {
         // Ignore taps on UI elements (panels/buttons)
         const t = ev.target;
-        if (t && (t.closest?.(".control-panel") || t.closest?.(".icon-buttons") || t.closest?.(".panel") || t.id === "auto-cream-toggle-btn" || t.closest?.("#auto-cream-toggle-btn") || t.id === "ui-dim-toggle-btn" || t.closest?.("#ui-dim-toggle-btn") || t.id === "tracking-pause-btn" || t.closest?.("#tracking-pause-btn"))) return;
+        if (t && (t.closest?.(".control-panel") || t.closest?.(".icon-buttons") || t.closest?.(".panel") || t.id === "auto-cream-toggle-btn" || t.closest?.("#auto-cream-toggle-btn") || t.id === "ui-dim-toggle-btn" || t.closest?.("#ui-dim-toggle-btn") || t.id === "tracking-pause-btn" || t.closest?.("#tracking-pause-btn") || t.id === "vrm-hide-btn" || t.closest?.("#vrm-hide-btn") || t.id === "full-body-btn" || t.closest?.("#full-body-btn"))) return;
         if (!creamOverlayCanvas) return;
         const rect = creamOverlayCanvas.getBoundingClientRect();
         let x = ev.clientX - rect.left;
@@ -3521,6 +3938,7 @@
           creamZAttach: typeof creamZAttachSlider !== "undefined" && creamZAttachSlider ? creamZAttachSlider.value : String(creamZAttach),
           trackingFacing: currentFacingMode,
           trackingMirror: !!mirrorEnabled,
+          fullBody: !!fullBodyMode,
         };
 
         try {
@@ -3684,6 +4102,17 @@
                 }
               }
 
+              // Full-body mode
+              if (Object.prototype.hasOwnProperty.call(s, "fullBody")) {
+                const wantFB = !!s.fullBody;
+                if (wantFB !== fullBodyMode) {
+                  // Defer toggle to after VRM is fully set up
+                  setTimeout(() => {
+                    try { toggleFullBodyMode(); } catch (_) {}
+                  }, 100);
+                }
+              }
+
               if (typeof updateBreathUI === "function")
                 try {
                   updateBreathUI(true);
@@ -3715,7 +4144,7 @@
         }
       }
 
-      [scaleSlider, xSlider, ySlider, zSlider, minCfSlider, betaSlider, mouthSensSlider, eyeSensSlider, lightIntSlider, ambIntSlider, lightYSlider, lightRotSlider, lightColorSlider, vrmSatSlider, skinSmoothSlider, camBrightSlider, camSatSlider, camContSlider, camBlurSlider, camSepiaSlider, occlusionToggle, forceShadowToggle, shadowSoftnessSlider, shadowDarknessSlider, shadowColorPicker, occPosXSlider, occPosYSlider, occPosZSlider, occSizeXSlider, occSizeYSlider, occSizeZSlider].forEach((el) => {
+      [scaleSlider, xSlider, ySlider, zSlider, minCfSlider, betaSlider, mouthSensSlider, eyeSensSlider, lightIntSlider, ambIntSlider, lightYSlider, lightRotSlider, lightColorSlider, vrmSatSlider, skinSmoothSlider, camBrightSlider, camSatSlider, camContSlider, camBlurSlider, camSepiaSlider, camBlackSlider, camTempSlider, camRedSlider, camVignetteSlider, camSoftGlowSlider, occlusionToggle, forceShadowToggle, shadowSoftnessSlider, shadowDarknessSlider, shadowColorPicker, occPosXSlider, occPosYSlider, occPosZSlider, occSizeXSlider, occSizeYSlider, occSizeZSlider].forEach((el) => {
         el.addEventListener("change", () => {
           saveSettings();
         });
@@ -3788,7 +4217,7 @@
         camSoftGlowStrength = Math.max(0, Math.min(1, gl / 100));
         camBlackLiftStrength = Math.max(0, Math.min(1, blk / 100));
         camTempStrength = Math.max(-1, Math.min(1, (tmp - 50) / 50));
-        camRedStrength = Math.max(0, Math.min(1, red / 100));
+        camRedStrength = Math.max(0, Math.min(1.5, red / 100));
 
         const skin = skinSmoothSlider ? parseFloat(skinSmoothSlider.value) : 0;
         camSkinSmoothStrength = Math.max(0, Math.min(1, skin / 100));
@@ -5730,7 +6159,7 @@
         // Red tint
         const redS = typeof camRedStrength === "number" ? camRedStrength : 0;
         if (redS > 0.001) {
-          const a = Math.min(0.4, redS * 0.35);
+          const a = Math.min(0.6, redS * 0.35);
           displayCtx.save();
           displayCtx.globalCompositeOperation = "soft-light";
           displayCtx.fillStyle = `rgba(255, 60, 60, ${a})`;
@@ -6298,7 +6727,7 @@
           }
 
           // --- MediaPipe FaceLandmarker init ---
-          const filesetResolver = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm");
+          const filesetResolver = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.33/wasm");
 
           faceLandmarker = await FaceLandmarker.createFromModelPath(filesetResolver, "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/latest/face_landmarker.task");
 
@@ -6365,10 +6794,22 @@
             // keep last blendshapes when tracking is lost
 
             if (faceLandmarker && videoEl.readyState >= 2) {
-              // 改善案E: skip detection every other frame to halve MediaPipe cost
+              // Frame skip: in full-body mode, alternate Face/Pose each frame
+              // In head-only mode, Face every other frame (original behavior)
               _mpFrameSkipCounter = (_mpFrameSkipCounter + 1) | 0;
-              if (_mpFrameSkipCounter % 2 === 1) {
-                _mpLastResult = faceLandmarker.detectForVideo(mpInput, performance.now());
+              if (fullBodyMode && poseLandmarkerReady && poseLandmarker) {
+                // Even frames: Face, Odd frames: Pose
+                if (_mpFrameSkipCounter % 2 === 0) {
+                  _mpLastResult = faceLandmarker.detectForVideo(mpInput, performance.now());
+                } else {
+                  try {
+                    _poseLastResult = poseLandmarker.detectForVideo(mpInput, performance.now());
+                  } catch (_) {}
+                }
+              } else {
+                if (_mpFrameSkipCounter % 2 === 1) {
+                  _mpLastResult = faceLandmarker.detectForVideo(mpInput, performance.now());
+                }
               }
               const res = _mpLastResult;
               latestFaceLandmarks0 = res && res.faceLandmarks && res.faceLandmarks[0] ? res.faceLandmarks[0] : null;
@@ -6437,7 +6878,22 @@
                 }
 
                 if (!trackingPaused) {
-                  pivotGroup.matrix.copy(worldMatrix);
+                  if (fullBodyMode) {
+                    // In full-body mode, pivotGroup uses matrixAutoUpdate=true
+                    // Head rotation is applied via FaceLandmarker, body via PoseLandmarker
+                    // Position pivotGroup based on face position (extracted from worldMatrix)
+                    worldMatrix.decompose(tmpPos, tmpQuat, tmpScaleVec);
+                    if (inputRotationDeg !== 0) {
+                      // Undo the rotation compensation to get clean position
+                      const invRot = new THREE.Matrix4().makeRotationZ(-THREE.MathUtils.degToRad(inputRotationDeg));
+                      tmpPos.applyMatrix4(invRot);
+                    }
+                    pivotGroup.position.set(tmpPos.x, tmpPos.y, tmpPos.z);
+                    pivotGroup.rotation.set(0, 0, 0);
+                    pivotGroup.scale.set(baseScale, baseScale, baseScale);
+                  } else {
+                    pivotGroup.matrix.copy(worldMatrix);
+                  }
                   try {
                     pausedPivotMatrix.copy(worldMatrix);
                   } catch (_) {}
@@ -6445,7 +6901,7 @@
                   // Pose lock: keep the current matrix (captured when pausing).
                   // Expressions/effects continue to update from MediaPipe results.
                 }
-                if (!pivotGroup.visible) pivotGroup.visible = true;
+                if (!pivotGroup.visible && !vrmHidden) pivotGroup.visible = true;
               } else {
                 // tracking lost: keep last pose visible
                 // (do nothing)
@@ -6532,7 +6988,7 @@
             lastFaceVisibleNow = isFaceVisible;
 
             // Reinforce pose lock (in case something else touched the matrix)
-            if (trackingPaused && pivotGroup) {
+            if (trackingPaused && pivotGroup && !fullBodyMode) {
               try {
                 pivotGroup.matrix.copy(pausedPivotMatrix);
               } catch (_) {}
@@ -6551,6 +7007,14 @@
             }
 
             if (currentVrm) {
+              // Apply pose tracking in full-body mode
+              if (fullBodyMode && _poseLastResult && !trackingPaused) {
+                const poseLms = _poseLastResult.worldLandmarks;
+                if (poseLms && poseLms.length > 0) {
+                  applyPoseToVRM(currentVrm, poseLms[0]);
+                }
+              }
+
               currentVrm.update(delta);
               updateExpressionsFromFaceMesh(currentVrm, delta, isFaceVisible || holdLastPoseOnLost);
 
@@ -6748,7 +7212,11 @@
 
                 if (applyDefaultToVrmBtn) applyDefaultToVrmBtn.disabled = false;
                 VRMUtils.rotateVRM0(vrm);
-                makeHeadOnly(vrm);
+                if (fullBodyMode) {
+                  showFullBody(vrm);
+                } else {
+                  makeHeadOnly(vrm);
+                }
 
                 vrm.scene.rotation.y = Math.PI;
                 vrm.scene.updateMatrixWorld(true);
@@ -6784,6 +7252,18 @@
                   adjustmentGroup.add(vrm.scene);
                   updateBreathEmitterFromVRM(vrm);
                   updateBlushAnchorsFromVRM(vrm);
+                }
+
+                // Ensure pivotGroup mode matches fullBodyMode
+                if (pivotGroup) {
+                  if (fullBodyMode) {
+                    pivotGroup.matrixAutoUpdate = true;
+                    pivotGroup.position.set(0, 0, 0);
+                    pivotGroup.rotation.set(0, 0, 0);
+                    pivotGroup.scale.set(MODEL_BASE_SCALE, MODEL_BASE_SCALE, MODEL_BASE_SCALE);
+                  } else {
+                    pivotGroup.matrixAutoUpdate = false;
+                  }
                 }
 
                 const loaded = loadSettings(currentFileName, { silent: true, label: currentFileName });
