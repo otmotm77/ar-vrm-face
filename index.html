@@ -1217,8 +1217,8 @@
 
     <script type="module">
       // ===== App Version (single source of truth) =====
-      const APP_VERSION = "v6.01.54";
-      const APP_VERSION_NOTE = "feat: VRM hide toggle button";
+      const APP_VERSION = "v6.01.55";
+      const APP_VERSION_NOTE = "feat: global camera quality settings";
 
       function getOverlayPixelRatio() {
         // Must match resizeCreamOverlayCanvas()/resizeBreathOverlayCanvas() DPR clamp for performance.
@@ -2411,6 +2411,8 @@
           updateOccluder();
         });
       });
+      // ページロード時にグローバルカメラ設定を復元
+      loadCamSettings();
       // Cream lifetime slider (1-30s)
       const creamLifeSlider = document.getElementById("cream-life-slider");
       if (creamLifeSlider) {
@@ -3346,6 +3348,8 @@
         try {
           loadSettings("default", { silent: true, label: "デフォルト" });
         } catch (_) {}
+        // グローバルカメラ設定で上書き
+        loadCamSettings();
 
         _forceOpenBasicOnce = true;
         await startAR();
@@ -3555,6 +3559,54 @@
         } catch (e) {
           console.error("Save failed:", e);
         }
+        saveCamSettings();
+      }
+
+      const LS_CAM_GLOBAL = "vrm_cam_global";
+
+      function saveCamSettings() {
+        const s = {
+          skinSmooth: skinSmoothSlider.value,
+          camBright: camBrightSlider.value,
+          camSat: camSatSlider.value,
+          camCont: camContSlider.value,
+          camBlur: camBlurSlider.value,
+          camSepia: camSepiaSlider.value,
+          camBlack: camBlackSlider ? camBlackSlider.value : "0",
+          camTemp: camTempSlider ? camTempSlider.value : "50",
+          camRed: camRedSlider ? camRedSlider.value : "0",
+          camVignette: camVignetteSlider ? camVignetteSlider.value : "0",
+          camSoftGlow: camSoftGlowSlider ? camSoftGlowSlider.value : "0",
+        };
+        try {
+          localStorage.setItem(LS_CAM_GLOBAL, JSON.stringify(s));
+        } catch (_) {}
+      }
+
+      function loadCamSettings() {
+        try {
+          const data = localStorage.getItem(LS_CAM_GLOBAL);
+          if (!data) return false;
+          const s = JSON.parse(data);
+          if (Object.prototype.hasOwnProperty.call(s, "skinSmooth") && skinSmoothSlider) skinSmoothSlider.value = s.skinSmooth;
+          if (Object.prototype.hasOwnProperty.call(s, "camBright") && camBrightSlider) camBrightSlider.value = s.camBright;
+          if (Object.prototype.hasOwnProperty.call(s, "camSat") && camSatSlider) camSatSlider.value = s.camSat;
+          if (Object.prototype.hasOwnProperty.call(s, "camCont") && camContSlider) camContSlider.value = s.camCont;
+          if (Object.prototype.hasOwnProperty.call(s, "camBlur") && camBlurSlider) camBlurSlider.value = s.camBlur;
+          if (Object.prototype.hasOwnProperty.call(s, "camSepia") && camSepiaSlider) camSepiaSlider.value = s.camSepia;
+          if (Object.prototype.hasOwnProperty.call(s, "camBlack") && camBlackSlider) camBlackSlider.value = s.camBlack;
+          if (Object.prototype.hasOwnProperty.call(s, "camTemp") && camTempSlider) camTempSlider.value = s.camTemp;
+          if (Object.prototype.hasOwnProperty.call(s, "camRed") && camRedSlider) camRedSlider.value = s.camRed;
+          if (Object.prototype.hasOwnProperty.call(s, "camVignette") && camVignetteSlider) camVignetteSlider.value = s.camVignette;
+          if (Object.prototype.hasOwnProperty.call(s, "camSoftGlow") && camSoftGlowSlider) camSoftGlowSlider.value = s.camSoftGlow;
+          allSliders.forEach((el) => updateSliderDisplay(el));
+          try {
+            updateCameraFilter();
+          } catch (_) {}
+          return true;
+        } catch (_) {
+          return false;
+        }
       }
 
       function loadSettings(fname, opts = {}) {
@@ -3601,17 +3653,7 @@
               if (s.lightRot) lightRotSlider.value = s.lightRot;
               if (s.lightColor) lightColorSlider.value = s.lightColor;
               if (s.vrmSat) vrmSatSlider.value = s.vrmSat;
-              if (s.skinSmooth) skinSmoothSlider.value = s.skinSmooth;
-              if (s.camBright) camBrightSlider.value = s.camBright;
-              if (s.camSat) camSatSlider.value = s.camSat;
-              if (s.camCont) camContSlider.value = s.camCont;
-              if (s.camBlur) camBlurSlider.value = s.camBlur;
-              if (s.camSepia) camSepiaSlider.value = s.camSepia;
-              if (Object.prototype.hasOwnProperty.call(s, "camBlack") && camBlackSlider) camBlackSlider.value = s.camBlack;
-              if (Object.prototype.hasOwnProperty.call(s, "camTemp") && camTempSlider) camTempSlider.value = s.camTemp;
-              if (Object.prototype.hasOwnProperty.call(s, "camRed") && camRedSlider) camRedSlider.value = s.camRed;
-              if (Object.prototype.hasOwnProperty.call(s, "camVignette") && camVignetteSlider) camVignetteSlider.value = s.camVignette;
-              if (Object.prototype.hasOwnProperty.call(s, "camSoftGlow") && camSoftGlowSlider) camSoftGlowSlider.value = s.camSoftGlow;
+              // カメラ画質設定はグローバル管理（loadCamSettings）に移行済み
 
               // Breath (per-VRM)
               if (Object.prototype.hasOwnProperty.call(s, "breathEnabled") && typeof breathToggle !== "undefined") {
@@ -6274,6 +6316,7 @@
           scene.add(lightHelper);
 
           updateLight();
+          updateVRMFilter();
 
           // Root group for face pose
           // Wrapper group for user X offset (moves rotation center)
@@ -6351,6 +6394,14 @@
           // 改善案E: MediaPipe frame-skip state
           let _mpFrameSkipCounter = 0;
           let _mpLastResult = null;
+
+          // Re-apply all filter/light state right before render loop starts
+          // (async MediaPipe init above may have allowed browser events to
+          //  interfere with slider values set by loadSettings)
+          updateCameraFilter();
+          updateLight();
+          updateVRMFilter();
+          updateOccluder();
 
           renderer.setAnimationLoop(() => {
             const delta = clock.getDelta();
@@ -6818,6 +6869,8 @@
                 } else {
                   showToast(`設定を復元しました:\n${currentFileName}`);
                 }
+                // グローバルカメラ設定で上書き（VRM切替でもカメラ画質を維持）
+                loadCamSettings();
 
                 updateTransform();
 
