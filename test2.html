@@ -45,7 +45,7 @@
         transition: filter 0.2s;
       }
 
-      #ar-container canvas {
+      #three-canvas {
         transition: filter 0.2s;
       }
 
@@ -927,13 +927,8 @@
             </div>
             <div class="slider-container" id="blush-offy-container" style="opacity: 0.85">
               <span class="slider-label">紅潮位置Y</span>
-              <input type="range" id="blush-offy-slider" min="-2.0" max="2.0" step="0.01" value="0.00" />
+              <input type="range" id="blush-offy-slider" min="-2.0" max="4.0" step="0.01" value="0.00" />
               <span id="blush-offy-slider-val" class="val-display">0.00</span>
-            </div>
-            <div class="slider-container" id="blush-offz-container" style="opacity: 0.85">
-              <span class="slider-label">紅潮位置Z</span>
-              <input type="range" id="blush-offz-slider" min="-1.0" max="1.0" step="0.01" value="0.00" />
-              <span id="blush-offz-slider-val" class="val-display">0.00</span>
             </div>
             <div class="slider-container" id="blush-size-container" style="opacity: 0.85">
               <span class="slider-label">紅潮サイズ</span>
@@ -952,20 +947,6 @@
               <span id="blush-color-picker-val" class="val-display">#ff5fa0</span>
             </div>
 
-            <div class="toggle-container" style="opacity: 0.9; margin-top: 4px; margin-bottom: 4px">
-              <label class="toggle-label">
-                <input type="checkbox" id="blush-front-toggle" class="toggle-checkbox" checked />
-                紅潮を最前面に表示
-              </label>
-            </div>
-
-            <div class="toggle-container" style="opacity: 0.9; margin-top: 6px">
-              <label class="toggle-label">
-                <input type="checkbox" id="blush-debug-toggle" class="toggle-checkbox" />
-                紅潮デバッグ（表示）
-              </label>
-            </div>
-            <div id="blush-debug" style="display: none; font-family: monospace; font-size: 12px; line-height: 1.35; background: rgba(0, 0, 0, 0.55); color: #fff; padding: 6px; border-radius: 8px; margin-bottom: 10px; white-space: pre-wrap"></div>
           </div>
 
           <div class="slider-container">
@@ -988,7 +969,7 @@
             </div>
             <div class="slider-container" id="breath-offset-container-y" style="opacity: 0.9">
               <span class="slider-label">吐息位置Y</span>
-              <input type="range" id="breath-offy-slider" min="-1.0" max="1.0" step="0.01" value="0.00" />
+              <input type="range" id="breath-offy-slider" min="-2.0" max="2.0" step="0.01" value="0.00" />
               <span id="breath-offy-slider-val" class="val-display">0.00</span>
             </div>
             <div class="slider-container" id="breath-offset-container-z" style="opacity: 0.9">
@@ -1095,6 +1076,7 @@
               </label>
               <div style="font-size: 11px; opacity: 0.85; margin-top: 4px; line-height: 1.4">自動射出などの内部値を画面上に表示します（不具合切り分け用）。</div>
             </div>
+            <div id="blush-debug" style="display: none; font-family: monospace; font-size: 12px; line-height: 1.35; background: rgba(0, 0, 0, 0.55); color: #fff; padding: 6px; border-radius: 8px; margin-top: 6px; white-space: pre-wrap"></div>
           </div>
         </details>
 
@@ -1162,6 +1144,11 @@
               <span class="slider-label">VRM彩度</span>
               <input type="range" id="vrm-sat-slider" min="0" max="200" step="5" value="100" />
               <span id="vrm-sat-slider-val" class="val-display">100</span>
+            </div>
+            <div class="slider-container">
+              <span class="slider-label">VRM赤み</span>
+              <input type="range" id="vrm-red-slider" min="0" max="150" step="1" value="0" />
+              <span id="vrm-red-slider-val" class="val-display">0</span>
             </div>
           </div>
 
@@ -1235,8 +1222,8 @@
 
     <script type="module">
       // ===== App Version (single source of truth) =====
-      const APP_VERSION = "v6.01.54";
-      const APP_VERSION_NOTE = "feat: VRM hide toggle button";
+      const APP_VERSION = "v6.01.58";
+      const APP_VERSION_NOTE = "fix: separate camera/VRM canvas layers";
 
       function getOverlayPixelRatio() {
         // Must match resizeCreamOverlayCanvas()/resizeBreathOverlayCanvas() DPR clamp for performance.
@@ -1268,6 +1255,10 @@
       import * as THREE from "three";
       import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
       import { VRMLoaderPlugin, VRMUtils } from "@pixiv/three-vrm";
+      import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
+      import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
+      import { ShaderPass } from "three/addons/postprocessing/ShaderPass.js";
+      import { HueSaturationShader } from "three/addons/shaders/HueSaturationShader.js";
       // MediaPipe Tasks Vision (vision_bundle.mjs, pinned to 0.10.33)
       const vision = await import("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.33/vision_bundle.mjs");
       const { FaceLandmarker, FilesetResolver } = vision;
@@ -1276,6 +1267,8 @@
       const MODEL_BASE_SCALE = 40;
 
       let renderer = null;
+      let composer = null;
+      let saturationPass = null;
       let scene = null;
       let camera = null;
       let videoEl = null;
@@ -1360,10 +1353,10 @@
       let blushStripePattern = null;
       let blushOffX = 0.0; // common shift (unit multipliers)
       let blushOffY = 0.0;
-      let blushOffZ = 0.0;
+
       let blushSize = 1.0; // size multiplier
       let blushSpread = 1.0; // distance multiplier (cheek width)
-      let blushFront = true; // render blush on top (toggleable)
+      const blushFront = true; // always render blush on top
       let blushColor = "#ff5fa0"; // blush color (hex)
       let blushTexColor = null; // internal cache for blush texture color
       const USE_BLUSH_2D_OVERLAY = true; // robust: sticks to tracked face/video space
@@ -1960,10 +1953,12 @@
 
       function setDebugTextEnabled(on) {
         debugTextEnabled = !!on;
+        blushDebugEnabled = !!on;
         try {
           localStorage.setItem(_uiKey("debug_text"), debugTextEnabled ? "1" : "0");
         } catch (e) {}
         _setDebugOverlayVisible(debugTextEnabled);
+        if (blushDebugEl) blushDebugEl.style.display = blushDebugEnabled ? "block" : "none";
       }
 
       function _initDebugTextToggle() {
@@ -2185,21 +2180,20 @@
 
       const blushOffXSlider = document.getElementById("blush-offx-slider");
       const blushOffYSlider = document.getElementById("blush-offy-slider");
-      const blushOffZSlider = document.getElementById("blush-offz-slider");
+
       const blushSizeSlider = document.getElementById("blush-size-slider");
       const blushSpreadSlider = document.getElementById("blush-spread-slider");
 
-      const blushFrontToggle = document.getElementById("blush-front-toggle");
+
       const blushOffXSliderVal = document.getElementById("blush-offx-slider-val");
       const blushOffYSliderVal = document.getElementById("blush-offy-slider-val");
-      const blushOffZSliderVal = document.getElementById("blush-offz-slider-val");
+
       const blushSizeSliderVal = document.getElementById("blush-size-slider-val");
       const blushSpreadSliderVal = document.getElementById("blush-spread-slider-val");
 
       const blushColorPicker = document.getElementById("blush-color-picker");
       const blushColorPickerVal = document.getElementById("blush-color-picker-val");
 
-      const blushDebugToggle = document.getElementById("blush-debug-toggle");
       blushDebugEl = document.getElementById("blush-debug");
 
       const breathToggle = document.getElementById("breath-toggle");
@@ -2233,10 +2227,8 @@
 
         blushOffX = blushOffXSlider ? parseFloat(blushOffXSlider.value) || 0 : 0;
         blushOffY = blushOffYSlider ? parseFloat(blushOffYSlider.value) || 0 : 0;
-        blushOffZ = blushOffZSlider ? parseFloat(blushOffZSlider.value) || 0 : 0;
         blushOffX = clamp(blushOffX, -2.0, 2.0);
-        blushOffY = clamp(blushOffY, -2.0, 2.0);
-        blushOffZ = clamp(blushOffZ, -1.0, 1.0);
+        blushOffY = clamp(blushOffY, -2.0, 4.0);
 
         blushSize = blushSizeSlider ? parseFloat(blushSizeSlider.value) || 1.0 : 1.0;
         blushSpread = blushSpreadSlider ? parseFloat(blushSpreadSlider.value) || 1.0 : 1.0;
@@ -2245,7 +2237,7 @@
 
         if (blushOffXSliderVal) blushOffXSliderVal.textContent = blushOffX.toFixed(2);
         if (blushOffYSliderVal) blushOffYSliderVal.textContent = blushOffY.toFixed(2);
-        if (blushOffZSliderVal) blushOffZSliderVal.textContent = blushOffZ.toFixed(2);
+
         if (blushSizeSliderVal) blushSizeSliderVal.textContent = blushSize.toFixed(2);
         if (blushSpreadSliderVal) blushSpreadSliderVal.textContent = blushSpread.toFixed(2);
         // Blush color (persisted per VRM)
@@ -2267,23 +2259,7 @@
 
         if (currentVrm && typeof updateBlushAnchorsFromVRM === "function") updateBlushAnchorsFromVRM(currentVrm);
 
-        // Front-most rendering toggle (persisted)
-        if (typeof blushFrontToggle !== "undefined" && blushFrontToggle) {
-          blushFront = !!blushFrontToggle.checked;
-          applyBlushRenderMode();
-        } else {
-          blushFront = true;
-          applyBlushRenderMode();
-        }
-
-        // Blush debug visibility (not persisted)
-        if (blushDebugToggle) {
-          blushDebugEnabled = !!blushDebugToggle.checked;
-          if (blushDebugEl) blushDebugEl.style.display = blushDebugEnabled ? "block" : "none";
-        } else {
-          blushDebugEnabled = false;
-          if (blushDebugEl) blushDebugEl.style.display = "none";
-        }
+        applyBlushRenderMode();
 
         if (!skipSave) saveSettings();
       }
@@ -2331,15 +2307,9 @@
       if (blushStrengthSlider) blushStrengthSlider.addEventListener("input", () => updateBlushUI(false));
       if (blushOffXSlider) blushOffXSlider.addEventListener("input", () => updateBlushUI(false));
       if (blushOffYSlider) blushOffYSlider.addEventListener("input", () => updateBlushUI(false));
-      if (blushOffZSlider) blushOffZSlider.addEventListener("input", () => updateBlushUI(false));
+
       if (blushSizeSlider) blushSizeSlider.addEventListener("input", () => updateBlushUI(false));
       if (blushSpreadSlider) blushSpreadSlider.addEventListener("input", () => updateBlushUI(false));
-      if (typeof blushFrontToggle !== "undefined" && blushFrontToggle) blushFrontToggle.addEventListener("change", () => updateBlushUI(false));
-      if (blushDebugToggle)
-        blushDebugToggle.addEventListener("change", () => {
-          blushDebugEnabled = !!blushDebugToggle.checked;
-          if (blushDebugEl) blushDebugEl.style.display = blushDebugEnabled ? "block" : "none";
-        });
 
       breathToggle.addEventListener("change", () => updateBreathUI(false));
       breathStrengthSlider.addEventListener("input", () => updateBreathUI(false));
@@ -2375,6 +2345,7 @@
       const lightRotSlider = document.getElementById("light-rot-slider");
       const lightColorSlider = document.getElementById("light-color-slider");
       const vrmSatSlider = document.getElementById("vrm-sat-slider");
+      const vrmRedSlider = document.getElementById("vrm-red-slider");
 
       const skinSmoothSlider = document.getElementById("skin-smooth-slider");
       const camBrightSlider = document.getElementById("cam-bright-slider");
@@ -2404,6 +2375,7 @@
         lightRotSlider,
         lightColorSlider,
         vrmSatSlider,
+        vrmRedSlider,
         skinSmoothSlider,
         camBrightSlider,
         camSatSlider,
@@ -2452,6 +2424,8 @@
           updateOccluder();
         });
       });
+      // ページロード時にグローバルカメラ設定を復元
+      loadCamSettings();
       // Cream lifetime slider (1-30s)
       const creamLifeSlider = document.getElementById("cream-life-slider");
       if (creamLifeSlider) {
@@ -3353,6 +3327,7 @@
           camera.aspect = window.innerWidth / window.innerHeight;
           camera.updateProjectionMatrix();
           renderer.setSize(window.innerWidth, window.innerHeight);
+          if (composer) composer.setSize(window.innerWidth, window.innerHeight);
           updateBgPlaneSizeLetterbox();
         }
         // 2D overlay canvas used by breath/blush must match viewport, especially on orientation change.
@@ -3387,6 +3362,8 @@
         try {
           loadSettings("default", { silent: true, label: "デフォルト" });
         } catch (_) {}
+        // グローバルカメラ設定で上書き
+        loadCamSettings();
 
         _forceOpenBasicOnce = true;
         await startAR();
@@ -3459,6 +3436,10 @@
         const sx = mirrorEnabled ? -1 : 1;
         renderer.domElement.style.transform = `scaleX(${sx})`;
         renderer.domElement.style.transformOrigin = "center center";
+        if (displayCanvas) {
+          displayCanvas.style.transform = `scaleX(${sx})`;
+          displayCanvas.style.transformOrigin = "center center";
+        }
         if (breathOverlayCanvas) {
           breathOverlayCanvas.style.transform = `scaleX(${sx})`;
           breathOverlayCanvas.style.transformOrigin = "center center";
@@ -3478,43 +3459,8 @@
       }
 
       function updateBgPlaneSizeLetterbox() {
-        // Keep video aspect ratio (no stretch). Show black bars (letterbox/pillarbox) as needed.
-        if (!bgPlane || !camera || !videoEl) return;
-
-        const depth = bgPlaneDepth || 500;
-        const vw = videoEl.videoWidth || 0;
-        const vh = videoEl.videoHeight || 0;
-        if (vw <= 0 || vh <= 0) return;
-
-        const vp = getViewportSizeAtDepth(depth);
-        const videoAspect = vw / vh;
-        const vpAspect = vp.width / vp.height;
-
-        let planeW, planeH;
-        if (bgFitMode === "cover") {
-          // Cover: fill viewport, crop overflow
-          if (videoAspect > vpAspect) {
-            // video is wider -> match height
-            planeH = vp.height;
-            planeW = vp.height * videoAspect;
-          } else {
-            // video is taller -> match width
-            planeW = vp.width;
-            planeH = vp.width / videoAspect;
-          }
-        } else {
-          // Contain: show full video, letterbox/pillarbox
-          if (videoAspect > vpAspect) {
-            planeW = vp.width;
-            planeH = vp.width / videoAspect;
-          } else {
-            planeH = vp.height;
-            planeW = vp.height * videoAspect;
-          }
-        }
-
-        bgPlane.position.set(0, 0, -depth);
-        bgPlane.scale.set(planeW, planeH, 1);
+        if (!displayCanvas) return;
+        displayCanvas.style.objectFit = bgFitMode || "cover";
       }
 
       function saveSettings(forceName) {
@@ -3550,6 +3496,7 @@
           lightRot: lightRotSlider.value,
           lightColor: lightColorSlider.value,
           vrmSat: vrmSatSlider.value,
+          vrmRed: vrmRedSlider ? vrmRedSlider.value : "0",
           skinSmooth: skinSmoothSlider.value,
           camBright: camBrightSlider.value,
           camSat: camSatSlider.value,
@@ -3572,10 +3519,10 @@
           blushStrength: typeof blushStrengthSlider !== "undefined" && blushStrengthSlider ? blushStrengthSlider.value : "0.70",
           blushOffX: typeof blushOffXSlider !== "undefined" && blushOffXSlider ? blushOffXSlider.value : "0.00",
           blushOffY: typeof blushOffYSlider !== "undefined" && blushOffYSlider ? blushOffYSlider.value : "0.00",
-          blushOffZ: typeof blushOffZSlider !== "undefined" && blushOffZSlider ? blushOffZSlider.value : "0.00",
+
           blushSize: typeof blushSizeSlider !== "undefined" && blushSizeSlider ? blushSizeSlider.value : "1.00",
           blushSpread: typeof blushSpreadSlider !== "undefined" && blushSpreadSlider ? blushSpreadSlider.value : "1.00",
-          blushFront: typeof blushFrontToggle !== "undefined" && blushFrontToggle ? !!blushFrontToggle.checked : true,
+
           blushColor: typeof blushColorPicker !== "undefined" && blushColorPicker ? blushColorPicker.value : "#ff5fa0",
           // Cream shooting
           creamLife: typeof creamLifeSlider !== "undefined" && creamLifeSlider ? creamLifeSlider.value : String(creamLifetimeSec),
@@ -3595,6 +3542,54 @@
           localStorage.setItem("vrm_settings_" + fname, JSON.stringify(settings));
         } catch (e) {
           console.error("Save failed:", e);
+        }
+        saveCamSettings();
+      }
+
+      const LS_CAM_GLOBAL = "vrm_cam_global";
+
+      function saveCamSettings() {
+        const s = {
+          skinSmooth: skinSmoothSlider.value,
+          camBright: camBrightSlider.value,
+          camSat: camSatSlider.value,
+          camCont: camContSlider.value,
+          camBlur: camBlurSlider.value,
+          camSepia: camSepiaSlider.value,
+          camBlack: camBlackSlider ? camBlackSlider.value : "0",
+          camTemp: camTempSlider ? camTempSlider.value : "50",
+          camRed: camRedSlider ? camRedSlider.value : "0",
+          camVignette: camVignetteSlider ? camVignetteSlider.value : "0",
+          camSoftGlow: camSoftGlowSlider ? camSoftGlowSlider.value : "0",
+        };
+        try {
+          localStorage.setItem(LS_CAM_GLOBAL, JSON.stringify(s));
+        } catch (_) {}
+      }
+
+      function loadCamSettings() {
+        try {
+          const data = localStorage.getItem(LS_CAM_GLOBAL);
+          if (!data) return false;
+          const s = JSON.parse(data);
+          if (Object.prototype.hasOwnProperty.call(s, "skinSmooth") && skinSmoothSlider) skinSmoothSlider.value = s.skinSmooth;
+          if (Object.prototype.hasOwnProperty.call(s, "camBright") && camBrightSlider) camBrightSlider.value = s.camBright;
+          if (Object.prototype.hasOwnProperty.call(s, "camSat") && camSatSlider) camSatSlider.value = s.camSat;
+          if (Object.prototype.hasOwnProperty.call(s, "camCont") && camContSlider) camContSlider.value = s.camCont;
+          if (Object.prototype.hasOwnProperty.call(s, "camBlur") && camBlurSlider) camBlurSlider.value = s.camBlur;
+          if (Object.prototype.hasOwnProperty.call(s, "camSepia") && camSepiaSlider) camSepiaSlider.value = s.camSepia;
+          if (Object.prototype.hasOwnProperty.call(s, "camBlack") && camBlackSlider) camBlackSlider.value = s.camBlack;
+          if (Object.prototype.hasOwnProperty.call(s, "camTemp") && camTempSlider) camTempSlider.value = s.camTemp;
+          if (Object.prototype.hasOwnProperty.call(s, "camRed") && camRedSlider) camRedSlider.value = s.camRed;
+          if (Object.prototype.hasOwnProperty.call(s, "camVignette") && camVignetteSlider) camVignetteSlider.value = s.camVignette;
+          if (Object.prototype.hasOwnProperty.call(s, "camSoftGlow") && camSoftGlowSlider) camSoftGlowSlider.value = s.camSoftGlow;
+          allSliders.forEach((el) => updateSliderDisplay(el));
+          try {
+            updateCameraFilter();
+          } catch (_) {}
+          return true;
+        } catch (_) {
+          return false;
         }
       }
 
@@ -3642,17 +3637,8 @@
               if (s.lightRot) lightRotSlider.value = s.lightRot;
               if (s.lightColor) lightColorSlider.value = s.lightColor;
               if (s.vrmSat) vrmSatSlider.value = s.vrmSat;
-              if (s.skinSmooth) skinSmoothSlider.value = s.skinSmooth;
-              if (s.camBright) camBrightSlider.value = s.camBright;
-              if (s.camSat) camSatSlider.value = s.camSat;
-              if (s.camCont) camContSlider.value = s.camCont;
-              if (s.camBlur) camBlurSlider.value = s.camBlur;
-              if (s.camSepia) camSepiaSlider.value = s.camSepia;
-              if (Object.prototype.hasOwnProperty.call(s, "camBlack") && camBlackSlider) camBlackSlider.value = s.camBlack;
-              if (Object.prototype.hasOwnProperty.call(s, "camTemp") && camTempSlider) camTempSlider.value = s.camTemp;
-              if (Object.prototype.hasOwnProperty.call(s, "camRed") && camRedSlider) camRedSlider.value = s.camRed;
-              if (Object.prototype.hasOwnProperty.call(s, "camVignette") && camVignetteSlider) camVignetteSlider.value = s.camVignette;
-              if (Object.prototype.hasOwnProperty.call(s, "camSoftGlow") && camSoftGlowSlider) camSoftGlowSlider.value = s.camSoftGlow;
+              if (Object.prototype.hasOwnProperty.call(s, "vrmRed") && vrmRedSlider) vrmRedSlider.value = s.vrmRed;
+              // カメラ画質設定はグローバル管理（loadCamSettings）に移行済み
 
               // Breath (per-VRM)
               if (Object.prototype.hasOwnProperty.call(s, "breathEnabled") && typeof breathToggle !== "undefined") {
@@ -3668,10 +3654,10 @@
               if (Object.prototype.hasOwnProperty.call(s, "blushStrength") && blushStrengthSlider) blushStrengthSlider.value = s.blushStrength;
               if (Object.prototype.hasOwnProperty.call(s, "blushOffX") && blushOffXSlider) blushOffXSlider.value = s.blushOffX;
               if (Object.prototype.hasOwnProperty.call(s, "blushOffY") && blushOffYSlider) blushOffYSlider.value = s.blushOffY;
-              if (Object.prototype.hasOwnProperty.call(s, "blushOffZ") && blushOffZSlider) blushOffZSlider.value = s.blushOffZ;
+
               if (Object.prototype.hasOwnProperty.call(s, "blushSize") && blushSizeSlider) blushSizeSlider.value = s.blushSize;
               if (Object.prototype.hasOwnProperty.call(s, "blushSpread") && blushSpreadSlider) blushSpreadSlider.value = s.blushSpread;
-              if (Object.prototype.hasOwnProperty.call(s, "blushFront") && blushFrontToggle) blushFrontToggle.checked = !!s.blushFront;
+
               if (Object.prototype.hasOwnProperty.call(s, "blushColor") && typeof blushColorPicker !== "undefined" && blushColorPicker) blushColorPicker.value = s.blushColor;
 
               if (typeof updateBlushUI === "function")
@@ -3783,7 +3769,7 @@
         }
       }
 
-      [scaleSlider, xSlider, ySlider, zSlider, minCfSlider, betaSlider, mouthSensSlider, eyeSensSlider, lightIntSlider, ambIntSlider, lightYSlider, lightRotSlider, lightColorSlider, vrmSatSlider, skinSmoothSlider, camBrightSlider, camSatSlider, camContSlider, camBlurSlider, camSepiaSlider, camBlackSlider, camTempSlider, camRedSlider, camVignetteSlider, camSoftGlowSlider, occlusionToggle, forceShadowToggle, shadowSoftnessSlider, shadowDarknessSlider, shadowColorPicker, occPosXSlider, occPosYSlider, occPosZSlider, occSizeXSlider, occSizeYSlider, occSizeZSlider].forEach((el) => {
+      [scaleSlider, xSlider, ySlider, zSlider, minCfSlider, betaSlider, mouthSensSlider, eyeSensSlider, lightIntSlider, ambIntSlider, lightYSlider, lightRotSlider, lightColorSlider, vrmSatSlider, vrmRedSlider, skinSmoothSlider, camBrightSlider, camSatSlider, camContSlider, camBlurSlider, camSepiaSlider, camBlackSlider, camTempSlider, camRedSlider, camVignetteSlider, camSoftGlowSlider, occlusionToggle, forceShadowToggle, shadowSoftnessSlider, shadowDarknessSlider, shadowColorPicker, occPosXSlider, occPosYSlider, occPosZSlider, occSizeXSlider, occSizeYSlider, occSizeZSlider].forEach((el) => {
         el.addEventListener("change", () => {
           saveSettings();
         });
@@ -3829,10 +3815,9 @@
       }
 
       function updateVRMFilter() {
-        const canvas = document.querySelector("#ar-container canvas");
-        if (canvas) {
-          const s = vrmSatSlider.value;
-          canvas.style.filter = `saturate(${s}%)`;
+        if (saturationPass) {
+          // スライダー値 0-200（100=デフォルト）→ uniform -1〜1（0=変化なし）
+          saturationPass.uniforms["saturation"].value = (vrmSatSlider.value / 100) - 1;
         }
       }
 
@@ -4090,8 +4075,6 @@
         if (!Number.isFinite(baseZ) || Math.abs(baseZ) > unit * 6.0) baseZ = zSign * 1.2 * unit;
         const ox = blushOffX * unit;
         const oy = blushOffY * unit;
-        const oz = blushOffZ * unit;
-
         // Position & size
         const s = unit * 1.6 * Math.max(0.5, Math.min(2.5, blushSize));
 
@@ -4103,8 +4086,8 @@
         // We intentionally keep blush meshes in head-local space so they stick perfectly to the cheeks.
         // (Counter-scaling by head world scale makes the effect tiny / invisible.)
 
-        blushMeshL.position.set(-baseX + ox, baseY + oy, baseZ + oz);
-        blushMeshR.position.set(+baseX + ox, baseY + oy, baseZ + oz);
+        blushMeshL.position.set(-baseX + ox, baseY + oy, baseZ);
+        blushMeshR.position.set(+baseX + ox, baseY + oy, baseZ);
 
         const sLocal = s;
         blushMeshL.scale.set(sLocal, sLocal, sLocal);
@@ -4296,7 +4279,7 @@
           // Composite: if "front" then normal overlay; else multiply for under-skin feel
           breathOverlayCtx.save();
           breathOverlayCtx.globalAlpha = Math.max(0, Math.min(1, blushStrength));
-          breathOverlayCtx.globalCompositeOperation = blushFront ? "source-over" : "multiply";
+          breathOverlayCtx.globalCompositeOperation = "source-over";
 
           const baseC = hexToRgbSafe(blushColor || "#ff5fa0");
           const whiteC = { r: 255, g: 255, b: 255 };
@@ -5244,9 +5227,10 @@
         const ry = r * 1.18 * stretchY;
 
         const g = ctx.createRadialGradient(-rx * 0.15, -ry * 0.2, 0, 0, 0, Math.max(rx, ry));
-        g.addColorStop(0.0, `rgba(255, 252, 242, ${0.85 * opacity})`);
-        g.addColorStop(0.55, `rgba(255, 248, 232, ${0.55 * opacity})`);
-        g.addColorStop(1.0, `rgba(255, 248, 232, 0)`);
+        g.addColorStop(0.0,  `rgba(255, 255, 255, ${0.93 * opacity})`);
+        g.addColorStop(0.40, `rgba(245, 248, 255, ${0.72 * opacity})`);
+        g.addColorStop(0.72, `rgba(228, 238, 255, ${0.42 * opacity})`);
+        g.addColorStop(1.0,  `rgba(210, 228, 255, 0)`);
         ctx.fillStyle = g;
 
         ctx.beginPath();
@@ -5255,9 +5239,20 @@
 
         const gl = typeof creamGloss === "number" ? Math.max(0, Math.min(2, creamGloss)) : 1.0;
 
+        // 内部の濁り感（青白い散乱光）
+        ctx.globalCompositeOperation = "screen";
+        const ig = ctx.createRadialGradient(0, 0, 0, 0, 0, Math.max(rx, ry) * 0.62);
+        ig.addColorStop(0.0, `rgba(200, 220, 255, ${0.18 * opacity})`);
+        ig.addColorStop(1.0, `rgba(200, 220, 255, 0)`);
+        ctx.fillStyle = ig;
+        ctx.beginPath();
+        ctx.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalCompositeOperation = "source-over";
+
         // Soft highlight (scales with gloss)
         const h = ctx.createRadialGradient(-rx * 0.25, -ry * 0.28, 0, -rx * 0.25, -ry * 0.28, Math.max(2, r * 0.55));
-        h.addColorStop(0.0, `rgba(255, 255, 255, ${0.22 * opacity * gl})`);
+        h.addColorStop(0.0, `rgba(255, 255, 255, ${0.52 * opacity * gl})`);
         h.addColorStop(1.0, `rgba(255, 255, 255, 0)`);
         ctx.fillStyle = h;
         ctx.beginPath();
@@ -5268,9 +5263,14 @@
         const gl2 = gl * gl;
         if (gl > 0.01) {
           ctx.globalCompositeOperation = "screen";
-          ctx.fillStyle = `rgba(255,255,255,${0.12 * opacity * gl2})`;
+          ctx.fillStyle = `rgba(255,255,255,${0.30 * opacity * gl2})`;
           ctx.beginPath();
           ctx.ellipse(-rx * 0.1, -ry * 0.34, r * 0.18, r * 0.07, 0.35, 0, Math.PI * 2);
+          ctx.fill();
+          // 縦長の第2スペキュラー（液体らしい光条）
+          ctx.fillStyle = `rgba(255,255,255,${0.20 * opacity * gl})`;
+          ctx.beginPath();
+          ctx.ellipse(-rx * 0.05, -ry * 0.18, r * 0.055, r * 0.22, -0.15, 0, Math.PI * 2);
           ctx.fill();
           ctx.globalCompositeOperation = "source-over";
         }
@@ -5284,11 +5284,11 @@
         ctx.translate(x, y);
         ctx.rotate(angleRad);
 
-        // Body gradient (warm creamy white)
+        // Body gradient (白濁 — cool white)
         const g = ctx.createRadialGradient(-w * 0.12, -h * 0.18, 0, 0, 0, Math.max(w, h) * 0.65);
-        g.addColorStop(0.0, `rgba(255, 255, 248, ${0.8 * opacity})`);
-        g.addColorStop(0.55, `rgba(255, 248, 232, ${0.55 * opacity})`);
-        g.addColorStop(1.0, `rgba(255, 248, 232, 0)`);
+        g.addColorStop(0.0,  `rgba(255, 255, 255, ${0.90 * opacity})`);
+        g.addColorStop(0.45, `rgba(245, 248, 255, ${0.68 * opacity})`);
+        g.addColorStop(1.0,  `rgba(215, 232, 255, 0)`);
         ctx.fillStyle = g;
 
         // Teardrop path: round top, slightly pointy bottom
@@ -5308,15 +5308,16 @@
         const gl2 = gl * gl;
 
         ctx.globalCompositeOperation = "screen";
-        ctx.fillStyle = `rgba(255,255,255,${0.16 * opacity * gl})`;
+        ctx.fillStyle = `rgba(255,255,255,${0.45 * opacity * gl})`;
         ctx.beginPath();
         ctx.ellipse(-w * 0.14, -h * 0.18, w * 0.12, h * 0.1, 0, 0, Math.PI * 2);
         ctx.fill();
 
         if (gl > 0.01) {
-          ctx.fillStyle = `rgba(255,255,255,${0.08 * opacity * gl2})`;
+          // 縦長の第2スペキュラー
+          ctx.fillStyle = `rgba(255,255,255,${0.22 * opacity * gl2})`;
           ctx.beginPath();
-          ctx.ellipse(-w * 0.06, -h * 0.28, w * 0.08, h * 0.18, -0.2, 0, Math.PI * 2);
+          ctx.ellipse(-w * 0.06, -h * 0.28, w * 0.06, h * 0.18, -0.2, 0, Math.PI * 2);
           ctx.fill();
         }
         ctx.globalCompositeOperation = "source-over";
@@ -5327,7 +5328,7 @@
           ctx.save();
           ctx.globalCompositeOperation = "lighter";
           const hg = ctx.createRadialGradient(-w * 0.18, -h * 0.25, 0, -w * 0.18, -h * 0.25, Math.max(w, h) * 0.7);
-          hg.addColorStop(0.0, `rgba(255, 255, 255, ${0.22 * opacity * _gl2})`);
+          hg.addColorStop(0.0, `rgba(255, 255, 255, ${0.45 * opacity * _gl2})`);
           hg.addColorStop(1.0, `rgba(255, 255, 255, 0)`);
           ctx.fillStyle = hg;
           ctx.beginPath();
@@ -5654,7 +5655,7 @@
         lines.push(`parents: L=${parentL} R=${parentR}`);
         if (blushMatL) lines.push(`matL: op=${(blushMatL.opacity ?? 0).toFixed(2)} depthTest=${!!blushMatL.depthTest} polyOff=${!!blushMatL.polygonOffset}`);
         if (blushMatR) lines.push(`matR: op=${(blushMatR.opacity ?? 0).toFixed(2)} depthTest=${!!blushMatR.depthTest} polyOff=${!!blushMatR.polygonOffset}`);
-        lines.push(`params: off=(${blushOffX.toFixed(2)},${blushOffY.toFixed(2)},${blushOffZ.toFixed(2)}) size=${blushSize.toFixed(2)} spread=${blushSpread.toFixed(2)} unit=${blushUnit.toFixed(4)}`);
+        lines.push(`params: off=(${blushOffX.toFixed(2)},${blushOffY.toFixed(2)}) size=${blushSize.toFixed(2)} spread=${blushSpread.toFixed(2)} unit=${blushUnit.toFixed(4)}`);
         lines.push(`viewport: ${w}x${h}`);
 
         // 2D blush mapping debug (used in current implementation)
@@ -5691,38 +5692,10 @@
         }
       }
 
-      // After switching camera streams, some Android browsers keep rendering the old WebGL texture
-      // even though the <video> is feeding new frames. Rebinding the CanvasTexture fixes that.
+      // displayCanvas は DOM 要素として直接表示されるため、テクスチャ再バインド不要
       function refreshVideoTextureAfterCameraSwitch() {
         try {
-          if (!displayCanvas || !bgPlane || !THREE) return;
-          try {
-            if (videoTexture && typeof videoTexture.dispose === "function") videoTexture.dispose();
-          } catch (_) {}
-
-          try {
-            videoTexture = new THREE.CanvasTexture(displayCanvas);
-            videoTexture.colorSpace = THREE.SRGBColorSpace;
-            videoTexture.minFilter = THREE.LinearFilter;
-            videoTexture.magFilter = THREE.LinearFilter;
-            videoTexture.generateMipmaps = false;
-          } catch (_) {
-            return;
-          }
-
-          try {
-            if (bgPlane.material) {
-              bgPlane.material.map = videoTexture;
-              bgPlane.material.needsUpdate = true;
-            }
-          } catch (_) {}
-
-          try {
-            videoTexture.needsUpdate = true;
-          } catch (_) {}
-          try {
-            updateBgPlaneSizeLetterbox();
-          } catch (_) {}
+          updateBgPlaneSizeLetterbox();
         } catch (_) {}
       }
 
@@ -5861,7 +5834,6 @@
           displayCtx.fillRect(0, 0, vw, vh);
           displayCtx.restore();
         }
-        if (videoTexture) videoTexture.needsUpdate = true;
       }
 
       function updateLight() {
@@ -5880,16 +5852,29 @@
         const colorVal = parseInt(lightColorSlider.value);
         const color = new THREE.Color();
 
-        if (colorVal < 50) {
+        if (colorVal > 50) {
+          // 暖色: カメラ色温度と同じ方向（上げると暖色）
           const r = 1.0;
-          const g = 1.0 - (50 - colorVal) * 0.005;
-          const b = 1.0 - (50 - colorVal) * 0.01;
+          const g = 1.0 - (colorVal - 50) * 0.005;
+          const b = 1.0 - (colorVal - 50) * 0.01;
           color.setRGB(r, g, b);
         } else {
-          const r = 1.0 - (colorVal - 50) * 0.005;
-          const g = 1.0 - (colorVal - 50) * 0.003;
+          // 寒色
+          const r = 1.0 - (50 - colorVal) * 0.005;
+          const g = 1.0 - (50 - colorVal) * 0.003;
           const b = 1.0;
           color.setRGB(r, g, b);
+        }
+
+        // VRM赤み: dirLight・hemiLight両方に反映
+        const vrmRed = vrmRedSlider ? parseFloat(vrmRedSlider.value) : 0;
+        if (vrmRed > 0.5) {
+          const redStr = Math.min(1.5, vrmRed / 100);
+          color.g = Math.max(0, color.g - redStr * 0.3);
+          color.b = Math.max(0, color.b - redStr * 0.4);
+          hemiLight.color.setRGB(1.0, Math.max(0, 1.0 - redStr * 0.2), Math.max(0, 1.0 - redStr * 0.3));
+        } else {
+          hemiLight.color.setRGB(1.0, 1.0, 1.0);
         }
         dirLight.color = color;
 
@@ -6053,6 +6038,10 @@
             if (renderer.domElement && renderer.domElement.parentElement) {
               renderer.domElement.parentElement.removeChild(renderer.domElement);
             }
+          }
+          // displayCanvas を DOM から除去
+          if (displayCanvas && displayCanvas.parentElement) {
+            displayCanvas.parentElement.removeChild(displayCanvas);
           }
 
           renderer = null;
@@ -6232,6 +6221,7 @@
           renderer.toneMapping = THREE.LinearToneMapping;
           renderer.setSize(window.innerWidth, window.innerHeight);
           renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+          renderer.domElement.id = "three-canvas";
           renderer.domElement.style.position = "absolute";
           renderer.domElement.style.top = "0";
           renderer.domElement.style.left = "0";
@@ -6239,6 +6229,16 @@
           renderer.domElement.style.height = "100%";
 
           if (arContainer) arContainer.appendChild(renderer.domElement);
+
+          // EffectComposer（alpha対応のレンダーターゲット）
+          const rt = new THREE.WebGLRenderTarget(window.innerWidth, window.innerHeight, {
+            format: THREE.RGBAFormat,
+          });
+          composer = new EffectComposer(renderer, rt);
+          composer.addPass(new RenderPass(scene, camera));
+          saturationPass = new ShaderPass(HueSaturationShader);
+          saturationPass.uniforms["saturation"].value = 0;
+          composer.addPass(saturationPass);
 
           // Breath overlay canvas (2D particles). Placed above WebGL canvas.
           breathOverlayCanvas = document.createElement("canvas");
@@ -6292,16 +6292,19 @@
           ensureDisplayCanvasSize();
           drawVideoToDisplayCanvas();
 
-          videoTexture = new THREE.CanvasTexture(displayCanvas);
-          videoTexture.colorSpace = THREE.SRGBColorSpace;
-          videoTexture.minFilter = THREE.LinearFilter;
-          videoTexture.magFilter = THREE.LinearFilter;
-          videoTexture.generateMipmaps = false;
-
-          bgPlane = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ map: videoTexture }));
-          bgPlane.renderOrder = -1000;
-          scene.add(bgPlane);
-          updateBgPlaneSizeLetterbox();
+          // displayCanvas を DOM に配置（Three.js キャンバスの背面に）
+          displayCanvas.style.position = "absolute";
+          displayCanvas.style.top = "0";
+          displayCanvas.style.left = "0";
+          displayCanvas.style.width = "100%";
+          displayCanvas.style.height = "100%";
+          displayCanvas.style.objectFit = bgFitMode || "cover";
+          displayCanvas.style.background = "#000";
+          displayCanvas.style.zIndex = "0";
+          if (arContainer) {
+            arContainer.insertBefore(displayCanvas, renderer.domElement);
+            renderer.domElement.style.zIndex = "1";
+          }
 
           hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444);
           hemiLight.position.set(0, 1, 0);
@@ -6317,6 +6320,7 @@
           scene.add(lightHelper);
 
           updateLight();
+          updateVRMFilter();
 
           // Root group for face pose
           // Wrapper group for user X offset (moves rotation center)
@@ -6394,6 +6398,14 @@
           // 改善案E: MediaPipe frame-skip state
           let _mpFrameSkipCounter = 0;
           let _mpLastResult = null;
+
+          // Re-apply all filter/light state right before render loop starts
+          // (async MediaPipe init above may have allowed browser events to
+          //  interfere with slider values set by loadSettings)
+          updateCameraFilter();
+          updateLight();
+          updateVRMFilter();
+          updateOccluder();
 
           renderer.setAnimationLoop(() => {
             const delta = clock.getDelta();
@@ -6630,7 +6642,7 @@
             updateBreathEffect(delta);
             updateCreamVfx(delta);
             updateBlushDebug();
-            renderer.render(scene, camera);
+            composer.render();
           });
 
           // UI transitions
@@ -6861,6 +6873,8 @@
                 } else {
                   showToast(`設定を復元しました:\n${currentFileName}`);
                 }
+                // グローバルカメラ設定で上書き（VRM切替でもカメラ画質を維持）
+                loadCamSettings();
 
                 updateTransform();
 
