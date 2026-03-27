@@ -3698,6 +3698,16 @@
                 updateSliderDisplay(creamZAttachSlider);
                 creamZAttach = Math.max(0, Math.min(1, parseFloat(creamZAttachSlider.value) || creamZAttach));
               }
+              if (Object.prototype.hasOwnProperty.call(s, "creamGloss") && typeof creamGlossSlider !== "undefined" && creamGlossSlider) {
+                creamGlossSlider.value = s.creamGloss;
+                updateSliderDisplay(creamGlossSlider);
+                creamGloss = parseFloat(creamGlossSlider.value) || creamGloss;
+              }
+              if (Object.prototype.hasOwnProperty.call(s, "creamViscosity") && typeof creamViscositySlider !== "undefined" && creamViscositySlider) {
+                creamViscositySlider.value = s.creamViscosity;
+                updateSliderDisplay(creamViscositySlider);
+                creamViscosity = parseFloat(creamViscositySlider.value) || creamViscosity;
+              }
 
               if (Object.prototype.hasOwnProperty.call(s, "creamAuto")) {
                 setCreamAutoEnabled(!!s.creamAuto);
