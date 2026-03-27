@@ -6239,6 +6239,8 @@
           saturationPass = new ShaderPass(HueSaturationShader);
           saturationPass.uniforms["saturation"].value = 0;
           composer.addPass(saturationPass);
+          // devicePixelRatioを反映した正しいサイズにリサイズ
+          composer.setSize(window.innerWidth, window.innerHeight);
 
           // Breath overlay canvas (2D particles). Placed above WebGL canvas.
           breathOverlayCanvas = document.createElement("canvas");
