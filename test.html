@@ -45,7 +45,7 @@
         transition: filter 0.2s;
       }
 
-      #ar-container canvas {
+      #three-canvas {
         transition: filter 0.2s;
       }
 
@@ -1222,8 +1222,8 @@
 
     <script type="module">
       // ===== App Version (single source of truth) =====
-      const APP_VERSION = "v6.01.57";
-      const APP_VERSION_NOTE = "feat: VRM red slider; fix VRM temp direction";
+      const APP_VERSION = "v6.01.58";
+      const APP_VERSION_NOTE = "fix: separate camera/VRM canvas layers";
 
       function getOverlayPixelRatio() {
         // Must match resizeCreamOverlayCanvas()/resizeBreathOverlayCanvas() DPR clamp for performance.
@@ -3448,43 +3448,8 @@
       }
 
       function updateBgPlaneSizeLetterbox() {
-        // Keep video aspect ratio (no stretch). Show black bars (letterbox/pillarbox) as needed.
-        if (!bgPlane || !camera || !videoEl) return;
-
-        const depth = bgPlaneDepth || 500;
-        const vw = videoEl.videoWidth || 0;
-        const vh = videoEl.videoHeight || 0;
-        if (vw <= 0 || vh <= 0) return;
-
-        const vp = getViewportSizeAtDepth(depth);
-        const videoAspect = vw / vh;
-        const vpAspect = vp.width / vp.height;
-
-        let planeW, planeH;
-        if (bgFitMode === "cover") {
-          // Cover: fill viewport, crop overflow
-          if (videoAspect > vpAspect) {
-            // video is wider -> match height
-            planeH = vp.height;
-            planeW = vp.height * videoAspect;
-          } else {
-            // video is taller -> match width
-            planeW = vp.width;
-            planeH = vp.width / videoAspect;
-          }
-        } else {
-          // Contain: show full video, letterbox/pillarbox
-          if (videoAspect > vpAspect) {
-            planeW = vp.width;
-            planeH = vp.width / videoAspect;
-          } else {
-            planeH = vp.height;
-            planeW = vp.height * videoAspect;
-          }
-        }
-
-        bgPlane.position.set(0, 0, -depth);
-        bgPlane.scale.set(planeW, planeH, 1);
+        if (!displayCanvas) return;
+        displayCanvas.style.objectFit = bgFitMode || "cover";
       }
 
       function saveSettings(forceName) {
@@ -3839,7 +3804,7 @@
       }
 
       function updateVRMFilter() {
-        const canvas = document.querySelector("#ar-container canvas");
+        const canvas = document.getElementById("three-canvas");
         if (canvas) {
           const s = vrmSatSlider.value;
           canvas.style.filter = `saturate(${s}%)`;
@@ -3851,10 +3816,6 @@
         // into displayCanvas (background texture). This way VRM overlay is not affected.
         let b = parseFloat(camBrightSlider.value);
         let s = parseFloat(camSatSlider.value);
-        // Three.jsキャンバス全体にCSS saturate(vrmS%)が掛かるため、カメラ側で逆補正する
-        // 最終表示彩度 = s * vrmS/100 なので、s_comp = s * 100/vrmS にする
-        const vrmS = vrmSatSlider ? parseFloat(vrmSatSlider.value) : 100;
-        if (vrmS > 0) s = s * 100 / vrmS;
         let c = parseFloat(camContSlider.value);
         let bl = parseFloat(camBlurSlider.value);
         const sp = parseFloat(camSepiaSlider.value);
@@ -5703,38 +5664,10 @@
         }
       }
 
-      // After switching camera streams, some Android browsers keep rendering the old WebGL texture
-      // even though the <video> is feeding new frames. Rebinding the CanvasTexture fixes that.
+      // displayCanvas は DOM 要素として直接表示されるため、テクスチャ再バインド不要
       function refreshVideoTextureAfterCameraSwitch() {
         try {
-          if (!displayCanvas || !bgPlane || !THREE) return;
-          try {
-            if (videoTexture && typeof videoTexture.dispose === "function") videoTexture.dispose();
-          } catch (_) {}
-
-          try {
-            videoTexture = new THREE.CanvasTexture(displayCanvas);
-            videoTexture.colorSpace = THREE.SRGBColorSpace;
-            videoTexture.minFilter = THREE.LinearFilter;
-            videoTexture.magFilter = THREE.LinearFilter;
-            videoTexture.generateMipmaps = false;
-          } catch (_) {
-            return;
-          }
-
-          try {
-            if (bgPlane.material) {
-              bgPlane.material.map = videoTexture;
-              bgPlane.material.needsUpdate = true;
-            }
-          } catch (_) {}
-
-          try {
-            videoTexture.needsUpdate = true;
-          } catch (_) {}
-          try {
-            updateBgPlaneSizeLetterbox();
-          } catch (_) {}
+          updateBgPlaneSizeLetterbox();
         } catch (_) {}
       }
 
@@ -5873,7 +5806,6 @@
           displayCtx.fillRect(0, 0, vw, vh);
           displayCtx.restore();
         }
-        if (videoTexture) videoTexture.needsUpdate = true;
       }
 
       function updateLight() {
@@ -6079,6 +6011,10 @@
               renderer.domElement.parentElement.removeChild(renderer.domElement);
             }
           }
+          // displayCanvas を DOM から除去
+          if (displayCanvas && displayCanvas.parentElement) {
+            displayCanvas.parentElement.removeChild(displayCanvas);
+          }
 
           renderer = null;
           bgPlane = null;
@@ -6257,6 +6193,7 @@
           renderer.toneMapping = THREE.LinearToneMapping;
           renderer.setSize(window.innerWidth, window.innerHeight);
           renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+          renderer.domElement.id = "three-canvas";
           renderer.domElement.style.position = "absolute";
           renderer.domElement.style.top = "0";
           renderer.domElement.style.left = "0";
@@ -6317,16 +6254,19 @@
           ensureDisplayCanvasSize();
           drawVideoToDisplayCanvas();
 
-          videoTexture = new THREE.CanvasTexture(displayCanvas);
-          videoTexture.colorSpace = THREE.SRGBColorSpace;
-          videoTexture.minFilter = THREE.LinearFilter;
-          videoTexture.magFilter = THREE.LinearFilter;
-          videoTexture.generateMipmaps = false;
-
-          bgPlane = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ map: videoTexture }));
-          bgPlane.renderOrder = -1000;
-          scene.add(bgPlane);
-          updateBgPlaneSizeLetterbox();
+          // displayCanvas を DOM に配置（Three.js キャンバスの背面に）
+          displayCanvas.style.position = "absolute";
+          displayCanvas.style.top = "0";
+          displayCanvas.style.left = "0";
+          displayCanvas.style.width = "100%";
+          displayCanvas.style.height = "100%";
+          displayCanvas.style.objectFit = bgFitMode || "cover";
+          displayCanvas.style.background = "#000";
+          displayCanvas.style.zIndex = "0";
+          if (arContainer) {
+            arContainer.insertBefore(displayCanvas, renderer.domElement);
+            renderer.domElement.style.zIndex = "1";
+          }
 
           hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444);
           hemiLight.position.set(0, 1, 0);
