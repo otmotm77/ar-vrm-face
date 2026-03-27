@@ -465,10 +465,19 @@
         font-size: 9px;
         color: #666;
         font-family: monospace;
-        pointer-events: none;
+        cursor: pointer;
         background-color: rgba(255, 255, 255, 0.7);
         padding: 0 2px;
         border-radius: 2px;
+        user-select: none;
+        -webkit-user-select: none;
+      }
+      .val-display:hover {
+        color: #fff;
+        background-color: rgba(120, 160, 255, 0.8);
+      }
+      .val-display:active {
+        background-color: rgba(80, 200, 120, 0.9);
       }
 
       /* Compact layout for color picker rows (avoid large empty gaps) */
@@ -1222,8 +1231,8 @@
 
     <script type="module">
       // ===== App Version (single source of truth) =====
-      const APP_VERSION = "v6.01.58";
-      const APP_VERSION_NOTE = "fix: separate camera/VRM canvas layers";
+      const APP_VERSION = "v6.01.60";
+      const APP_VERSION_NOTE = "fix: reset handler covers all sliders incl. blush/breath/cream";
 
       function getOverlayPixelRatio() {
         // Must match resizeCreamOverlayCanvas()/resizeBreathOverlayCanvas() DPR clamp for performance.
@@ -2524,6 +2533,19 @@
           saveSettings();
         });
       }
+
+      // 全 range スライダーの値表示タップでデフォルト値リセット（blush/breath/cream含む全対象）
+      document.querySelectorAll('input[type="range"]').forEach((el) => {
+        const disp = document.getElementById(el.id + "-val");
+        if (!disp) return;
+        disp.title = `タップでデフォルト値 (${el.defaultValue}) に戻す`;
+        disp.addEventListener("click", () => {
+          if (el.value === el.defaultValue) return;
+          el.value = el.defaultValue;
+          el.dispatchEvent(new Event("input")); // 各スライダーの input リスナーが表示更新・適用を行う
+          saveSettings();
+        });
+      });
 
       const creamAutoToggle = document.getElementById("cream-auto-toggle");
       const autoCreamBtn = document.getElementById("auto-cream-toggle-btn");
