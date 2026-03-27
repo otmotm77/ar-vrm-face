@@ -1231,8 +1231,8 @@
 
     <script type="module">
       // ===== App Version (single source of truth) =====
-      const APP_VERSION = "v6.01.59";
-      const APP_VERSION_NOTE = "feat: tap value display to reset to default";
+      const APP_VERSION = "v6.01.60";
+      const APP_VERSION_NOTE = "fix: reset handler covers all sliders incl. blush/breath/cream";
 
       function getOverlayPixelRatio() {
         // Must match resizeCreamOverlayCanvas()/resizeBreathOverlayCanvas() DPR clamp for performance.
@@ -2426,19 +2426,6 @@
         // 初期表示
         updateSliderDisplay(el);
 
-        // 値表示タップでシステムデフォルト値にリセット
-        const disp = document.getElementById(el.id + "-val");
-        if (disp) {
-          disp.title = `タップでデフォルト値 (${el.defaultValue}) に戻す`;
-          disp.addEventListener("click", () => {
-            if (el.value === el.defaultValue) return;
-            el.value = el.defaultValue;
-            updateSliderDisplay(el);
-            el.dispatchEvent(new Event("input"));
-            saveSettings();
-          });
-        }
-
         el.addEventListener("input", () => {
           updateSliderDisplay(el);
           updateLight();
@@ -2546,6 +2533,19 @@
           saveSettings();
         });
       }
+
+      // 全 range スライダーの値表示タップでデフォルト値リセット（blush/breath/cream含む全対象）
+      document.querySelectorAll('input[type="range"]').forEach((el) => {
+        const disp = document.getElementById(el.id + "-val");
+        if (!disp) return;
+        disp.title = `タップでデフォルト値 (${el.defaultValue}) に戻す`;
+        disp.addEventListener("click", () => {
+          if (el.value === el.defaultValue) return;
+          el.value = el.defaultValue;
+          el.dispatchEvent(new Event("input")); // 各スライダーの input リスナーが表示更新・適用を行う
+          saveSettings();
+        });
+      });
 
       const creamAutoToggle = document.getElementById("cream-auto-toggle");
       const autoCreamBtn = document.getElementById("auto-cream-toggle-btn");
