@@ -1259,6 +1259,7 @@
       import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
       import { ShaderPass } from "three/addons/postprocessing/ShaderPass.js";
       import { HueSaturationShader } from "three/addons/shaders/HueSaturationShader.js";
+      import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
       // MediaPipe Tasks Vision (vision_bundle.mjs, pinned to 0.10.33)
       const vision = await import("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.33/vision_bundle.mjs");
       const { FaceLandmarker, FilesetResolver } = vision;
@@ -3697,6 +3698,16 @@
                 updateSliderDisplay(creamZAttachSlider);
                 creamZAttach = Math.max(0, Math.min(1, parseFloat(creamZAttachSlider.value) || creamZAttach));
               }
+              if (Object.prototype.hasOwnProperty.call(s, "creamGloss") && typeof creamGlossSlider !== "undefined" && creamGlossSlider) {
+                creamGlossSlider.value = s.creamGloss;
+                updateSliderDisplay(creamGlossSlider);
+                creamGloss = parseFloat(creamGlossSlider.value) || creamGloss;
+              }
+              if (Object.prototype.hasOwnProperty.call(s, "creamViscosity") && typeof creamViscositySlider !== "undefined" && creamViscositySlider) {
+                creamViscositySlider.value = s.creamViscosity;
+                updateSliderDisplay(creamViscositySlider);
+                creamViscosity = parseFloat(creamViscositySlider.value) || creamViscosity;
+              }
 
               if (Object.prototype.hasOwnProperty.call(s, "creamAuto")) {
                 setCreamAutoEnabled(!!s.creamAuto);
@@ -5225,35 +5236,84 @@
 
         const rx = r * 1.0 * rxScale;
         const ry = r * 1.18 * stretchY;
+        const W = rx * 2.4, H = ry * 2.4;
+        const lx = -rx * 1.2, ly = -ry * 1.2;
 
-        const g = ctx.createRadialGradient(-rx * 0.15, -ry * 0.2, 0, 0, 0, Math.max(rx, ry));
-        g.addColorStop(0.0, `rgba(255, 252, 242, ${0.85 * opacity})`);
-        g.addColorStop(0.55, `rgba(255, 248, 232, ${0.55 * opacity})`);
-        g.addColorStop(1.0, `rgba(255, 248, 232, 0)`);
-        ctx.fillStyle = g;
-
+        // ブロブ全体でクリップ（内部レイヤーが外にはみ出さないように）
         ctx.beginPath();
         ctx.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2);
-        ctx.fill();
+        ctx.clip();
+
+        // 1. 薄い半透明ベース（まだらの薄い部分・エッジ付近の透明感）
+        const base = ctx.createRadialGradient(-rx * 0.08, -ry * 0.08, 0, 0, 0, Math.max(rx, ry) * 1.05);
+        base.addColorStop(0.0,  `rgba(238, 243, 255, ${0.50 * opacity})`);
+        base.addColorStop(0.60, `rgba(225, 235, 255, ${0.28 * opacity})`);
+        base.addColorStop(1.0,  `rgba(208, 222, 255, 0)`);
+        ctx.fillStyle = base;
+        ctx.fillRect(lx, ly, W, H);
+
+        // 2. 濃い白のパッチ（白濁した厚い部分 — まだらの白い箇所）
+        const wg = ctx.createRadialGradient(
+          -rx * 0.12, -ry * 0.16, 0,
+          -rx * 0.05, -ry * 0.08, r * 0.70
+        );
+        wg.addColorStop(0.0,  `rgba(255, 255, 255, ${0.92 * opacity})`);
+        wg.addColorStop(0.38, `rgba(252, 253, 255, ${0.65 * opacity})`);
+        wg.addColorStop(0.72, `rgba(248, 250, 255, ${0.28 * opacity})`);
+        wg.addColorStop(1.0,  `rgba(245, 248, 255, 0)`);
+        ctx.fillStyle = wg;
+        ctx.fillRect(lx, ly, W, H);
+
+        // 3. クリーム色のパッチ（微妙にクリーム色がかった部分）
+        const cg = ctx.createRadialGradient(
+          rx * 0.24, ry * 0.30, 0,
+          rx * 0.18, ry * 0.22, r * 0.55
+        );
+        cg.addColorStop(0.0,  `rgba(255, 249, 222, ${0.80 * opacity})`);
+        cg.addColorStop(0.42, `rgba(255, 246, 212, ${0.48 * opacity})`);
+        cg.addColorStop(1.0,  `rgba(255, 243, 205, 0)`);
+        ctx.fillStyle = cg;
+        ctx.fillRect(lx, ly, W, H);
+
+        // 4. 薄いクリーム色の二次パッチ（エッジ寄り — まだら感を強調）
+        const cg2 = ctx.createRadialGradient(
+          -rx * 0.30, ry * 0.10, 0,
+          -rx * 0.22, ry * 0.06, r * 0.38
+        );
+        cg2.addColorStop(0.0,  `rgba(255, 251, 232, ${0.58 * opacity})`);
+        cg2.addColorStop(1.0,  `rgba(255, 249, 225, 0)`);
+        ctx.fillStyle = cg2;
+        ctx.fillRect(lx, ly, W, H);
 
         const gl = typeof creamGloss === "number" ? Math.max(0, Math.min(2, creamGloss)) : 1.0;
 
-        // Soft highlight (scales with gloss)
-        const h = ctx.createRadialGradient(-rx * 0.25, -ry * 0.28, 0, -rx * 0.25, -ry * 0.28, Math.max(2, r * 0.55));
-        h.addColorStop(0.0, `rgba(255, 255, 255, ${0.22 * opacity * gl})`);
-        h.addColorStop(1.0, `rgba(255, 255, 255, 0)`);
-        ctx.fillStyle = h;
-        ctx.beginPath();
-        ctx.ellipse(-rx * 0.22, -ry * 0.22, r * 0.4, r * 0.3, 0, 0, Math.PI * 2);
-        ctx.fill();
+        // 5. 内部散乱光（白濁・青白いミルク感）
+        ctx.globalCompositeOperation = "screen";
+        const ig = ctx.createRadialGradient(0, 0, 0, 0, 0, Math.max(rx, ry) * 0.60);
+        ig.addColorStop(0.0, `rgba(195, 215, 255, ${0.16 * opacity})`);
+        ig.addColorStop(1.0, `rgba(195, 215, 255, 0)`);
+        ctx.fillStyle = ig;
+        ctx.fillRect(lx, ly, W, H);
+        ctx.globalCompositeOperation = "source-over";
 
-        // Sharp specular streak (more obvious at high gloss)
+        // 6. ソフトハイライト（光沢に比例）
+        const hg = ctx.createRadialGradient(-rx * 0.25, -ry * 0.28, 0, -rx * 0.25, -ry * 0.28, Math.max(2, r * 0.55));
+        hg.addColorStop(0.0, `rgba(255, 255, 255, ${0.52 * opacity * gl})`);
+        hg.addColorStop(1.0, `rgba(255, 255, 255, 0)`);
+        ctx.fillStyle = hg;
+        ctx.fillRect(lx, ly, W, H);
+
+        // 7. シャープスペキュラー + 縦長光条
         const gl2 = gl * gl;
         if (gl > 0.01) {
           ctx.globalCompositeOperation = "screen";
-          ctx.fillStyle = `rgba(255,255,255,${0.12 * opacity * gl2})`;
+          ctx.fillStyle = `rgba(255,255,255,${0.30 * opacity * gl2})`;
           ctx.beginPath();
-          ctx.ellipse(-rx * 0.1, -ry * 0.34, r * 0.18, r * 0.07, 0.35, 0, Math.PI * 2);
+          ctx.ellipse(-rx * 0.10, -ry * 0.34, r * 0.18, r * 0.07, 0.35, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = `rgba(255,255,255,${0.20 * opacity * gl})`;
+          ctx.beginPath();
+          ctx.ellipse(-rx * 0.05, -ry * 0.18, r * 0.055, r * 0.22, -0.15, 0, Math.PI * 2);
           ctx.fill();
           ctx.globalCompositeOperation = "source-over";
         }
@@ -5267,57 +5327,72 @@
         ctx.translate(x, y);
         ctx.rotate(angleRad);
 
-        // Body gradient (warm creamy white)
-        const g = ctx.createRadialGradient(-w * 0.12, -h * 0.18, 0, 0, 0, Math.max(w, h) * 0.65);
-        g.addColorStop(0.0, `rgba(255, 255, 248, ${0.8 * opacity})`);
-        g.addColorStop(0.55, `rgba(255, 248, 232, ${0.55 * opacity})`);
-        g.addColorStop(1.0, `rgba(255, 248, 232, 0)`);
-        ctx.fillStyle = g;
+        const W = w * 2.4, H = h * 2.4;
+        const lx = -w * 1.2, ly = -h * 1.2;
 
-        // Teardrop path: round top, slightly pointy bottom
+        // ティアドロップ形状でクリップ
         const topY = -h * 0.42;
         const botY = h * 0.58;
         const sideX = w * 0.52;
-
         ctx.beginPath();
         ctx.moveTo(0, topY);
         ctx.bezierCurveTo(sideX, topY * 0.75, sideX * 1.05, h * 0.1, 0, botY);
         ctx.bezierCurveTo(-sideX * 1.05, h * 0.1, -sideX, topY * 0.75, 0, topY);
         ctx.closePath();
-        ctx.fill();
+        ctx.clip();
 
-        // Highlight (scales with gloss)
+        // 1. 薄い半透明ベース
+        const base = ctx.createRadialGradient(-w * 0.08, -h * 0.12, 0, 0, 0, Math.max(w, h) * 0.70);
+        base.addColorStop(0.0,  `rgba(238, 243, 255, ${0.52 * opacity})`);
+        base.addColorStop(0.65, `rgba(225, 235, 255, ${0.28 * opacity})`);
+        base.addColorStop(1.0,  `rgba(208, 222, 255, 0)`);
+        ctx.fillStyle = base;
+        ctx.fillRect(lx, ly, W, H);
+
+        // 2. 濃い白パッチ（上部〜中央）
+        const wg = ctx.createRadialGradient(-w * 0.10, -h * 0.15, 0, -w * 0.05, -h * 0.08, Math.max(w, h) * 0.58);
+        wg.addColorStop(0.0,  `rgba(255, 255, 255, ${0.90 * opacity})`);
+        wg.addColorStop(0.42, `rgba(252, 252, 255, ${0.55 * opacity})`);
+        wg.addColorStop(1.0,  `rgba(248, 250, 255, 0)`);
+        ctx.fillStyle = wg;
+        ctx.fillRect(lx, ly, W, H);
+
+        // 3. クリーム色パッチ（下部）
+        const cg = ctx.createRadialGradient(w * 0.12, h * 0.20, 0, w * 0.08, h * 0.15, Math.max(w, h) * 0.42);
+        cg.addColorStop(0.0,  `rgba(255, 249, 222, ${0.76 * opacity})`);
+        cg.addColorStop(1.0,  `rgba(255, 243, 205, 0)`);
+        ctx.fillStyle = cg;
+        ctx.fillRect(lx, ly, W, H);
+
+        // 4. ハイライト
         const gl = typeof creamGloss === "number" ? Math.max(0, Math.min(2, creamGloss)) : 1.0;
         const gl2 = gl * gl;
 
         ctx.globalCompositeOperation = "screen";
-        ctx.fillStyle = `rgba(255,255,255,${0.16 * opacity * gl})`;
+        ctx.fillStyle = `rgba(255,255,255,${0.45 * opacity * gl})`;
         ctx.beginPath();
-        ctx.ellipse(-w * 0.14, -h * 0.18, w * 0.12, h * 0.1, 0, 0, Math.PI * 2);
+        ctx.ellipse(-w * 0.14, -h * 0.18, w * 0.12, h * 0.10, 0, 0, Math.PI * 2);
         ctx.fill();
 
         if (gl > 0.01) {
-          ctx.fillStyle = `rgba(255,255,255,${0.08 * opacity * gl2})`;
+          ctx.fillStyle = `rgba(255,255,255,${0.22 * opacity * gl2})`;
           ctx.beginPath();
-          ctx.ellipse(-w * 0.06, -h * 0.28, w * 0.08, h * 0.18, -0.2, 0, Math.PI * 2);
+          ctx.ellipse(-w * 0.06, -h * 0.28, w * 0.06, h * 0.18, -0.2, 0, Math.PI * 2);
           ctx.fill();
         }
         ctx.globalCompositeOperation = "source-over";
 
-        // Specular highlight (gloss)
+        // 5. lighter グロー
         const _gl2 = typeof creamGloss === "number" ? Math.max(0, creamGloss) : 1.0;
         if (_gl2 > 0.001) {
           ctx.save();
           ctx.globalCompositeOperation = "lighter";
           const hg = ctx.createRadialGradient(-w * 0.18, -h * 0.25, 0, -w * 0.18, -h * 0.25, Math.max(w, h) * 0.7);
-          hg.addColorStop(0.0, `rgba(255, 255, 255, ${0.22 * opacity * _gl2})`);
+          hg.addColorStop(0.0, `rgba(255, 255, 255, ${0.45 * opacity * _gl2})`);
           hg.addColorStop(1.0, `rgba(255, 255, 255, 0)`);
           ctx.fillStyle = hg;
-          ctx.beginPath();
-          ctx.ellipse(-w * 0.12, -h * 0.18, w * 0.28, h * 0.22, 0, 0, Math.PI * 2);
-          ctx.fill();
+          ctx.fillRect(lx, ly, W, H);
           ctx.restore();
-          ctx.globalCompositeOperation = "source-over";
         }
 
         ctx.restore();
@@ -6221,6 +6296,10 @@
           saturationPass = new ShaderPass(HueSaturationShader);
           saturationPass.uniforms["saturation"].value = 0;
           composer.addPass(saturationPass);
+          // OutputPass: toneMapping と outputColorSpace を正しく適用（直接描画と同じ見た目にする）
+          composer.addPass(new OutputPass());
+          // devicePixelRatioを反映した正しいサイズにリサイズ
+          composer.setSize(window.innerWidth, window.innerHeight);
 
           // Breath overlay canvas (2D particles). Placed above WebGL canvas.
           breathOverlayCanvas = document.createElement("canvas");
