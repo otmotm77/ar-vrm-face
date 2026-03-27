@@ -1231,8 +1231,8 @@
 
     <script type="module">
       // ===== App Version (single source of truth) =====
-      const APP_VERSION = "v6.01.60";
-      const APP_VERSION_NOTE = "fix: reset handler covers all sliders incl. blush/breath/cream";
+      const APP_VERSION = "v6.01.61";
+      const APP_VERSION_NOTE = "fix: camera filters fallback to CSS filter on iOS/iPadOS WebKit";
 
       function getOverlayPixelRatio() {
         // Must match resizeCreamOverlayCanvas()/resizeBreathOverlayCanvas() DPR clamp for performance.
@@ -1318,6 +1318,14 @@
       let camTempStrength = 0; // -1..1 (warm(+)/cool(-))
       let camRedStrength = 0; // 0..1
       let camSkinSmoothStrength = 0; // 0..1
+      // iOS/iPadOS WebKit は CanvasRenderingContext2D.filter 未サポートのため CSS filter にフォールバック
+      const _ctxFilterSupported = (() => {
+        try {
+          const _tc = document.createElement("canvas").getContext("2d");
+          _tc.filter = "brightness(200%)";
+          return _tc.filter === "brightness(200%)";
+        } catch (_) { return false; }
+      })();
       const glowCanvas = document.createElement("canvas");
       const glowCtx = glowCanvas.getContext("2d", { willReadFrequently: false });
       const smoothCanvas = document.createElement("canvas");
@@ -3886,8 +3894,16 @@
           c -= skin * 0.1; // soften contrast
         }
 
-        // CanvasRenderingContext2D.filter supports these (Chrome/Safari modern)
-        cameraFilterStr = `brightness(${b}%) saturate(${s}%) contrast(${c}%) blur(${bl}px) sepia(${sp}%)`;
+        const filterStr = `brightness(${b}%) saturate(${s}%) contrast(${c}%) blur(${bl}px) sepia(${sp}%)`;
+        if (_ctxFilterSupported) {
+          // ctx.filter で動作する環境（Chrome desktop, 最新Safari等）
+          cameraFilterStr = filterStr;
+          if (displayCanvas) displayCanvas.style.filter = "";
+        } else {
+          // iOS/iPad WebKit フォールバック: CSS filter を displayCanvas 要素に適用
+          cameraFilterStr = "none";
+          if (displayCanvas) displayCanvas.style.filter = filterStr;
+        }
       }
 
       function createBreathTexture() {
@@ -6118,10 +6134,11 @@
               renderer.domElement.parentElement.removeChild(renderer.domElement);
             }
           }
-          // displayCanvas を DOM から除去
+          // displayCanvas を DOM から除去、CSS filter もリセット
           if (displayCanvas && displayCanvas.parentElement) {
             displayCanvas.parentElement.removeChild(displayCanvas);
           }
+          if (displayCanvas) displayCanvas.style.filter = "";
 
           renderer = null;
           bgPlane = null;
