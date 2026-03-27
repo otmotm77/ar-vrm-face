@@ -1255,6 +1255,10 @@
       import * as THREE from "three";
       import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
       import { VRMLoaderPlugin, VRMUtils } from "@pixiv/three-vrm";
+      import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
+      import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
+      import { ShaderPass } from "three/addons/postprocessing/ShaderPass.js";
+      import { HueSaturationShader } from "three/addons/shaders/HueSaturationShader.js";
       // MediaPipe Tasks Vision (vision_bundle.mjs, pinned to 0.10.33)
       const vision = await import("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.33/vision_bundle.mjs");
       const { FaceLandmarker, FilesetResolver } = vision;
@@ -1263,6 +1267,8 @@
       const MODEL_BASE_SCALE = 40;
 
       let renderer = null;
+      let composer = null;
+      let saturationPass = null;
       let scene = null;
       let camera = null;
       let videoEl = null;
@@ -3321,6 +3327,7 @@
           camera.aspect = window.innerWidth / window.innerHeight;
           camera.updateProjectionMatrix();
           renderer.setSize(window.innerWidth, window.innerHeight);
+          if (composer) composer.setSize(window.innerWidth, window.innerHeight);
           updateBgPlaneSizeLetterbox();
         }
         // 2D overlay canvas used by breath/blush must match viewport, especially on orientation change.
@@ -3808,10 +3815,9 @@
       }
 
       function updateVRMFilter() {
-        const canvas = document.getElementById("three-canvas");
-        if (canvas) {
-          const s = vrmSatSlider.value;
-          canvas.style.filter = `saturate(${s}%)`;
+        if (saturationPass) {
+          // スライダー値 0-200（100=デフォルト）→ uniform -1〜1（0=変化なし）
+          saturationPass.uniforms["saturation"].value = (vrmSatSlider.value / 100) - 1;
         }
       }
 
@@ -6206,6 +6212,16 @@
 
           if (arContainer) arContainer.appendChild(renderer.domElement);
 
+          // EffectComposer（alpha対応のレンダーターゲット）
+          const rt = new THREE.WebGLRenderTarget(window.innerWidth, window.innerHeight, {
+            format: THREE.RGBAFormat,
+          });
+          composer = new EffectComposer(renderer, rt);
+          composer.addPass(new RenderPass(scene, camera));
+          saturationPass = new ShaderPass(HueSaturationShader);
+          saturationPass.uniforms["saturation"].value = 0;
+          composer.addPass(saturationPass);
+
           // Breath overlay canvas (2D particles). Placed above WebGL canvas.
           breathOverlayCanvas = document.createElement("canvas");
           breathOverlayCanvas.id = "breath-overlay";
@@ -6608,7 +6624,7 @@
             updateBreathEffect(delta);
             updateCreamVfx(delta);
             updateBlushDebug();
-            renderer.render(scene, camera);
+            composer.render();
           });
 
           // UI transitions
