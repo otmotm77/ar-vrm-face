@@ -465,10 +465,19 @@
         font-size: 9px;
         color: #666;
         font-family: monospace;
-        pointer-events: none;
+        cursor: pointer;
         background-color: rgba(255, 255, 255, 0.7);
         padding: 0 2px;
         border-radius: 2px;
+        user-select: none;
+        -webkit-user-select: none;
+      }
+      .val-display:hover {
+        color: #fff;
+        background-color: rgba(120, 160, 255, 0.8);
+      }
+      .val-display:active {
+        background-color: rgba(80, 200, 120, 0.9);
       }
 
       /* Compact layout for color picker rows (avoid large empty gaps) */
@@ -1222,8 +1231,8 @@
 
     <script type="module">
       // ===== App Version (single source of truth) =====
-      const APP_VERSION = "v6.01.58";
-      const APP_VERSION_NOTE = "fix: separate camera/VRM canvas layers";
+      const APP_VERSION = "v6.01.59";
+      const APP_VERSION_NOTE = "feat: tap value display to reset to default";
 
       function getOverlayPixelRatio() {
         // Must match resizeCreamOverlayCanvas()/resizeBreathOverlayCanvas() DPR clamp for performance.
@@ -2416,6 +2425,19 @@
         if (!el) return;
         // 初期表示
         updateSliderDisplay(el);
+
+        // 値表示タップでシステムデフォルト値にリセット
+        const disp = document.getElementById(el.id + "-val");
+        if (disp) {
+          disp.title = `タップでデフォルト値 (${el.defaultValue}) に戻す`;
+          disp.addEventListener("click", () => {
+            if (el.value === el.defaultValue) return;
+            el.value = el.defaultValue;
+            updateSliderDisplay(el);
+            el.dispatchEvent(new Event("input"));
+            saveSettings();
+          });
+        }
 
         el.addEventListener("input", () => {
           updateSliderDisplay(el);
