@@ -4480,6 +4480,11 @@
                   R.x += ux * spreadU;
                   R.y += uy * spreadU;
 
+                  // Dampen horizontal displacement from eye-midpoint (reduces yaw-induced drift)
+                  const _fcX = (le.x + re.x) * 0.5 + shiftX;
+                  L.x = _fcX + (L.x - _fcX) * 0.8;
+                  R.x = _fcX + (R.x - _fcX) * 0.8;
+
                   // Roll angle from eyes
                   const roll = Math.atan2(re.y - le.y, re.x - le.x);
 
