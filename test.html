@@ -4585,13 +4585,27 @@
         breathOverlayCtx.globalCompositeOperation = "screen";
         breathOverlayCtx.filter = "blur(1.6px)";
 
-        if (baseValid) {
-          lastMouthScreenX = baseMouthX + shiftX + offXpx;
-          lastMouthScreenY = baseMouthY + shiftY + offYpx;
-          lastMouthScreenValid = Number.isFinite(lastMouthScreenX) && Number.isFinite(lastMouthScreenY);
-        } else {
-          // keep previous if configured to hold last pose
-          lastMouthScreenValid = !!(holdLastPoseOnLost && lastMouthScreenValid);
+        // Prefer 3D emitter projection: correctly tracks yaw-induced horizontal mouth shift.
+        // breathOffX/Y/Z are already baked into the emitter's 3D position, so no extra 2D offset.
+        let _emitterOk = false;
+        if (breathEmitter && camera) {
+          breathEmitter.getWorldPosition(breathTmpV);
+          breathTmpV.project(camera);
+          if (Number.isFinite(breathTmpV.x) && Number.isFinite(breathTmpV.y) && breathTmpV.z < 1.0) {
+            lastMouthScreenX = (breathTmpV.x * 0.5 + 0.5) * w;
+            lastMouthScreenY = (-breathTmpV.y * 0.5 + 0.5) * h;
+            lastMouthScreenValid = Number.isFinite(lastMouthScreenX) && Number.isFinite(lastMouthScreenY);
+            _emitterOk = true;
+          }
+        }
+        if (!_emitterOk) {
+          if (baseValid) {
+            lastMouthScreenX = baseMouthX + shiftX + offXpx;
+            lastMouthScreenY = baseMouthY + shiftY + offYpx;
+            lastMouthScreenValid = Number.isFinite(lastMouthScreenX) && Number.isFinite(lastMouthScreenY);
+          } else {
+            lastMouthScreenValid = !!(holdLastPoseOnLost && lastMouthScreenValid);
+          }
         }
 
         // Update + draw existing particles
