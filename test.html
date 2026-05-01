@@ -868,7 +868,7 @@
 
           <div class="slider-container">
             <span class="slider-label">粘度</span>
-            <input type="range" id="cream-viscosity-slider" min="0.2" max="3.0" step="0.05" value="1.0" />
+            <input type="range" id="cream-viscosity-slider" min="0.2" max="5.0" step="0.05" value="1.0" />
             <span id="cream-viscosity-slider-val" class="val-display">1.0</span>
           </div>
 
@@ -1301,6 +1301,8 @@
       let latestFaceLandmarksVideoH = 0;
       let latestFaceLandmarksMpW = 0;
       let latestFaceLandmarksMpH = 0;
+      let latestFaceYawRad = 0.0;
+      let latestFacePitchRad = 0.0;
 
       let isFaceVisible = false;
 
@@ -6561,8 +6563,7 @@
           const tmpQuat = new THREE.Quaternion();
           const tmpScaleVec = new THREE.Vector3();
           const tmpEuler = new THREE.Euler();
-          let latestFaceYawRad = 0.0;
-          let latestFacePitchRad = 0.0;
+          // latestFaceYawRad / latestFacePitchRad are declared in outer scope
           // 改善案E: MediaPipe frame-skip state
           let _mpFrameSkipCounter = 0;
           let _mpLastResult = null;
