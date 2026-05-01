@@ -752,12 +752,12 @@
           <div style="font-size: 12px; opacity: 0.85; margin-top: 4px; line-height: 1.4">既に個別セーブがあるVRMに、保存済みデフォルトオプションを反映（上書き保存）します。</div>
           <div class="slider-container">
             <span class="slider-label">サイズ</span>
-            <input type="range" id="scale-slider" min="0.5" max="12.0" step="0.1" value="8.0" />
+            <input type="range" id="scale-slider" min="2.0" max="8.0" step="0.05" value="8.0" />
             <span id="scale-slider-val" class="val-display">8.0</span>
           </div>
           <div class="slider-container">
             <span class="slider-label">高さ</span>
-            <input type="range" id="y-slider" min="-2.0" max="2.0" step="0.05" value="0.2" />
+            <input type="range" id="y-slider" min="-1.0" max="1.0" step="0.01" value="0.2" />
             <span id="y-slider-val" class="val-display">0.2</span>
           </div>
 
@@ -1231,8 +1231,8 @@
 
     <script type="module">
       // ===== App Version (single source of truth) =====
-      const APP_VERSION = "v6.01.60";
-      const APP_VERSION_NOTE = "fix: reset handler covers all sliders incl. blush/breath/cream";
+      const APP_VERSION = "v6.01.62";
+      const APP_VERSION_NOTE = "feat: 吐息位置がyaw時に口に追従・紅潮がyaw時に奥側で縮小";
 
       function getOverlayPixelRatio() {
         // Must match resizeCreamOverlayCanvas()/resizeBreathOverlayCanvas() DPR clamp for performance.
@@ -1318,6 +1318,14 @@
       let camTempStrength = 0; // -1..1 (warm(+)/cool(-))
       let camRedStrength = 0; // 0..1
       let camSkinSmoothStrength = 0; // 0..1
+      // iOS/iPadOS WebKit は CanvasRenderingContext2D.filter 未サポートのため CSS filter にフォールバック
+      const _ctxFilterSupported = (() => {
+        try {
+          const _tc = document.createElement("canvas").getContext("2d");
+          _tc.filter = "brightness(200%)";
+          return _tc.filter === "brightness(200%)";
+        } catch (_) { return false; }
+      })();
       const glowCanvas = document.createElement("canvas");
       const glowCtx = glowCanvas.getContext("2d", { willReadFrequently: false });
       const smoothCanvas = document.createElement("canvas");
@@ -3886,8 +3894,16 @@
           c -= skin * 0.1; // soften contrast
         }
 
-        // CanvasRenderingContext2D.filter supports these (Chrome/Safari modern)
-        cameraFilterStr = `brightness(${b}%) saturate(${s}%) contrast(${c}%) blur(${bl}px) sepia(${sp}%)`;
+        const filterStr = `brightness(${b}%) saturate(${s}%) contrast(${c}%) blur(${bl}px) sepia(${sp}%)`;
+        if (_ctxFilterSupported) {
+          // ctx.filter で動作する環境（Chrome desktop, 最新Safari等）
+          cameraFilterStr = filterStr;
+          if (displayCanvas) displayCanvas.style.filter = "";
+        } else {
+          // iOS/iPad WebKit フォールバック: CSS filter を displayCanvas 要素に適用
+          cameraFilterStr = "none";
+          if (displayCanvas) displayCanvas.style.filter = filterStr;
+        }
       }
 
       function createBreathTexture() {
@@ -4302,7 +4318,7 @@
         breathOverlayCtx.filter = "none";
 
         // Internal helper to draw the 2D blush overlay given resolved screen positions.
-        const _drawBlush2D = (L, R, roll, faceW) => {
+        const _drawBlush2D = (L, R, roll, faceW, scaleL = 1.0, scaleR = 1.0) => {
           if (!L || !R || !Number.isFinite(faceW) || faceW <= 0) return;
           // Size
           const r = faceW * 0.2 * Math.max(0.5, Math.min(2.5, blushSize));
@@ -4329,10 +4345,11 @@
             _blushGradKey = blushKey;
           }
 
-          const drawOne = (cx, cy, flip) => {
+          const drawOne = (cx, cy, flip, scale) => {
             breathOverlayCtx.save();
             breathOverlayCtx.translate(cx, cy);
             breathOverlayCtx.rotate(roll);
+            if (scale !== 1.0) breathOverlayCtx.scale(scale, scale);
 
             const grad = _blushGradCache;
             breathOverlayCtx.fillStyle = grad;
@@ -4359,8 +4376,8 @@
             breathOverlayCtx.restore();
           };
 
-          drawOne(L.x, L.y, false);
-          drawOne(R.x, R.y, true);
+          drawOne(L.x, L.y, false, scaleL);
+          drawOne(R.x, R.y, true, scaleR);
 
           breathOverlayCtx.restore();
         }; // --- Cheek blush (2D overlay; sticks to tracked face) ---
@@ -4379,7 +4396,7 @@
               const roll = s.roll || 0;
               const scale = (sx + sy) * 0.5;
               const faceW = Math.max(10, (s.faceW || 10) * scale);
-              _drawBlush2D(L, R, roll, faceW);
+              _drawBlush2D(L, R, roll, faceW, s.scaleL ?? 1.0, s.scaleR ?? 1.0);
             } catch (_) {}
           } else {
             // Live landmarks path
@@ -4463,8 +4480,26 @@
                   R.x += ux * spreadU;
                   R.y += uy * spreadU;
 
+                  // Dampen horizontal displacement from eye-midpoint (reduces yaw-induced drift)
+                  const _fcX = (le.x + re.x) * 0.5 + shiftX;
+                  L.x = _fcX + (L.x - _fcX) * 0.8;
+                  R.x = _fcX + (R.x - _fcX) * 0.8;
+
                   // Roll angle from eyes
                   const roll = Math.atan2(re.y - le.y, re.x - le.x);
+
+                  // Yaw-based size: far-side blush appears smaller (pseudo perspective)
+                  let yawScaleL = 1.0, yawScaleR = 1.0;
+                  const noseTipLm = pt(1);
+                  if (noseTipLm) {
+                    const nn = mapXY(noseTipLm);
+                    const eyeMidX = (le.x + re.x) * 0.5;
+                    const eyeMidY = (le.y + re.y) * 0.5;
+                    // Nose offset along face-local U axis (positive = nose to right = face turned right)
+                    const noseU = ((nn.x - eyeMidX) * ux + (nn.y - eyeMidY) * uy) / faceW;
+                    yawScaleR = Math.max(0.15, 1 - 3.0 * Math.max(0, noseU));
+                    yawScaleL = Math.max(0.15, 1 - 3.0 * Math.max(0, -noseU));
+                  }
 
                   if (blushDebugEnabled) {
                     blush2DDebug = {
@@ -4499,9 +4534,11 @@
                     R: { x: R.x, y: R.y },
                     roll,
                     faceW,
+                    scaleL: yawScaleL,
+                    scaleR: yawScaleR,
                   };
 
-                  _drawBlush2D(L, R, roll, faceW);
+                  _drawBlush2D(L, R, roll, faceW, yawScaleL, yawScaleR);
                 }
               }
             }
@@ -4572,6 +4609,23 @@
         if (baseValid) {
           lastMouthScreenX = baseMouthX + shiftX + offXpx;
           lastMouthScreenY = baseMouthY + shiftY + offYpx;
+
+          // Yaw correction: add the screen-space X delta from adjustmentGroup root to breathEmitter.
+          // At yaw=0 this is ~0; when face turns sideways the emitter shifts horizontally in screen space.
+          if (breathEmitter && adjustmentGroup && camera) {
+            breathEmitter.getWorldPosition(breathTmpV);
+            breathTmpV.project(camera);
+            breathTmpV2.setFromMatrixPosition(adjustmentGroup.matrixWorld).project(camera);
+            if (
+              Number.isFinite(breathTmpV.x) &&
+              Number.isFinite(breathTmpV2.x) &&
+              breathTmpV.z < 1.0 &&
+              breathTmpV2.z < 1.0
+            ) {
+              lastMouthScreenX -= (breathTmpV.x - breathTmpV2.x) * 0.5 * w;
+            }
+          }
+
           lastMouthScreenValid = Number.isFinite(lastMouthScreenX) && Number.isFinite(lastMouthScreenY);
         } else {
           // keep previous if configured to hold last pose
@@ -5251,7 +5305,7 @@
         enforceCreamLimit();
       }
 
-      function drawCreamBlob(ctx, x, y, r, opacity, angleRad = 0, stretchY = 1.0, rxScale = 1.0) {
+      function drawCreamBlob(ctx, x, y, r, opacity, angleRad = 0, stretchY = 1.0, rxScale = 1.0, creamTint = false) {
         ctx.save();
         ctx.translate(x, y);
         ctx.rotate(angleRad);
@@ -5268,9 +5322,15 @@
 
         // 1. 薄い半透明ベース（まだらの薄い部分・エッジ付近の透明感）
         const base = ctx.createRadialGradient(-rx * 0.08, -ry * 0.08, 0, 0, 0, Math.max(rx, ry) * 1.05);
-        base.addColorStop(0.0,  `rgba(238, 243, 255, ${0.50 * opacity})`);
-        base.addColorStop(0.60, `rgba(225, 235, 255, ${0.28 * opacity})`);
-        base.addColorStop(1.0,  `rgba(208, 222, 255, 0)`);
+        if (creamTint) {
+          base.addColorStop(0.0,  `rgba(255, 244, 195, ${0.55 * opacity})`);
+          base.addColorStop(0.60, `rgba(255, 238, 175, ${0.30 * opacity})`);
+          base.addColorStop(1.0,  `rgba(255, 230, 155, 0)`);
+        } else {
+          base.addColorStop(0.0,  `rgba(238, 243, 255, ${0.50 * opacity})`);
+          base.addColorStop(0.60, `rgba(225, 235, 255, ${0.28 * opacity})`);
+          base.addColorStop(1.0,  `rgba(208, 222, 255, 0)`);
+        }
         ctx.fillStyle = base;
         ctx.fillRect(lx, ly, W, H);
 
@@ -5279,10 +5339,17 @@
           -rx * 0.12, -ry * 0.16, 0,
           -rx * 0.05, -ry * 0.08, r * 0.70
         );
-        wg.addColorStop(0.0,  `rgba(255, 255, 255, ${0.92 * opacity})`);
-        wg.addColorStop(0.38, `rgba(252, 253, 255, ${0.65 * opacity})`);
-        wg.addColorStop(0.72, `rgba(248, 250, 255, ${0.28 * opacity})`);
-        wg.addColorStop(1.0,  `rgba(245, 248, 255, 0)`);
+        if (creamTint) {
+          wg.addColorStop(0.0,  `rgba(255, 248, 200, ${0.90 * opacity})`);
+          wg.addColorStop(0.38, `rgba(255, 244, 185, ${0.62 * opacity})`);
+          wg.addColorStop(0.72, `rgba(255, 240, 165, ${0.26 * opacity})`);
+          wg.addColorStop(1.0,  `rgba(255, 236, 150, 0)`);
+        } else {
+          wg.addColorStop(0.0,  `rgba(255, 255, 255, ${0.92 * opacity})`);
+          wg.addColorStop(0.38, `rgba(252, 253, 255, ${0.65 * opacity})`);
+          wg.addColorStop(0.72, `rgba(248, 250, 255, ${0.28 * opacity})`);
+          wg.addColorStop(1.0,  `rgba(245, 248, 255, 0)`);
+        }
         ctx.fillStyle = wg;
         ctx.fillRect(lx, ly, W, H);
 
@@ -5291,9 +5358,15 @@
           rx * 0.24, ry * 0.30, 0,
           rx * 0.18, ry * 0.22, r * 0.55
         );
-        cg.addColorStop(0.0,  `rgba(255, 249, 222, ${0.80 * opacity})`);
-        cg.addColorStop(0.42, `rgba(255, 246, 212, ${0.48 * opacity})`);
-        cg.addColorStop(1.0,  `rgba(255, 243, 205, 0)`);
+        if (creamTint) {
+          cg.addColorStop(0.0,  `rgba(255, 225, 100, ${0.85 * opacity})`);
+          cg.addColorStop(0.42, `rgba(255, 218, 88,  ${0.52 * opacity})`);
+          cg.addColorStop(1.0,  `rgba(255, 210, 75,  0)`);
+        } else {
+          cg.addColorStop(0.0,  `rgba(255, 249, 222, ${0.80 * opacity})`);
+          cg.addColorStop(0.42, `rgba(255, 246, 212, ${0.48 * opacity})`);
+          cg.addColorStop(1.0,  `rgba(255, 243, 205, 0)`);
+        }
         ctx.fillStyle = cg;
         ctx.fillRect(lx, ly, W, H);
 
@@ -5302,18 +5375,28 @@
           -rx * 0.30, ry * 0.10, 0,
           -rx * 0.22, ry * 0.06, r * 0.38
         );
-        cg2.addColorStop(0.0,  `rgba(255, 251, 232, ${0.58 * opacity})`);
-        cg2.addColorStop(1.0,  `rgba(255, 249, 225, 0)`);
+        if (creamTint) {
+          cg2.addColorStop(0.0,  `rgba(255, 232, 130, ${0.62 * opacity})`);
+          cg2.addColorStop(1.0,  `rgba(255, 225, 110, 0)`);
+        } else {
+          cg2.addColorStop(0.0,  `rgba(255, 251, 232, ${0.58 * opacity})`);
+          cg2.addColorStop(1.0,  `rgba(255, 249, 225, 0)`);
+        }
         ctx.fillStyle = cg2;
         ctx.fillRect(lx, ly, W, H);
 
         const gl = typeof creamGloss === "number" ? Math.max(0, Math.min(2, creamGloss)) : 1.0;
 
-        // 5. 内部散乱光（白濁・青白いミルク感）
+        // 5. 内部散乱光（白濁・青白いミルク感 / creamTint時はゴールデン）
         ctx.globalCompositeOperation = "screen";
         const ig = ctx.createRadialGradient(0, 0, 0, 0, 0, Math.max(rx, ry) * 0.60);
-        ig.addColorStop(0.0, `rgba(195, 215, 255, ${0.16 * opacity})`);
-        ig.addColorStop(1.0, `rgba(195, 215, 255, 0)`);
+        if (creamTint) {
+          ig.addColorStop(0.0, `rgba(255, 210, 80,  ${0.20 * opacity})`);
+          ig.addColorStop(1.0, `rgba(255, 200, 60,  0)`);
+        } else {
+          ig.addColorStop(0.0, `rgba(195, 215, 255, ${0.16 * opacity})`);
+          ig.addColorStop(1.0, `rgba(195, 215, 255, 0)`);
+        }
         ctx.fillStyle = ig;
         ctx.fillRect(lx, ly, W, H);
         ctx.globalCompositeOperation = "source-over";
@@ -5584,6 +5667,7 @@
                   const sv = su * (1.2 + Math.random() * 0.7); // vertical splashes
                   creamPatches.push({
                     isSplatter: true,
+                    creamTinted: Math.random() < 0.5,
                     groupId: p.groupId,
                     groupBornMs: p.groupBornMs,
                     age: 0,
@@ -5663,7 +5747,7 @@
               const stretchY = baseStretch * (1.0 + Math.max(0, (s.age - s.dripDelay) * (0.1 / (typeof creamViscosity === "number" ? Math.max(0.2, creamViscosity) : 1.0))));
               const rxScale = (s.rxScale || 1.0) * narrow;
               creamOverlayCtx.globalAlpha = 0.75 * a;
-              drawCreamBlob(creamOverlayCtx, pxy.x, pxy.y, r, 1.0, ang, stretchY, rxScale);
+              drawCreamBlob(creamOverlayCtx, pxy.x, pxy.y, r, 1.0, ang, stretchY, rxScale, !!(s.isSplatter && s.creamTinted));
               creamOverlayCtx.globalAlpha = 1.0;
             }
           }
@@ -6118,10 +6202,11 @@
               renderer.domElement.parentElement.removeChild(renderer.domElement);
             }
           }
-          // displayCanvas を DOM から除去
+          // displayCanvas を DOM から除去、CSS filter もリセット
           if (displayCanvas && displayCanvas.parentElement) {
             displayCanvas.parentElement.removeChild(displayCanvas);
           }
+          if (displayCanvas) displayCanvas.style.filter = "";
 
           renderer = null;
           bgPlane = null;
