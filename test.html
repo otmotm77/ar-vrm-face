@@ -987,13 +987,6 @@
               <span id="breath-offz-slider-val" class="val-display">0.00</span>
             </div>
 
-            <div class="toggle-container" style="display: none">
-              <label class="toggle-label">
-                <input type="checkbox" id="breath-debug-toggle" class="toggle-checkbox" />
-                吐息デバッグ（値表示）
-              </label>
-            </div>
-            <div id="breath-debug" style="display: none; font-family: monospace; font-size: 11px; color: #333; background: rgba(255, 255, 255, 0.65); padding: 6px; border-radius: 8px; margin-bottom: 10px; white-space: pre-wrap"></div>
           </div>
         </details>
 
@@ -1086,6 +1079,14 @@
               <div style="font-size: 11px; opacity: 0.85; margin-top: 4px; line-height: 1.4">自動射出などの内部値を画面上に表示します（不具合切り分け用）。</div>
             </div>
             <div id="blush-debug" style="display: none; font-family: monospace; font-size: 12px; line-height: 1.35; background: rgba(0, 0, 0, 0.55); color: #fff; padding: 6px; border-radius: 8px; margin-top: 6px; white-space: pre-wrap"></div>
+            <div class="slider-container" style="margin-top: 10px">
+              <label class="toggle-label">
+                <input type="checkbox" id="breath-debug-toggle" class="toggle-checkbox" />
+                吐息デバッグ（値表示）
+              </label>
+              <div style="font-size: 11px; opacity: 0.85; margin-top: 4px; line-height: 1.4">口の開き・座標・パーティクル数などを画面上に表示します。</div>
+            </div>
+            <div id="breath-debug" style="display: none; font-family: monospace; font-size: 11px; color: #fff; background: rgba(0, 0, 0, 0.55); padding: 6px; border-radius: 8px; margin-top: 6px; white-space: pre-wrap"></div>
           </div>
         </details>
 
@@ -2296,10 +2297,8 @@
         if (breathOffYSlider) breathOffYSlider.disabled = !isBreathEnabled;
         if (breathOffZSlider) breathOffZSlider.disabled = !isBreathEnabled;
 
-        // Keep breath debug hidden by default
-        breathDebugEnabled = false;
-        if (breathDebugToggle) breathDebugToggle.checked = false;
-        if (breathDebugEl) breathDebugEl.style.display = "none";
+        breathDebugEnabled = !!(breathDebugToggle && breathDebugToggle.checked);
+        if (breathDebugEl) breathDebugEl.style.display = breathDebugEnabled ? "block" : "none";
 
         breathStrength = parseFloat(breathStrengthSlider.value);
         if (!Number.isFinite(breathStrength)) breathStrength = 1.0;
