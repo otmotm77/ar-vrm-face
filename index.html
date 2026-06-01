@@ -6292,11 +6292,7 @@
             const wMax = caps.width.max;
             const hMax = caps.height.max;
             if (Number.isFinite(wMax) && Number.isFinite(hMax)) {
-              try {
-                await tr.applyConstraints({ width: { exact: wMax }, height: { exact: hMax } });
-              } catch (_) {
-                await tr.applyConstraints({ width: { ideal: wMax }, height: { ideal: hMax } });
-              }
+              await tr.applyConstraints({ width: { ideal: wMax }, height: { ideal: hMax } });
             }
           }
         } catch (_) {
