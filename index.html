@@ -179,6 +179,78 @@
       }
 
       /* VRM hide toggle (bottom-right, left of tracking pause) */
+      #lock-yaw-btn {
+        position: fixed;
+        right: 174px; /* 120 + 44 + 10 */
+        bottom: 12px;
+        width: 44px;
+        height: 44px;
+        border-radius: 999px;
+        border: none;
+        background: rgba(255, 255, 255, 0.25);
+        backdrop-filter: blur(6px);
+        -webkit-backdrop-filter: blur(6px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: rgba(0, 0, 0, 0.85);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+        pointer-events: auto;
+        z-index: 2002;
+        cursor: pointer;
+        transition:
+          transform 0.12s ease,
+          background 0.12s ease,
+          opacity 0.12s ease;
+      }
+      #lock-yaw-btn svg {
+        width: 22px;
+        height: 22px;
+      }
+      #lock-yaw-btn.active {
+        background: rgba(0, 0, 0, 0.18);
+        color: rgba(255, 255, 255, 0.92);
+      }
+      #lock-yaw-btn:active {
+        transform: scale(0.96);
+      }
+
+      #lock-pitch-btn {
+        position: fixed;
+        right: 228px; /* 174 + 44 + 10 */
+        bottom: 12px;
+        width: 44px;
+        height: 44px;
+        border-radius: 999px;
+        border: none;
+        background: rgba(255, 255, 255, 0.25);
+        backdrop-filter: blur(6px);
+        -webkit-backdrop-filter: blur(6px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: rgba(0, 0, 0, 0.85);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+        pointer-events: auto;
+        z-index: 2002;
+        cursor: pointer;
+        transition:
+          transform 0.12s ease,
+          background 0.12s ease,
+          opacity 0.12s ease;
+      }
+      #lock-pitch-btn svg {
+        width: 22px;
+        height: 22px;
+      }
+      #lock-pitch-btn.active {
+        background: rgba(0, 0, 0, 0.18);
+        color: rgba(255, 255, 255, 0.92);
+      }
+      #lock-pitch-btn:active {
+        transform: scale(0.96);
+      }
+
       #vrm-hide-btn {
         position: fixed;
         right: 120px; /* 66 + 44 + 10 */
@@ -715,6 +787,28 @@
       <!-- Left-bottom toggle button: Auto cream shot -->
       <button id="auto-cream-toggle-btn" class="cream-shot-btn" type="button" title="自動射出 ON/OFF">💧</button>
 
+      <!-- Right-bottom toggle button: Lock pitch (縦回転) -->
+      <button id="lock-pitch-btn" type="button" title="縦回転をロック" aria-pressed="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none"
+             stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 19a7 7 0 0 0 7-7"/>
+          <path d="M12 5a7 7 0 0 0-7 7"/>
+          <polyline points="9,19 12,19 12,16"/>
+          <polyline points="15,5 12,5 12,8"/>
+        </svg>
+      </button>
+
+      <!-- Right-bottom toggle button: Lock yaw (横回転) -->
+      <button id="lock-yaw-btn" type="button" title="横回転をロック" aria-pressed="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none"
+             stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M5 12a7 7 0 0 0 7 7"/>
+          <path d="M19 12a7 7 0 0 0-7-7"/>
+          <polyline points="5,9 5,12 8,12"/>
+          <polyline points="19,15 19,12 16,12"/>
+        </svg>
+      </button>
+
       <!-- Right-bottom toggle button: VRM hide -->
       <button id="vrm-hide-btn" type="button" title="VRM一時非表示" aria-pressed="false">
         <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
@@ -1237,8 +1331,8 @@
 
     <script type="module">
       // ===== App Version (single source of truth) =====
-      const APP_VERSION = "v6.01.62";
-      const APP_VERSION_NOTE = "feat: 吐息位置がyaw時に口に追従・紅潮がyaw時に奥側で縮小";
+      const APP_VERSION = "v6.01.63";
+      const APP_VERSION_NOTE = "feat: 縦回転・横回転の個別ロックボタン追加 / fix: カメラ初期化タイムアウト修正";
 
       function getOverlayPixelRatio() {
         // Must match resizeCreamOverlayCanvas()/resizeBreathOverlayCanvas() DPR clamp for performance.
@@ -1864,6 +1958,42 @@
           e.stopPropagation();
           setVrmHidden(!vrmHidden);
         });
+      }
+
+      // --- Lock Pitch Toggle (縦回転ロック) ---
+      const lockPitchBtn = document.getElementById("lock-pitch-btn");
+      let lockPitch = false;
+      let lockedPitchRad = 0;
+
+      function setLockPitch(enabled) {
+        lockPitch = !!enabled;
+        if (lockPitch) lockedPitchRad = latestFacePitchRad;
+        if (lockPitchBtn) {
+          lockPitchBtn.classList.toggle("active", lockPitch);
+          lockPitchBtn.setAttribute("aria-pressed", lockPitch ? "true" : "false");
+        }
+        showToast(lockPitch ? "縦回転をロックしました" : "縦回転のロックを解除しました");
+      }
+      if (lockPitchBtn) {
+        lockPitchBtn.addEventListener("click", (e) => { e.stopPropagation(); setLockPitch(!lockPitch); });
+      }
+
+      // --- Lock Yaw Toggle (横回転ロック) ---
+      const lockYawBtn = document.getElementById("lock-yaw-btn");
+      let lockYaw = false;
+      let lockedYawRad = 0;
+
+      function setLockYaw(enabled) {
+        lockYaw = !!enabled;
+        if (lockYaw) lockedYawRad = latestFaceYawRad;
+        if (lockYawBtn) {
+          lockYawBtn.classList.toggle("active", lockYaw);
+          lockYawBtn.setAttribute("aria-pressed", lockYaw ? "true" : "false");
+        }
+        showToast(lockYaw ? "横回転をロックしました" : "横回転のロックを解除しました");
+      }
+      if (lockYawBtn) {
+        lockYawBtn.addEventListener("click", (e) => { e.stopPropagation(); setLockYaw(!lockYaw); });
       }
 
       // --- Camera Zoom (global) ---
@@ -6689,6 +6819,12 @@
                   tmpEuler.setFromQuaternion(tmpQuat, "YXZ");
                   latestFacePitchRad = tmpEuler.x || 0.0;
                   latestFaceYawRad = tmpEuler.y || 0.0;
+                  if (lockPitch || lockYaw) {
+                    if (lockPitch) tmpEuler.x = lockedPitchRad;
+                    if (lockYaw) tmpEuler.y = lockedYawRad;
+                    tmpQuat.setFromEuler(tmpEuler);
+                    worldMatrix.compose(tmpPos, tmpQuat, tmpScaleVec);
+                  }
                 } catch (_) {}
 
                 // Apply our own uniform scale
