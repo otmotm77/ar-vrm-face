@@ -6030,7 +6030,7 @@
 
               // 奥に回り込む側のフェード（面の裏側に隠れる表現）
               const _yaw = typeof latestFaceYawRad !== "undefined" ? latestFaceYawRad || 0 : 0;
-              const _uFar = s.u * -Math.sign(_yaw);
+              const _uFar = s.u * Math.sign(_yaw);
               const _yawFade = (!_isOuter && _uFar > 0) ? Math.max(0, 1 - _uFar * Math.abs(_yaw) * 3.5) : 1.0;
 
               creamOverlayCtx.globalAlpha = 0.75 * a * _yawFade;
