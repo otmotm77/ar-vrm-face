@@ -1587,6 +1587,9 @@
       let creamOverlayCanvas = null;
       let creamOverlayCtx = null;
 
+      // Occluder mask for cream exclusion
+      let _occMaskRT = null, _occMaskBuf = null, _occMaskW = 0, _occMaskH = 0, _occMaskMat = null;
+
       // Cream VFX state
       let creamProjectiles = [];
       let creamPatches = [];
@@ -1619,6 +1622,63 @@
         // Add ±20% randomness to the interval
         creamNextAutoIntervalSec = base * (0.5 + Math.random() * 1.5);
         creamAutoElapsedSec = 0.0;
+      }
+
+      // オクルーダーマスクを小サイズ RenderTarget に描画して更新する
+      function updateOccluderMask(cssW, cssH, pr) {
+        const isOccOn = typeof occlusionToggle !== "undefined" && occlusionToggle && occlusionToggle.checked;
+        if (!isOccOn || !occluderGroup || !occluderGroup.visible || !renderer || !scene || !camera) {
+          _occMaskBuf = null;
+          return;
+        }
+        // 小さなマスクテクスチャ（128x128）で十分
+        const MW = 128, MH = 128;
+        if (!_occMaskRT || _occMaskW !== MW || _occMaskH !== MH) {
+          if (_occMaskRT) _occMaskRT.dispose();
+          _occMaskRT = new THREE.WebGLRenderTarget(MW, MH);
+          _occMaskBuf = new Uint8Array(MW * MH * 4);
+          _occMaskW = MW; _occMaskH = MH;
+        }
+        if (!_occMaskMat) _occMaskMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+
+        // 一時的にVRMを非表示にしてオクルーダーだけ白で描画
+        const vrmScene = typeof currentVrm !== "undefined" && currentVrm && currentVrm.scene;
+        const prevVrmVis = vrmScene ? vrmScene.visible : true;
+        if (vrmScene) vrmScene.visible = false;
+
+        const savedMats = [];
+        occluderGroup.children.forEach((c) => {
+          if (c.isMesh) {
+            savedMats.push(c.material);
+            c.material = _occMaskMat;
+            c.visible = true;
+          }
+        });
+
+        const prevRT = renderer.getRenderTarget();
+        renderer.setRenderTarget(_occMaskRT);
+        renderer.setClearColor(0x000000, 1);
+        renderer.clear();
+        renderer.render(scene, camera);
+        renderer.readRenderTargetPixels(_occMaskRT, 0, 0, MW, MH, _occMaskBuf);
+        renderer.setRenderTarget(prevRT);
+
+        // 元に戻す
+        if (vrmScene) vrmScene.visible = prevVrmVis;
+        let mi = 0;
+        occluderGroup.children.forEach((c) => {
+          if (c.isMesh && savedMats[mi] !== undefined) c.material = savedMats[mi++];
+        });
+      }
+
+      // (sx, sy) は CSS ピクセル座標。オクルーダーに塞がれていれば true
+      function isCreamOccluded(sx, sy, pr, cssW, cssH) {
+        if (!_occMaskBuf || !_occMaskW) return false;
+        const px = Math.round((sx / cssW) * _occMaskW);
+        // WebGL は左下原点なので Y を反転
+        const py = _occMaskH - 1 - Math.round((sy / cssH) * _occMaskH);
+        if (px < 0 || py < 0 || px >= _occMaskW || py >= _occMaskH) return false;
+        return _occMaskBuf[(py * _occMaskW + px) * 4] > 127;
       }
 
       function enforceCreamLimit() {
@@ -5967,6 +6027,9 @@
         creamProjectiles = keepProj;
         enforceCreamLimit();
 
+        // オクルーダーマスクを更新（毎フレーム、ただし有効時のみ）
+        updateOccluderMask(cssW, cssH, pr);
+
         // Patches
         const keepP = [];
         for (const s of creamPatches) {
@@ -6032,6 +6095,13 @@
               const _yaw = typeof latestFaceYawRad !== "undefined" ? latestFaceYawRad || 0 : 0;
               const _uFar = s.u * -Math.sign(_yaw);
               const _yawFade = (!_isOuter && _uFar > 0) ? Math.max(0, 1 - _uFar * Math.abs(_yaw) * 3.5) : 1.0;
+
+              // オクルーダーに塞がれている位置は描画しない（データは保持）
+              if (isCreamOccluded(pxy.x, pxy.y, pr, cssW, cssH)) {
+                creamOverlayCtx.globalAlpha = 1.0;
+                keepP.push(s);
+                continue;
+              }
 
               creamOverlayCtx.globalAlpha = 0.75 * a * _yawFade;
               drawCreamBlob(creamOverlayCtx, pxy.x, pxy.y, r, 1.0, ang, stretchY, rxScale, !!(s.isSplatter && s.creamTinted));
