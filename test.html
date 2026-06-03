@@ -5797,7 +5797,7 @@
           const ang = Math.atan2(dvy, dvx);
           // drawCreamDroplet is oriented along +Y (down). Rotate so +Y aligns with the motion direction.
           const angY = ang - Math.PI * 0.5;
-          const stretch = 1.0 + Math.min(1.6, Math.hypot(dvx, dvy) / 430);
+          const stretch = 1.15 + Math.min(0.85, Math.hypot(dvx, dvy) / 550);
 
           creamOverlayCtx.save();
           creamOverlayCtx.globalAlpha = p.a0 * (1 - tt * 0.15);
@@ -5905,8 +5905,8 @@
           // As the patch flows downward, gradually narrow its width (rx) for a tapered look
           if (typeof s.v0 !== "number") s.v0 = s.v;
           const flowDist = Math.max(0, s.v - s.v0); // face-local v units moved downward
-          const narrowT = Math.min(1, flowDist / 0.06); // reach max narrowing after ~0.03v
-          const narrow = Math.max(0.45, 1.0 - 0.55 * narrowT);
+          const narrowT = Math.min(1, flowDist / 0.08);
+          const narrow = Math.max(0.62, 1.0 - 0.36 * narrowT);
           if (useBasis) {
             // Stabilize attached patch projection against yaw foreshortening:
             // keep horizontal scale based on the hit-time eye distance, but rescale uniformly by current faceH.
