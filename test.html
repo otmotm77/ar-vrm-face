@@ -973,7 +973,7 @@
 
           <div class="slider-container">
             <span class="slider-label">貼り付き（擬似Z）</span>
-            <input type="range" id="cream-z-attach-slider" min="0" max="1" step="0.05" value="0.6" />
+            <input type="range" id="cream-z-attach-slider" min="0" max="1" step="0.05" value="0.92" />
             <span id="cream-z-attach-slider-val" class="val-display">0.6</span>
           </div>
 
@@ -1610,7 +1610,7 @@
       var creamViscosity = 1.0; // viscosity (0.2..3.0) higher=thicker
       var creamFaceTargetRatio = 1.0; // fraction of auto shots aimed at face (0..1)
       var creamSimulCount = 3; // simultaneous shots per tap/auto (1-20)
-      var creamZAttach = 0.6; // pseudo "Z-stick" (0..1)
+      var creamZAttach = 0.92; // pseudo "Z-stick" (0..1)
       let creamAutoElapsedSec = 0.0;
       let creamNextAutoIntervalSec = null;
 
@@ -6011,7 +6011,15 @@
               const baseStretch = s.sizeV && s.sizeU ? Math.min(3.0, Math.max(0.8, s.sizeV / Math.max(1e-6, s.sizeU))) : 1.0;
               const stretchY = baseStretch * (1.0 + Math.max(0, (s.age - s.dripDelay) * (0.1 / (typeof creamViscosity === "number" ? Math.max(0.2, creamViscosity) : 1.0))));
               const rxScale = (s.rxScale || 1.0) * narrow;
-              creamOverlayCtx.globalAlpha = 0.75 * a;
+
+              // 奥に回り込む側のフェード（面の裏側に隠れる表現）
+              const _yaw = typeof latestFaceYawRad !== "undefined" ? latestFaceYawRad || 0 : 0;
+              const _uFar = s.u * -Math.sign(_yaw); // 正 = 奥に回る側
+              const _yawFade = _uFar > 0 ? Math.max(0, 1 - _uFar * Math.abs(_yaw) * 3.5) : 1.0;
+              // 顔の範囲外フェード（|u| > 0.52 で消える）
+              const _outerFade = Math.max(0, 1 - Math.max(0, Math.abs(s.u) - 0.52) * 4.5);
+
+              creamOverlayCtx.globalAlpha = 0.75 * a * _yawFade * _outerFade;
               drawCreamBlob(creamOverlayCtx, pxy.x, pxy.y, r, 1.0, ang, stretchY, rxScale, !!(s.isSplatter && s.creamTinted));
               creamOverlayCtx.globalAlpha = 1.0;
             }
