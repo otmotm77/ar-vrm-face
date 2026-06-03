@@ -947,6 +947,11 @@
             <input type="range" id="cream-auto-interval-slider" min="0.2" max="10" step="0.1" value="1.5" />
             <span id="cream-auto-interval-slider-val" class="val-display">1.5</span>
           </div>
+          <div class="slider-container">
+            <span class="slider-label">顔への集中率</span>
+            <input type="range" id="cream-face-ratio-slider" min="0" max="1" step="0.05" value="1" />
+            <span id="cream-face-ratio-slider-val" class="val-display">1</span>
+          </div>
 
           <div class="slider-container">
             <span class="slider-label">クリームサイズ</span>
@@ -1574,6 +1579,7 @@
       var creamSizeMul = 1.0; // size multiplier (0.5-2.0)
       var creamGloss = 1.0; // highlight strength (0..2)
       var creamViscosity = 1.0; // viscosity (0.2..3.0) higher=thicker
+      var creamFaceTargetRatio = 1.0; // fraction of auto shots aimed at face (0..1)
       var creamSimulCount = 3; // simultaneous shots per tap/auto (1-20)
       var creamZAttach = 0.6; // pseudo "Z-stick" (0..1)
       let creamAutoElapsedSec = 0.0;
@@ -2613,6 +2619,18 @@
           updateSliderDisplay(creamAutoIntervalSlider);
           creamAutoIntervalSec = parseFloat(creamAutoIntervalSlider.value) || creamAutoIntervalSec;
           if (creamAutoEnabled) scheduleNextAutoCream(); // re-roll interval on change
+          saveSettings();
+        });
+      }
+
+      // Cream face target ratio slider (0..1)
+      const creamFaceRatioSlider = document.getElementById("cream-face-ratio-slider");
+      if (creamFaceRatioSlider) {
+        updateSliderDisplay(creamFaceRatioSlider);
+        creamFaceTargetRatio = parseFloat(creamFaceRatioSlider.value);
+        creamFaceRatioSlider.addEventListener("input", () => {
+          updateSliderDisplay(creamFaceRatioSlider);
+          creamFaceTargetRatio = parseFloat(creamFaceRatioSlider.value);
           saveSettings();
         });
       }
@@ -5719,7 +5737,18 @@
               const pr = getOverlayPixelRatio();
               const cssW = creamOverlayCanvas ? creamOverlayCanvas.width / pr : window.innerWidth;
               const cssH = creamOverlayCanvas ? creamOverlayCanvas.height / pr : window.innerHeight;
-              const tgt = sampleAutoCreamTargetPx(useBasis, cssW, cssH);
+              const _faceRatio = typeof creamFaceTargetRatio !== "undefined" ? Math.max(0, Math.min(1, creamFaceTargetRatio)) : 1.0;
+              const _aimFace = Math.random() < _faceRatio;
+              const tgt = _aimFace
+                ? sampleAutoCreamTargetPx(useBasis, cssW, cssH)
+                : {
+                    x: Math.random() * cssW,
+                    y: Math.random() * cssH,
+                    axX: { x: useBasis.ux || 1, y: useBasis.uy || 0 },
+                    axY: { x: useBasis.vx || 0, y: useBasis.vy || 1 },
+                    faceW: useBasis.faceW || 120,
+                    faceH: useBasis.faceH || 120,
+                  };
               if (tgt) {
                 // Apply model offsets (X via wrapper, Y via adjustment) in screen space so auto shots match the shifted model.
                 const sh = getModelOffsetScreenShiftPx(cssW, cssH);
