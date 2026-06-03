@@ -1092,6 +1092,35 @@
             </div>
 
           </div>
+
+          <div class="slider-container" style="margin-top: 8px; border-top: 1px solid rgba(255,255,255,0.12); padding-top: 6px;">
+            <span class="slider-label" style="font-size: 11px; opacity: 0.7">表情オフセット（カメラと重ねる）</span>
+          </div>
+          <div class="slider-container">
+            <span class="slider-label">😊 happy</span>
+            <input type="range" id="expr-happy-slider" min="0" max="1" step="0.01" value="0" />
+            <span id="expr-happy-slider-val" class="val-display">0.00</span>
+          </div>
+          <div class="slider-container">
+            <span class="slider-label">😢 sad</span>
+            <input type="range" id="expr-sad-slider" min="0" max="1" step="0.01" value="0" />
+            <span id="expr-sad-slider-val" class="val-display">0.00</span>
+          </div>
+          <div class="slider-container">
+            <span class="slider-label">😲 surprised</span>
+            <input type="range" id="expr-surprised-slider" min="0" max="1" step="0.01" value="0" />
+            <span id="expr-surprised-slider-val" class="val-display">0.00</span>
+          </div>
+          <div class="slider-container">
+            <span class="slider-label">😌 relaxed</span>
+            <input type="range" id="expr-relaxed-slider" min="0" max="1" step="0.01" value="0" />
+            <span id="expr-relaxed-slider-val" class="val-display">0.00</span>
+          </div>
+          <div class="slider-container">
+            <span class="slider-label">😠 angry</span>
+            <input type="range" id="expr-angry-slider" min="0" max="1" step="0.01" value="0" />
+            <span id="expr-angry-slider-val" class="val-display">0.00</span>
+          </div>
         </details>
 
         <details class="acc-section" data-acc="tracking">
@@ -2378,6 +2407,12 @@
       const breathDebugToggle = document.getElementById("breath-debug-toggle");
       breathDebugEl = document.getElementById("breath-debug");
 
+      const exprHappySlider     = document.getElementById("expr-happy-slider");
+      const exprSadSlider       = document.getElementById("expr-sad-slider");
+      const exprSurprisedSlider = document.getElementById("expr-surprised-slider");
+      const exprRelaxedSlider   = document.getElementById("expr-relaxed-slider");
+      const exprAngrySlider     = document.getElementById("expr-angry-slider");
+
       function updateBlushUI(skipSave = false) {
         if (!blushToggle || !blushStrengthSlider) return;
 
@@ -2491,6 +2526,16 @@
       if (breathDebugToggle) breathDebugToggle.addEventListener("change", () => updateBreathUI(false));
       if (typeof updateBlushUI === "function") updateBlushUI(true);
       updateBreathUI(true);
+
+      [exprHappySlider, exprSadSlider, exprSurprisedSlider, exprRelaxedSlider, exprAngrySlider]
+        .forEach((sl) => {
+          if (!sl) return;
+          updateSliderDisplay(sl);
+          sl.addEventListener("input", () => {
+            updateSliderDisplay(sl);
+            saveSettings();
+          });
+        });
       const occlusionToggle = document.getElementById("occlusion-toggle");
       const occlusionSliders = document.getElementById("occlusion-sliders");
       const occlusionDebugToggle = document.getElementById("occlusion-debug-toggle");
@@ -3712,6 +3757,11 @@
           breathOffX: typeof breathOffXSlider !== "undefined" && breathOffXSlider ? breathOffXSlider.value : "0.0",
           breathOffY: typeof breathOffYSlider !== "undefined" && breathOffYSlider ? breathOffYSlider.value : "0.0",
           breathOffZ: typeof breathOffZSlider !== "undefined" && breathOffZSlider ? breathOffZSlider.value : "0.0",
+          exprHappy:     typeof exprHappySlider     !== "undefined" && exprHappySlider     ? exprHappySlider.value     : "0",
+          exprSad:       typeof exprSadSlider       !== "undefined" && exprSadSlider       ? exprSadSlider.value       : "0",
+          exprSurprised: typeof exprSurprisedSlider !== "undefined" && exprSurprisedSlider ? exprSurprisedSlider.value : "0",
+          exprRelaxed:   typeof exprRelaxedSlider   !== "undefined" && exprRelaxedSlider   ? exprRelaxedSlider.value   : "0",
+          exprAngry:     typeof exprAngrySlider     !== "undefined" && exprAngrySlider     ? exprAngrySlider.value     : "0",
           // Blush (per-VRM)
           blushEnabled: typeof blushToggle !== "undefined" && blushToggle ? !!blushToggle.checked : false,
           blushStrength: typeof blushStrengthSlider !== "undefined" && blushStrengthSlider ? blushStrengthSlider.value : "0.70",
@@ -3847,6 +3897,12 @@
               if (Object.prototype.hasOwnProperty.call(s, "breathOffX") && breathOffXSlider) breathOffXSlider.value = s.breathOffX;
               if (Object.prototype.hasOwnProperty.call(s, "breathOffY") && breathOffYSlider) breathOffYSlider.value = s.breathOffY;
               if (Object.prototype.hasOwnProperty.call(s, "breathOffZ") && breathOffZSlider) breathOffZSlider.value = s.breathOffZ;
+
+              if (Object.prototype.hasOwnProperty.call(s, "exprHappy")     && exprHappySlider)     { exprHappySlider.value     = s.exprHappy;     updateSliderDisplay(exprHappySlider); }
+              if (Object.prototype.hasOwnProperty.call(s, "exprSad")       && exprSadSlider)       { exprSadSlider.value       = s.exprSad;       updateSliderDisplay(exprSadSlider); }
+              if (Object.prototype.hasOwnProperty.call(s, "exprSurprised") && exprSurprisedSlider) { exprSurprisedSlider.value = s.exprSurprised; updateSliderDisplay(exprSurprisedSlider); }
+              if (Object.prototype.hasOwnProperty.call(s, "exprRelaxed")   && exprRelaxedSlider)   { exprRelaxedSlider.value   = s.exprRelaxed;   updateSliderDisplay(exprRelaxedSlider); }
+              if (Object.prototype.hasOwnProperty.call(s, "exprAngry")     && exprAngrySlider)     { exprAngrySlider.value     = s.exprAngry;     updateSliderDisplay(exprAngrySlider); }
 
               // Blush (per-VRM)
               if (Object.prototype.hasOwnProperty.call(s, "blushEnabled") && blushToggle) blushToggle.checked = !!s.blushEnabled;
@@ -7135,6 +7191,19 @@
         vrm.expressionManager.setValue("blink", blinkMax);
         vrm.expressionManager.setValue("blink_l", finalBlinkL);
         vrm.expressionManager.setValue("blink_r", finalBlinkR);
+
+        // 表情オフセットスライダー（カメラ追従に重ねる）
+        const _exprSliders = {
+          happy:     typeof exprHappySlider     !== "undefined" ? exprHappySlider     : null,
+          sad:       typeof exprSadSlider       !== "undefined" ? exprSadSlider       : null,
+          surprised: typeof exprSurprisedSlider !== "undefined" ? exprSurprisedSlider : null,
+          relaxed:   typeof exprRelaxedSlider   !== "undefined" ? exprRelaxedSlider   : null,
+          angry:     typeof exprAngrySlider     !== "undefined" ? exprAngrySlider     : null,
+        };
+        for (const [name, sl] of Object.entries(_exprSliders)) {
+          const v = sl ? Math.max(0, Math.min(1, parseFloat(sl.value) || 0)) : 0;
+          vrm.expressionManager.setValue(name, v);
+        }
       }
 
       const loader = new GLTFLoader();
