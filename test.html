@@ -3782,6 +3782,7 @@
           creamViscosity: typeof creamViscositySlider !== "undefined" && creamViscositySlider ? creamViscositySlider.value : String(creamViscosity),
           creamSimul: typeof creamSimulCountSlider !== "undefined" && creamSimulCountSlider ? creamSimulCountSlider.value : String(creamSimulCount),
           creamZAttach: typeof creamZAttachSlider !== "undefined" && creamZAttachSlider ? creamZAttachSlider.value : String(creamZAttach),
+          creamFaceRatio: typeof creamFaceRatioSlider !== "undefined" && creamFaceRatioSlider ? creamFaceRatioSlider.value : String(creamFaceTargetRatio),
           trackingFacing: currentFacingMode,
           trackingMirror: !!mirrorEnabled,
         };
@@ -3951,6 +3952,11 @@
                 creamZAttachSlider.value = s.creamZAttach;
                 updateSliderDisplay(creamZAttachSlider);
                 creamZAttach = Math.max(0, Math.min(1, parseFloat(creamZAttachSlider.value) || creamZAttach));
+              }
+              if (Object.prototype.hasOwnProperty.call(s, "creamFaceRatio") && typeof creamFaceRatioSlider !== "undefined" && creamFaceRatioSlider) {
+                creamFaceRatioSlider.value = s.creamFaceRatio;
+                updateSliderDisplay(creamFaceRatioSlider);
+                creamFaceTargetRatio = Math.max(0, Math.min(1, parseFloat(creamFaceRatioSlider.value) || 1));
               }
               if (Object.prototype.hasOwnProperty.call(s, "creamGloss") && typeof creamGlossSlider !== "undefined" && creamGlossSlider) {
                 creamGlossSlider.value = s.creamGloss;
