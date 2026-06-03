@@ -5924,6 +5924,7 @@
                   rollBias: (Math.random() - 0.5) * 0.15,
                   // face-local v units per second (scaled by faceW in projection). keep it subtle.
                   flowVel: _flowVel,
+                  frozenPx: null,
                 });
 
                 const n = 2 + Math.floor(Math.random() * 3);
@@ -5954,6 +5955,7 @@
                     dripAcc: 0,
                     rollBias: (Math.random() - 0.5) * 0.25,
                     flowVel: 0.006 + Math.random() * 0.008,
+                    frozenPx: null,
                   });
                 }
               }
@@ -6004,7 +6006,21 @@
                   })()
                 : useBasis;
 
-            const pxy = faceLocalToScreenPx(s.u, s.v, _bPatch);
+            // VRMスケールに合わせた顔範囲閾値（u座標でのVRM顔の半幅相当）
+            const _vrmFaceThresh = Math.min(1.2, 0.62 * Math.max(0.6, getHeadOverlayScale()));
+            // 範囲外は初回の画面座標に固定してトラッキングで動かさない
+            const _isOuter = Math.abs(s.u) > _vrmFaceThresh;
+            let pxy;
+            if (_isOuter) {
+              if (!s.frozenPx) {
+                const _fp = faceLocalToScreenPx(s.u, s.v, _bPatch);
+                s.frozenPx = _fp ? { x: _fp.x, y: _fp.y } : null;
+              }
+              pxy = s.frozenPx;
+            } else {
+              pxy = faceLocalToScreenPx(s.u, s.v, _bPatch);
+            }
+
             if (pxy) {
               const r = (_bPatch.faceW || useBasis.faceW) * 0.18 * s.sizeU * spread;
               const ang = (useBasis.roll || 0) + (s.rollBias || 0) + (s.rotRad || 0);
@@ -6014,12 +6030,10 @@
 
               // 奥に回り込む側のフェード（面の裏側に隠れる表現）
               const _yaw = typeof latestFaceYawRad !== "undefined" ? latestFaceYawRad || 0 : 0;
-              const _uFar = s.u * -Math.sign(_yaw); // 正 = 奥に回る側
-              const _yawFade = _uFar > 0 ? Math.max(0, 1 - _uFar * Math.abs(_yaw) * 3.5) : 1.0;
-              // 顔の範囲外フェード（|u| > 0.52 で消える）
-              const _outerFade = Math.max(0, 1 - Math.max(0, Math.abs(s.u) - 0.52) * 4.5);
+              const _uFar = s.u * -Math.sign(_yaw);
+              const _yawFade = (!_isOuter && _uFar > 0) ? Math.max(0, 1 - _uFar * Math.abs(_yaw) * 3.5) : 1.0;
 
-              creamOverlayCtx.globalAlpha = 0.75 * a * _yawFade * _outerFade;
+              creamOverlayCtx.globalAlpha = 0.75 * a * _yawFade;
               drawCreamBlob(creamOverlayCtx, pxy.x, pxy.y, r, 1.0, ang, stretchY, rxScale, !!(s.isSplatter && s.creamTinted));
               creamOverlayCtx.globalAlpha = 1.0;
             }
