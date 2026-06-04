@@ -4824,33 +4824,21 @@
           }
         }
 
+        // Extra offsets (sliders) in "unit" relative to displayed video width
+        const unitPx = rect2 ? rect2.w * 0.25 : Math.min(w, h) * 0.25;
+        const offXpx = breathOffX * unitPx;
+        const offYpx = breathOffY * unitPx;
+
         // Breath rendering uses screen blend & blur for soft mist
         breathOverlayCtx.globalCompositeOperation = "screen";
         breathOverlayCtx.filter = "blur(1.6px)";
 
-        // 吐息の口元スクリーン座標は breathEmitter の3D投影をX/Yとも直接使う。
-        // breathEmitter は顎/頭ボーンの子で、breathOffX/Y/Z*unit も updateBreathEmitterFromVRM で
-        // 焼き込み済み。よって「ユーザーオフセット込みのVRM口元」を表し、どの回転角でも正しい。
-        // baseMouthX/Y(2D) + shiftX/Y + offpx の混在補正は inputRotationDeg=90 や顔ロールで
-        // 破綻し、吐息が画面外へドリフトするため廃止。offXpx/offYpx(2D) は breathOff が3Dで
-        // 既に入っているため二重適用になるので使わない。
-        if (breathEmitter && camera) {
-          breathEmitter.getWorldPosition(breathTmpV); // ancestor matrixWorld を更新して投影
-          breathTmpV.project(camera);
-          if (Number.isFinite(breathTmpV.x) && Number.isFinite(breathTmpV.y) && breathTmpV.z < 1.0) {
-            lastMouthScreenX = (breathTmpV.x * 0.5 + 0.5) * w;
-            lastMouthScreenY = (-breathTmpV.y * 0.5 + 0.5) * h;
-            lastMouthScreenValid = Number.isFinite(lastMouthScreenX) && Number.isFinite(lastMouthScreenY);
-          } else if (baseValid) {
-            lastMouthScreenX = baseMouthX;
-            lastMouthScreenY = baseMouthY;
-            lastMouthScreenValid = true;
-          } else {
-            lastMouthScreenValid = !!(holdLastPoseOnLost && lastMouthScreenValid);
-          }
-        } else if (baseValid) {
-          lastMouthScreenX = baseMouthX;
-          lastMouthScreenY = baseMouthY;
+        // 吐息位置は MediaPipe 口ランドマーク由来の baseMouthX/Y（全回転で表示画面上の実口に一致）
+        // ＋ 2D位置スライダーのみを使う。shiftX/Y（adjustmentGroup差分）と breathEmitter 投影は
+        // inputRotationDeg=90 で画面外へ破綻するため吐息からは使わない。
+        if (baseValid) {
+          lastMouthScreenX = baseMouthX + offXpx;
+          lastMouthScreenY = baseMouthY + offYpx;
           lastMouthScreenValid = true;
         } else {
           lastMouthScreenValid = !!(holdLastPoseOnLost && lastMouthScreenValid);
