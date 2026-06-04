@@ -4824,37 +4824,35 @@
           }
         }
 
-        // Extra offsets (sliders) in "unit" relative to displayed video width
-        const unitPx = rect2 ? rect2.w * 0.25 : Math.min(w, h) * 0.25;
-        const offXpx = breathOffX * unitPx;
-        const offYpx = breathOffY * unitPx;
-
         // Breath rendering uses screen blend & blur for soft mist
         breathOverlayCtx.globalCompositeOperation = "screen";
         breathOverlayCtx.filter = "blur(1.6px)";
 
-        if (baseValid) {
-          lastMouthScreenY = baseMouthY + shiftY + offYpx;
-
-          // Breath X: breathEmitter の3D投影を直接スクリーン座標に使う。
-          // baseMouthX (2D) を起点にした補正方式は、顔のロールや inputRotationDeg=90 で
-          // 2D口元と3Dピボットの画面上のズレが大きくなり、深さ次第で画面外に出るため廃止。
-          // Y は baseMouthY + shiftY を維持（顎ボーンはmouth開口部より低いため）。
-          if (breathEmitter && camera) {
-            breathEmitter.getWorldPosition(breathTmpV);
-            breathTmpV.project(camera);
-            if (Number.isFinite(breathTmpV.x) && breathTmpV.z < 1.0) {
-              lastMouthScreenX = (breathTmpV.x * 0.5 + 0.5) * w + offXpx;
-            } else {
-              lastMouthScreenX = baseMouthX + offXpx;
-            }
+        // 吐息の口元スクリーン座標は breathEmitter の3D投影をX/Yとも直接使う。
+        // breathEmitter は顎/頭ボーンの子で、breathOffX/Y/Z*unit も updateBreathEmitterFromVRM で
+        // 焼き込み済み。よって「ユーザーオフセット込みのVRM口元」を表し、どの回転角でも正しい。
+        // baseMouthX/Y(2D) + shiftX/Y + offpx の混在補正は inputRotationDeg=90 や顔ロールで
+        // 破綻し、吐息が画面外へドリフトするため廃止。offXpx/offYpx(2D) は breathOff が3Dで
+        // 既に入っているため二重適用になるので使わない。
+        if (breathEmitter && camera) {
+          breathEmitter.getWorldPosition(breathTmpV); // ancestor matrixWorld を更新して投影
+          breathTmpV.project(camera);
+          if (Number.isFinite(breathTmpV.x) && Number.isFinite(breathTmpV.y) && breathTmpV.z < 1.0) {
+            lastMouthScreenX = (breathTmpV.x * 0.5 + 0.5) * w;
+            lastMouthScreenY = (-breathTmpV.y * 0.5 + 0.5) * h;
+            lastMouthScreenValid = Number.isFinite(lastMouthScreenX) && Number.isFinite(lastMouthScreenY);
+          } else if (baseValid) {
+            lastMouthScreenX = baseMouthX;
+            lastMouthScreenY = baseMouthY;
+            lastMouthScreenValid = true;
           } else {
-            lastMouthScreenX = baseMouthX + offXpx;
+            lastMouthScreenValid = !!(holdLastPoseOnLost && lastMouthScreenValid);
           }
-
-          lastMouthScreenValid = Number.isFinite(lastMouthScreenX) && Number.isFinite(lastMouthScreenY);
+        } else if (baseValid) {
+          lastMouthScreenX = baseMouthX;
+          lastMouthScreenY = baseMouthY;
+          lastMouthScreenValid = true;
         } else {
-          // keep previous if configured to hold last pose
           lastMouthScreenValid = !!(holdLastPoseOnLost && lastMouthScreenValid);
         }
 
