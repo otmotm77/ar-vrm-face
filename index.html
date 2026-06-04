@@ -1365,8 +1365,8 @@
 
     <script type="module">
       // ===== App Version (single source of truth) =====
-      const APP_VERSION = "v6.01.64";
-      const APP_VERSION_NOTE = "feat: 表情オフセット・顔集中率スライダー追加 / fix: クリーム粘液感・色改善";
+      const APP_VERSION = "v6.01.65";
+      const APP_VERSION_NOTE = "fix: 吐息位置を口ランドマーク基準に修正(回転時の不具合解消) / feat: 横縦ロック時に紅潮・吐息の回転補正を凍結";
 
       function getOverlayPixelRatio() {
         // Must match resizeCreamOverlayCanvas()/resizeBreathOverlayCanvas() DPR clamp for performance.
@@ -2017,6 +2017,12 @@
       const lockYawBtn = document.getElementById("lock-yaw-btn");
       let lockYaw = false;
       let lockedYawRad = 0;
+
+      // ロック時に紅潮・吐息の対応軸の回転補正を凍結するための値（顔ローカル u/v 成分）。
+      // ロックOFF中は毎フレーム live 値で更新、ON中は更新を止めることでロック時点の値に固定される。
+      let blushFrozenDuL = 0, blushFrozenDuR = 0, blushFrozenDvL = 0, blushFrozenDvR = 0;
+      let blushFrozenYawScaleL = 1.0, blushFrozenYawScaleR = 1.0;
+      let breathFrozenDu = 0, breathFrozenDv = 0;
 
       function setLockYaw(enabled) {
         lockYaw = !!enabled;
@@ -4731,6 +4737,40 @@
                     yawScaleL = Math.max(0.15, 1 - 3.0 * Math.max(0, -noseU));
                   }
 
+                  // ロック時：対応軸の回転補正を凍結する。
+                  // L/R を両目中点からの顔ローカル(u,v)成分に分解し、横ロック=u成分、縦ロック=v成分を
+                  // ロック時点の値で固定して再構成（eyeMid=平行移動・u/v軸=roll には追従）。
+                  {
+                    const emX = (le.x + re.x) * 0.5;
+                    const emY = (le.y + re.y) * 0.5;
+                    const decomp = (P) => ({
+                      du: (P.x - emX) * ux + (P.y - emY) * uy,
+                      dv: (P.x - emX) * vx + (P.y - emY) * vy,
+                    });
+                    const dL = decomp(L);
+                    const dR = decomp(R);
+                    if (!lockYaw) {
+                      blushFrozenDuL = dL.du;
+                      blushFrozenDuR = dR.du;
+                      blushFrozenYawScaleL = yawScaleL;
+                      blushFrozenYawScaleR = yawScaleR;
+                    }
+                    if (!lockPitch) {
+                      blushFrozenDvL = dL.dv;
+                      blushFrozenDvR = dR.dv;
+                    }
+                    const duL = lockYaw ? blushFrozenDuL : dL.du;
+                    const duR = lockYaw ? blushFrozenDuR : dR.du;
+                    const dvL = lockPitch ? blushFrozenDvL : dL.dv;
+                    const dvR = lockPitch ? blushFrozenDvR : dR.dv;
+                    L = { x: emX + duL * ux + dvL * vx, y: emY + duL * uy + dvL * vy };
+                    R = { x: emX + duR * ux + dvR * vx, y: emY + duR * uy + dvR * vy };
+                    if (lockYaw) {
+                      yawScaleL = blushFrozenYawScaleL;
+                      yawScaleR = blushFrozenYawScaleR;
+                    }
+                  }
+
                   if (blushDebugEnabled) {
                     blush2DDebug = {
                       inputRotationDeg,
@@ -4837,8 +4877,40 @@
         // ＋ 2D位置スライダーのみを使う。shiftX/Y（adjustmentGroup差分）と breathEmitter 投影は
         // inputRotationDeg=90 で画面外へ破綻するため吐息からは使わない。
         if (baseValid) {
-          lastMouthScreenX = baseMouthX + offXpx;
-          lastMouthScreenY = baseMouthY + offYpx;
+          let mx = baseMouthX;
+          let my = baseMouthY;
+
+          // ロック時：対応軸の回転補正を凍結（紅潮と同方式の顔ローカル成分凍結）。
+          // ランドマークがあれば常に実行し、ロックOFF中は凍結値を live で更新、ON中は固定する。
+          const lm = latestFaceLandmarks0;
+          if (lm && lm[33] && lm[263] && rect2) {
+            const mpW = inputRotationDeg !== 0 ? mpOffscreenCanvas.width || vw2 : vw2;
+            const mpH = inputRotationDeg !== 0 ? mpOffscreenCanvas.height || vh2 : vh2;
+            const mapV = (p) => {
+              const vv = mpLandmarkNormToVideoNorm(p.x, p.y, vw2, vh2, inputRotationDeg, mpW, mpH);
+              return { x: rect2.x + vv.x * rect2.w, y: rect2.y + vv.y * rect2.h };
+            };
+            const le = mapV(lm[33]);
+            const re = mapV(lm[263]);
+            const fw = Math.max(10, Math.hypot(re.x - le.x, re.y - le.y));
+            const ux = (re.x - le.x) / fw;
+            const uy = (re.y - le.y) / fw;
+            const vx2 = -uy;
+            const vy2 = ux;
+            const emx = (le.x + re.x) * 0.5;
+            const emy = (le.y + re.y) * 0.5;
+            let du = (mx - emx) * ux + (my - emy) * uy;
+            let dv = (mx - emx) * vx2 + (my - emy) * vy2;
+            if (!lockYaw) breathFrozenDu = du;
+            if (!lockPitch) breathFrozenDv = dv;
+            if (lockYaw) du = breathFrozenDu;
+            if (lockPitch) dv = breathFrozenDv;
+            mx = emx + du * ux + dv * vx2;
+            my = emy + du * uy + dv * vy2;
+          }
+
+          lastMouthScreenX = mx + offXpx;
+          lastMouthScreenY = my + offYpx;
           lastMouthScreenValid = true;
         } else {
           lastMouthScreenValid = !!(holdLastPoseOnLost && lastMouthScreenValid);
