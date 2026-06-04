@@ -4834,26 +4834,30 @@
         breathOverlayCtx.filter = "blur(1.6px)";
 
         if (baseValid) {
-          lastMouthScreenX = baseMouthX + shiftX + offXpx;
           lastMouthScreenY = baseMouthY + shiftY + offYpx;
 
-          // Yaw correction: breathEmitter の画面X位置に合わせて口元座標を補正。
-          // 基準を adjustmentGroup から pivotGroup に変更。
-          // adjustmentGroup は inputRotationDeg=90 のとき画面外 (NDC.x < -1) に出て
-          // 補正量が大きくなりすぎるため、常に画面内に収まる pivotGroup を使う。
+          // Breath X: (breathEmitter_screen - pivot_without_wrapperX_screen) の差分で補正。
+          // shiftX + yaw補正の旧方式は adjustmentGroup が大きな回転角（inputRotationDeg=90
+          // や顔のロール）で画面外に出ると大幅ズレを起こすため、emitter vs pivot の直接
+          // スクリーン差分に置き換え。回転角によらず常に正しい位置に収まる。
+          let breathCorrX = 0;
           if (breathEmitter && pivotGroup && camera) {
             breathEmitter.getWorldPosition(breathTmpV);
             breathTmpV.project(camera);
-            breathTmpV2.setFromMatrixPosition(pivotGroup.matrixWorld).project(camera);
+            breathTmpV3.setFromMatrixPosition(pivotGroup.matrixWorld);
+            if (wrapperGroup) {
+              const wx = wrapperGroup.position && Number.isFinite(wrapperGroup.position.x) ? wrapperGroup.position.x : 0;
+              if (wx !== 0) breathTmpV3.x -= wx;
+            }
+            breathTmpV3.project(camera);
             if (
-              Number.isFinite(breathTmpV.x) &&
-              Number.isFinite(breathTmpV2.x) &&
-              breathTmpV.z < 1.0 &&
-              breathTmpV2.z < 1.0
+              Number.isFinite(breathTmpV.x) && Number.isFinite(breathTmpV3.x) &&
+              breathTmpV.z < 1.0 && breathTmpV3.z < 1.0
             ) {
-              lastMouthScreenX -= (breathTmpV.x - breathTmpV2.x) * 0.5 * w;
+              breathCorrX = (breathTmpV.x - breathTmpV3.x) * 0.5 * w;
             }
           }
+          lastMouthScreenX = baseMouthX + breathCorrX + offXpx;
 
           lastMouthScreenValid = Number.isFinite(lastMouthScreenX) && Number.isFinite(lastMouthScreenY);
         } else {
