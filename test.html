@@ -4833,29 +4833,31 @@
         breathOverlayCtx.globalCompositeOperation = "screen";
         breathOverlayCtx.filter = "blur(1.6px)";
 
-        // breathEmitter の3D位置をカメラ投影して直接スクリーン座標に使う。
-        // 旧実装（2Dランドマーク + shiftX + yaw補正）は inputRotationDeg=90 のとき
-        // adjustmentGroup が画面外 (NDC.x < -1) に出て lastMouthScreenX が画面外に
-        // 飛んでしまうため廃止。
-        if (breathEmitter && camera) {
-          breathEmitter.getWorldPosition(breathTmpV);
-          breathTmpV.project(camera);
-          if (Number.isFinite(breathTmpV.x) && Number.isFinite(breathTmpV.y) && breathTmpV.z < 1.0) {
-            lastMouthScreenX = (breathTmpV.x * 0.5 + 0.5) * w + offXpx;
-            lastMouthScreenY = (-breathTmpV.y * 0.5 + 0.5) * h + offYpx;
-            lastMouthScreenValid = Number.isFinite(lastMouthScreenX) && Number.isFinite(lastMouthScreenY);
-          } else if (baseValid) {
-            lastMouthScreenX = baseMouthX + offXpx;
-            lastMouthScreenY = baseMouthY + offYpx;
-            lastMouthScreenValid = true;
-          } else {
-            lastMouthScreenValid = !!(holdLastPoseOnLost && lastMouthScreenValid);
+        if (baseValid) {
+          lastMouthScreenX = baseMouthX + shiftX + offXpx;
+          lastMouthScreenY = baseMouthY + shiftY + offYpx;
+
+          // Yaw correction: breathEmitter の画面X位置に合わせて口元座標を補正。
+          // 基準を adjustmentGroup から pivotGroup に変更。
+          // adjustmentGroup は inputRotationDeg=90 のとき画面外 (NDC.x < -1) に出て
+          // 補正量が大きくなりすぎるため、常に画面内に収まる pivotGroup を使う。
+          if (breathEmitter && pivotGroup && camera) {
+            breathEmitter.getWorldPosition(breathTmpV);
+            breathTmpV.project(camera);
+            breathTmpV2.setFromMatrixPosition(pivotGroup.matrixWorld).project(camera);
+            if (
+              Number.isFinite(breathTmpV.x) &&
+              Number.isFinite(breathTmpV2.x) &&
+              breathTmpV.z < 1.0 &&
+              breathTmpV2.z < 1.0
+            ) {
+              lastMouthScreenX -= (breathTmpV.x - breathTmpV2.x) * 0.5 * w;
+            }
           }
-        } else if (baseValid) {
-          lastMouthScreenX = baseMouthX + offXpx;
-          lastMouthScreenY = baseMouthY + offYpx;
-          lastMouthScreenValid = true;
+
+          lastMouthScreenValid = Number.isFinite(lastMouthScreenX) && Number.isFinite(lastMouthScreenY);
         } else {
+          // keep previous if configured to hold last pose
           lastMouthScreenValid = !!(holdLastPoseOnLost && lastMouthScreenValid);
         }
 
