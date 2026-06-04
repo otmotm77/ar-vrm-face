@@ -4836,28 +4836,21 @@
         if (baseValid) {
           lastMouthScreenY = baseMouthY + shiftY + offYpx;
 
-          // Breath X: (breathEmitter_screen - pivot_without_wrapperX_screen) の差分で補正。
-          // shiftX + yaw補正の旧方式は adjustmentGroup が大きな回転角（inputRotationDeg=90
-          // や顔のロール）で画面外に出ると大幅ズレを起こすため、emitter vs pivot の直接
-          // スクリーン差分に置き換え。回転角によらず常に正しい位置に収まる。
-          let breathCorrX = 0;
-          if (breathEmitter && pivotGroup && camera) {
+          // Breath X: breathEmitter の3D投影を直接スクリーン座標に使う。
+          // baseMouthX (2D) を起点にした補正方式は、顔のロールや inputRotationDeg=90 で
+          // 2D口元と3Dピボットの画面上のズレが大きくなり、深さ次第で画面外に出るため廃止。
+          // Y は baseMouthY + shiftY を維持（顎ボーンはmouth開口部より低いため）。
+          if (breathEmitter && camera) {
             breathEmitter.getWorldPosition(breathTmpV);
             breathTmpV.project(camera);
-            breathTmpV3.setFromMatrixPosition(pivotGroup.matrixWorld);
-            if (wrapperGroup) {
-              const wx = wrapperGroup.position && Number.isFinite(wrapperGroup.position.x) ? wrapperGroup.position.x : 0;
-              if (wx !== 0) breathTmpV3.x -= wx;
+            if (Number.isFinite(breathTmpV.x) && breathTmpV.z < 1.0) {
+              lastMouthScreenX = (breathTmpV.x * 0.5 + 0.5) * w + offXpx;
+            } else {
+              lastMouthScreenX = baseMouthX + offXpx;
             }
-            breathTmpV3.project(camera);
-            if (
-              Number.isFinite(breathTmpV.x) && Number.isFinite(breathTmpV3.x) &&
-              breathTmpV.z < 1.0 && breathTmpV3.z < 1.0
-            ) {
-              breathCorrX = (breathTmpV.x - breathTmpV3.x) * 0.5 * w;
-            }
+          } else {
+            lastMouthScreenX = baseMouthX + offXpx;
           }
-          lastMouthScreenX = baseMouthX + breathCorrX + offXpx;
 
           lastMouthScreenValid = Number.isFinite(lastMouthScreenX) && Number.isFinite(lastMouthScreenY);
         } else {
