@@ -4792,7 +4792,8 @@
           baseValid = Number.isFinite(baseMouthX) && Number.isFinite(baseMouthY);
         }
 
-        // Convert VRM UI adjustments (pivot -> adjustment) into a screen-space delta
+        // Convert VRM UI adjustments (pivot -> adjustment) into a screen-space delta.
+        // shiftX/Y は blush overlay が使うため引き続き計算する。
         shiftX = 0;
         shiftY = 0;
         if (pivotGroup && adjustmentGroup && camera) {
@@ -4807,20 +4808,16 @@
             shiftX = px1 - px0;
             shiftY = py1 - py0;
 
-            // If X offset is applied via wrapperGroup, include that screen-space shift as well.
-            // This keeps 2D overlays (blush/breath) aligned with the model when X moves the rotation center.
             if (wrapperGroup && camera) {
               const wx = wrapperGroup.position && Number.isFinite(wrapperGroup.position.x) ? wrapperGroup.position.x : 0;
               if (wx !== 0) {
                 breathTmpV3.setFromMatrixPosition(pivotGroup.matrixWorld);
-                breathTmpV3.x -= wx; // approximate "unshifted" tracked pose
+                breathTmpV3.x -= wx;
                 breathTmpV3.project(camera);
                 const ok2 = Number.isFinite(breathTmpV3.x) && Number.isFinite(breathTmpV3.y) && Number.isFinite(breathTmpV3.z);
                 if (ok2) {
-                  const pxBase = (breathTmpV3.x * 0.5 + 0.5) * w;
-                  const pyBase = (-breathTmpV3.y * 0.5 + 0.5) * h;
-                  shiftX += px0 - pxBase;
-                  shiftY += py0 - pyBase;
+                  shiftX += px0 - (breathTmpV3.x * 0.5 + 0.5) * w;
+                  shiftY += py0 - (-breathTmpV3.y * 0.5 + 0.5) * h;
                 }
               }
             }
@@ -4836,29 +4833,14 @@
         breathOverlayCtx.globalCompositeOperation = "screen";
         breathOverlayCtx.filter = "blur(1.6px)";
 
+        // 吐息位置は MediaPipe 口ランドマーク由来の baseMouthX/Y（全回転で表示画面上の実口に一致）
+        // ＋ 2D位置スライダーのみを使う。shiftX/Y（adjustmentGroup差分）と breathEmitter 投影は
+        // inputRotationDeg=90 で画面外へ破綻するため吐息からは使わない。
         if (baseValid) {
-          lastMouthScreenX = baseMouthX + shiftX + offXpx;
-          lastMouthScreenY = baseMouthY + shiftY + offYpx;
-
-          // Yaw correction: add the screen-space X delta from adjustmentGroup root to breathEmitter.
-          // At yaw=0 this is ~0; when face turns sideways the emitter shifts horizontally in screen space.
-          if (breathEmitter && adjustmentGroup && camera) {
-            breathEmitter.getWorldPosition(breathTmpV);
-            breathTmpV.project(camera);
-            breathTmpV2.setFromMatrixPosition(adjustmentGroup.matrixWorld).project(camera);
-            if (
-              Number.isFinite(breathTmpV.x) &&
-              Number.isFinite(breathTmpV2.x) &&
-              breathTmpV.z < 1.0 &&
-              breathTmpV2.z < 1.0
-            ) {
-              lastMouthScreenX -= (breathTmpV.x - breathTmpV2.x) * 0.5 * w;
-            }
-          }
-
-          lastMouthScreenValid = Number.isFinite(lastMouthScreenX) && Number.isFinite(lastMouthScreenY);
+          lastMouthScreenX = baseMouthX + offXpx;
+          lastMouthScreenY = baseMouthY + offYpx;
+          lastMouthScreenValid = true;
         } else {
-          // keep previous if configured to hold last pose
           lastMouthScreenValid = !!(holdLastPoseOnLost && lastMouthScreenValid);
         }
 
