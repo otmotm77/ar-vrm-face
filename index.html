@@ -1085,11 +1085,6 @@
               <input type="range" id="breath-offy-slider" min="-2.0" max="2.0" step="0.01" value="0.00" />
               <span id="breath-offy-slider-val" class="val-display">0.00</span>
             </div>
-            <div class="slider-container" id="breath-offset-container-z" style="opacity: 0.9">
-              <span class="slider-label">吐息位置Z</span>
-              <input type="range" id="breath-offz-slider" min="-1.0" max="1.0" step="0.01" value="0.00" />
-              <span id="breath-offz-slider-val" class="val-display">0.00</span>
-            </div>
 
           </div>
 
@@ -1365,8 +1360,8 @@
 
     <script type="module">
       // ===== App Version (single source of truth) =====
-      const APP_VERSION = "v6.01.65";
-      const APP_VERSION_NOTE = "fix: 吐息位置を口ランドマーク基準に修正(回転時の不具合解消) / feat: 横縦ロック時に紅潮・吐息の回転補正を凍結";
+      const APP_VERSION = "v6.01.66";
+      const APP_VERSION_NOTE = "chore: 未使用コード除去(3D吐息パーティクル・3D紅潮メッシュ・無効Zスライダー等) / fix: 吐息位置を口ランドマーク基準に修正 / feat: 横縦ロック時に紅潮・吐息の回転補正を凍結";
 
       function getOverlayPixelRatio() {
         // Must match resizeCreamOverlayCanvas()/resizeBreathOverlayCanvas() DPR clamp for performance.
@@ -1471,7 +1466,6 @@
       let _vigGradKey = "";
       let _blushGradCache = null;
       let _blushGradKey = "";
-      let videoTexture = null; // THREE.CanvasTexture
       let cameraFilterStr = "none";
 
       let deviceGamma = 0;
@@ -1501,75 +1495,18 @@
 
       const holdLastPoseOnLost = true; // 顔認識が外れても最後の姿勢・表情を保持
 
-      // --- Blush (cheek flush) effect ---
+      // --- Blush (cheek flush) effect --- (2D overlay only)
       let isBlushEnabled = false;
       let blushStrength = 0.7;
-      let blushStripePattern = null;
       let blushOffX = 0.0; // common shift (unit multipliers)
       let blushOffY = 0.0;
 
       let blushSize = 1.0; // size multiplier
       let blushSpread = 1.0; // distance multiplier (cheek width)
-      const blushFront = true; // always render blush on top
       let blushColor = "#ff5fa0"; // blush color (hex)
-      let blushTexColor = null; // internal cache for blush texture color
-      const USE_BLUSH_2D_OVERLAY = true; // robust: sticks to tracked face/video space
-
-      // Cheek blush meshes (attached to VRM head; sticks to the model)
-      let blushMeshL = null;
-      let blushMeshR = null;
-      let blushMatL = null;
-      let blushMatR = null;
-      let blushTex = null;
-      const blushTmpV = new THREE.Vector3();
-      const blushTmpV2 = new THREE.Vector3();
-      let blushUnit = 0.06;
       let blushDebugEnabled = false;
       let blushDebugEl = null;
-      const blushDbgTmp = new THREE.Vector3();
-      const blushDbgTmp2 = new THREE.Vector3();
       const _dirLightPosTemp = new THREE.Vector3(); // 改善案D: pre-allocated to avoid per-frame GC
-
-      function applyBlushRenderMode() {
-        // Controls whether blush planes are drawn on top of the VRM (UI toggle).
-        // Called from updateBlushUI and when meshes/materials are created.
-        const front = !!blushFront;
-        const mats = [];
-        if (blushMatL) mats.push(blushMatL);
-        if (blushMatR && blushMatR !== blushMatL) mats.push(blushMatR);
-
-        for (const mat of mats) {
-          mat.transparent = true;
-          mat.depthWrite = false;
-          if (front) {
-            mat.depthTest = false;
-            mat.polygonOffset = true;
-            mat.polygonOffsetFactor = -2;
-            mat.polygonOffsetUnits = -2;
-          } else {
-            mat.depthTest = true;
-            mat.polygonOffset = false;
-            mat.polygonOffsetFactor = 0;
-            mat.polygonOffsetUnits = 0;
-          }
-          mat.needsUpdate = true;
-        }
-
-        if (blushMeshL) blushMeshL.renderOrder = front ? 9999 : 100;
-        if (blushMeshR) blushMeshR.renderOrder = front ? 9999 : 100;
-      }
-
-      let latestCheekLVideoX = 0.35; // normalized in ORIGINAL video frame (0..1)
-      let latestCheekLVideoY = 0.55;
-      let latestCheekRVideoX = 0.65;
-      let latestCheekRVideoY = 0.55;
-      let latestCheekVideoValid = false;
-
-      let lastCheekScreenLX = 0,
-        lastCheekScreenLY = 0;
-      let lastCheekScreenRX = 0,
-        lastCheekScreenRY = 0;
-      let lastCheekScreenValid = false;
 
       // --- Breath (white mist) effect ---
       let isBreathEnabled = false;
@@ -1577,7 +1514,6 @@
       let breathSize = 1.0;
       let breathOffX = 0.0; // multiplier of unit
       let breathOffY = 0.0;
-      let breathOffZ = 0.0;
       let breathDebugEnabled = false;
       let breathDebugEl = null;
 
@@ -1698,29 +1634,23 @@
       let lastFaceVisibleNow = false;
       const breathTmpV = new THREE.Vector3(); // reuse for projection
       const breathTmpV2 = new THREE.Vector3(); // pivot projection
+      const breathTmpV3 = new THREE.Vector3(); // pivot without wrapper projection (blush shift)
 
-      const breathTmpV3 = new THREE.Vector3(); // pivot without wrapper projection
-      let breathEmitter = null;
       creamOverlayCanvas = null;
       creamOverlayCtx = null;
       creamProjectiles = [];
       creamPatches = [];
       creamLastFaceBasis = null;
       creamLastFaceValid = false;
-      // attached to adjustmentGroup (mouth position proxy)
-      let breathParticles = null; // world-space particles group
-      let breathTexture = null; // shared texture
+      let breathTexture = null; // shared texture (2D overlay particle sprite)
       let breathEmitAcc = 0;
       let lastMouthOpenForEffects = 0;
       const BREATH_THRESHOLD = 0.08;
-      const BREATH_MAX_PARTICLES = 90;
 
       let dirLight = null;
       let hemiLight = null;
       let lightHelper = null;
       let occluderGroup = null;
-
-      let faceMesh = null;
 
       let smoothedMouthRatio = 0;
       let smoothedEyeL = 1;
@@ -2405,10 +2335,8 @@
 
       const breathOffXSlider = document.getElementById("breath-offx-slider");
       const breathOffYSlider = document.getElementById("breath-offy-slider");
-      const breathOffZSlider = document.getElementById("breath-offz-slider");
       const breathOffXVal = document.getElementById("breath-offx-slider-val");
       const breathOffYVal = document.getElementById("breath-offy-slider-val");
-      const breathOffZVal = document.getElementById("breath-offz-slider-val");
 
       const breathDebugToggle = document.getElementById("breath-debug-toggle");
       breathDebugEl = document.getElementById("breath-debug");
@@ -2452,21 +2380,7 @@
           const v = (blushColorPicker.value || "").trim();
           if (/^#[0-9a-fA-F]{6}$/.test(v)) blushColor = v.toLowerCase();
           if (blushColorPickerVal) blushColorPickerVal.textContent = blushColor;
-          // Force rebuild texture/pattern when color changes
-          if (blushTexColor !== blushColor) {
-            blushTexColor = null;
-            try {
-              if (blushTex) {
-                blushTex.dispose();
-              }
-            } catch (_) {}
-            blushTex = null;
-          }
         }
-
-        if (currentVrm && typeof updateBlushAnchorsFromVRM === "function") updateBlushAnchorsFromVRM(currentVrm);
-
-        applyBlushRenderMode();
 
         if (!skipSave) saveSettings();
       }
@@ -2482,7 +2396,6 @@
         if (breathSizeSlider) breathSizeSlider.disabled = !isBreathEnabled;
         if (breathOffXSlider) breathOffXSlider.disabled = !isBreathEnabled;
         if (breathOffYSlider) breathOffYSlider.disabled = !isBreathEnabled;
-        if (breathOffZSlider) breathOffZSlider.disabled = !isBreathEnabled;
 
         breathDebugEnabled = !!(breathDebugToggle && breathDebugToggle.checked);
         if (breathDebugEl) breathDebugEl.style.display = breathDebugEnabled ? "block" : "none";
@@ -2500,16 +2413,11 @@
         if (breathSizeSliderVal) breathSizeSliderVal.textContent = breathSize.toFixed(2);
         if (breathSizeContainer) breathSizeContainer.style.opacity = isBreathEnabled ? "1.0" : "0.6";
 
-        // Offset multipliers (relative to VRM "unit" length)
+        // Offset multipliers (2D screen-space, relative to displayed video width)
         breathOffX = breathOffXSlider ? parseFloat(breathOffXSlider.value) || 0 : 0;
         breathOffY = breathOffYSlider ? parseFloat(breathOffYSlider.value) || 0 : 0;
-        breathOffZ = breathOffZSlider ? parseFloat(breathOffZSlider.value) || 0 : 0;
         if (breathOffXVal) breathOffXVal.textContent = breathOffX.toFixed(2);
         if (breathOffYVal) breathOffYVal.textContent = breathOffY.toFixed(2);
-        if (breathOffZVal) breathOffZVal.textContent = breathOffZ.toFixed(2);
-
-        // Recompute mouth emitter position so changes reflect immediately (if VRM-side emitter is used)
-        if (currentVrm && typeof updateBreathEmitterFromVRM === "function") updateBreathEmitterFromVRM(currentVrm);
 
         // Persist with the currently loaded VRM (same mechanism as other options)
         if (!skipSave && typeof saveSettings === "function") saveSettings();
@@ -2528,7 +2436,6 @@
       if (breathSizeSlider) breathSizeSlider.addEventListener("input", () => updateBreathUI(false));
       if (breathOffXSlider) breathOffXSlider.addEventListener("input", () => updateBreathUI(false));
       if (breathOffYSlider) breathOffYSlider.addEventListener("input", () => updateBreathUI(false));
-      if (breathOffZSlider) breathOffZSlider.addEventListener("input", () => updateBreathUI(false));
       if (breathDebugToggle) breathDebugToggle.addEventListener("change", () => updateBreathUI(false));
       if (typeof updateBlushUI === "function") updateBlushUI(true);
       updateBreathUI(true);
@@ -3699,13 +3606,6 @@
         }
       }
 
-      function getViewportSizeAtDepth(depth) {
-        if (!camera) return { width: 1, height: 1 };
-        const viewportHeightAtDepth = 2 * depth * Math.tan(THREE.MathUtils.degToRad(0.5 * camera.fov));
-        const viewportWidthAtDepth = viewportHeightAtDepth * camera.aspect;
-        return { width: viewportWidthAtDepth, height: viewportHeightAtDepth };
-      }
-
       function updateBgPlaneSizeLetterbox() {
         if (!displayCanvas) return;
         displayCanvas.style.objectFit = bgFitMode || "cover";
@@ -3762,7 +3662,6 @@
           breathSize: typeof breathSizeSlider !== "undefined" && breathSizeSlider ? breathSizeSlider.value : "1.0",
           breathOffX: typeof breathOffXSlider !== "undefined" && breathOffXSlider ? breathOffXSlider.value : "0.0",
           breathOffY: typeof breathOffYSlider !== "undefined" && breathOffYSlider ? breathOffYSlider.value : "0.0",
-          breathOffZ: typeof breathOffZSlider !== "undefined" && breathOffZSlider ? breathOffZSlider.value : "0.0",
           exprHappy:     typeof exprHappySlider     !== "undefined" && exprHappySlider     ? exprHappySlider.value     : "0",
           exprSad:       typeof exprSadSlider       !== "undefined" && exprSadSlider       ? exprSadSlider.value       : "0",
           exprSurprised: typeof exprSurprisedSlider !== "undefined" && exprSurprisedSlider ? exprSurprisedSlider.value : "0",
@@ -3903,7 +3802,6 @@
               if (s.breathSize && breathSizeSlider) breathSizeSlider.value = s.breathSize;
               if (Object.prototype.hasOwnProperty.call(s, "breathOffX") && breathOffXSlider) breathOffXSlider.value = s.breathOffX;
               if (Object.prototype.hasOwnProperty.call(s, "breathOffY") && breathOffYSlider) breathOffYSlider.value = s.breathOffY;
-              if (Object.prototype.hasOwnProperty.call(s, "breathOffZ") && breathOffZSlider) breathOffZSlider.value = s.breathOffZ;
 
               if (Object.prototype.hasOwnProperty.call(s, "exprHappy")     && exprHappySlider)     { exprHappySlider.value     = s.exprHappy;     updateSliderDisplay(exprHappySlider); }
               if (Object.prototype.hasOwnProperty.call(s, "exprSad")       && exprSadSlider)       { exprSadSlider.value       = s.exprSad;       updateSliderDisplay(exprSadSlider); }
@@ -4161,351 +4059,6 @@
         return tex;
       }
 
-      function updateBlushAnchorsFromVRM(vrm) {
-        if (typeof USE_BLUSH_2D_OVERLAY !== "undefined" && USE_BLUSH_2D_OVERLAY) {
-          // 2D overlay mode: don't create 3D cheek planes (they are sensitive to VRM bone scaling/head-only transforms).
-          if (blushMeshL) blushMeshL.visible = false;
-          if (blushMeshR) blushMeshR.visible = false;
-          return;
-        }
-
-        // NOTE: Despite the historical name, this now updates 3D blush meshes that are
-        // attached to the VRM head so they stay perfectly "stuck" to the model.
-        if (!vrm) return;
-
-        const humanoid = vrm.humanoid;
-        const getBone = (name) => {
-          try {
-            return humanoid?.getNormalizedBoneNode?.(name) || humanoid?.getRawBoneNode?.(name) || humanoid?.getBoneNode?.(name) || null;
-          } catch (_) {
-            return null;
-          }
-        };
-
-        const head = getBone("head") || adjustmentGroup || vrm.scene;
-
-        // Build texture once
-        const ensureTexture = () => {
-          if (blushTex && blushTexColor === blushColor) return blushTex;
-
-          blushTexColor = blushColor || "#ff5fa0";
-
-          const c = document.createElement("canvas");
-          c.width = 256;
-          c.height = 256;
-          const ctx = c.getContext("2d");
-          ctx.clearRect(0, 0, 256, 256);
-
-          // --- color helpers for customizable blush ---
-          const hexToRgb = (hex) => {
-            const m = /^#?([0-9a-fA-F]{6})$/.exec(hex || "");
-            if (!m) return { r: 255, g: 95, b: 160 };
-            const n = parseInt(m[1], 16);
-            return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
-          };
-          const mix = (a, b, t) => ({
-            r: Math.round(a.r + (b.r - a.r) * t),
-            g: Math.round(a.g + (b.g - a.g) * t),
-            b: Math.round(a.b + (b.b - a.b) * t),
-          });
-          const base = hexToRgb(blushTexColor || blushColor || "#ff5fa0");
-          const white = { r: 255, g: 255, b: 255 };
-          const soft0 = mix(base, white, 0.55);
-          const soft1 = mix(base, white, 0.75);
-
-          // Soft pink base (radial)
-          const g = ctx.createRadialGradient(128, 128, 16, 128, 128, 120);
-          g.addColorStop(0.0, `rgba(${soft0.r}, ${soft0.g}, ${soft0.b}, 0.55)`);
-          g.addColorStop(0.55, `rgba(${soft1.r}, ${soft1.g}, ${soft1.b}, 0.22)`);
-          g.addColorStop(1.0, `rgba(${soft1.r}, ${soft1.g}, ${soft1.b}, 0.0)`);
-          ctx.fillStyle = g;
-          ctx.beginPath();
-          ctx.ellipse(128, 128, 120, 96, 0, 0, Math.PI * 2);
-          ctx.fill();
-
-          // Pink hatch stripes
-          ctx.globalAlpha = 0.65;
-          ctx.strokeStyle = `rgba(${base.r}, ${base.g}, ${base.b}, 0.95)`;
-          ctx.lineWidth = 10;
-          for (let i = -256; i <= 512; i += 28) {
-            ctx.beginPath();
-            ctx.moveTo(i, 0);
-            ctx.lineTo(i - 256, 256);
-            ctx.stroke();
-          }
-          ctx.globalAlpha = 1.0;
-
-          blushTex = new THREE.CanvasTexture(c);
-          // three r160+ uses colorSpace; older uses encoding. Guard both.
-          try {
-            blushTex.colorSpace = THREE.SRGBColorSpace;
-          } catch (_) {}
-          try {
-            blushTex.encoding = THREE.sRGBEncoding;
-          } catch (_) {}
-          blushTex.needsUpdate = true;
-          return blushTex;
-        };
-
-        const ensureMeshes = () => {
-          const tex = ensureTexture();
-
-          if (!blushMatL) {
-            blushMatL = new THREE.MeshBasicMaterial({
-              map: tex,
-              transparent: true,
-              opacity: 1.0,
-              depthTest: false,
-              depthWrite: false,
-              side: THREE.DoubleSide,
-              polygonOffset: true,
-              polygonOffsetFactor: -2,
-              polygonOffsetUnits: -2,
-            });
-          }
-          if (!blushMatR) {
-            blushMatR = blushMatL.clone();
-          }
-
-          applyBlushRenderMode();
-          if (!blushMeshL) {
-            blushMeshL = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), blushMatL);
-            blushMeshL.name = "blushMeshL";
-            blushMeshL.renderOrder = 999;
-          }
-          if (!blushMeshR) {
-            blushMeshR = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), blushMatR);
-            blushMeshR.name = "blushMeshR";
-            blushMeshR.renderOrder = 999;
-          }
-
-          // attach (re-attach) to head
-          if (head) {
-            if (blushMeshL.parent !== head) {
-              if (blushMeshL.parent) blushMeshL.parent.remove(blushMeshL);
-              head.add(blushMeshL);
-            }
-            if (blushMeshR.parent !== head) {
-              if (blushMeshR.parent) blushMeshR.parent.remove(blushMeshR);
-              head.add(blushMeshR);
-            }
-          }
-        };
-
-        const computeUnitAndEyeCenter = () => {
-          // Default fallback
-          let unit = 0.06;
-          let eyeCenter = new THREE.Vector3(0, 0.05, 0.02);
-          let halfEyeX = 0.03;
-
-          const leftEye = getBone("leftEye");
-          const rightEye = getBone("rightEye");
-
-          try {
-            if (head && leftEye && rightEye) {
-              const wL = leftEye.getWorldPosition(new THREE.Vector3());
-              const wR = rightEye.getWorldPosition(new THREE.Vector3());
-              // Convert to head-local
-              head.worldToLocal(wL);
-              head.worldToLocal(wR);
-              eyeCenter.copy(wL).add(wR).multiplyScalar(0.5);
-              unit = wL.distanceTo(wR);
-              halfEyeX = Math.abs(wR.x - wL.x) * 0.5;
-            } else {
-              // Fallback: VRM overall height
-              const box = new THREE.Box3().setFromObject(vrm.scene);
-              const sz = new THREE.Vector3();
-              box.getSize(sz);
-              if (Number.isFinite(sz.y) && sz.y > 0.01) {
-                unit = sz.y * 0.05; // ~ eye distance
-              }
-            }
-          } catch (_) {}
-
-          // Clamp to sane range
-          unit = Math.max(0.02, Math.min(0.14, unit));
-          blushUnit = unit;
-          return { unit, eyeCenter, halfEyeX };
-        };
-
-        // Build/update
-        ensureMeshes();
-        if (!blushMeshL || !blushMeshR || !blushMatL || !blushMatR) return;
-
-        const { unit, eyeCenter, halfEyeX } = computeUnitAndEyeCenter();
-
-        // Base cheek offsets relative to eye line in head-local space
-        const spread = Math.max(0.5, Math.min(6.0, blushSpread));
-        let baseX = (halfEyeX * 1.55 + 0.01) * spread;
-        // Sanity clamp: some VRMs yield extreme halfEyeX due to normalization/scaling differences.
-        const minX = unit * 0.65 * spread;
-        const maxX = unit * 2.4 * spread;
-        if (!Number.isFinite(baseX)) baseX = minX;
-        baseX = Math.max(minX, Math.min(maxX, baseX));
-
-        let baseY = eyeCenter.y - 0.55 * unit;
-        // Sanity clamp: keep within a reasonable band around head origin.
-        if (!Number.isFinite(baseY) || Math.abs(baseY) > unit * 6.0) baseY = -0.25 * unit;
-
-        // Place blush slightly towards the camera side in head-local space (auto-detect Z sign)
-        let camLocalZ = -1;
-        try {
-          if (head && camera) {
-            const camLocal = head.worldToLocal(camera.position.clone());
-            camLocalZ = camLocal.z;
-          }
-        } catch (_) {}
-        const zSign = camLocalZ >= 0 ? 1 : -1;
-        let baseZ = eyeCenter.z + zSign * 1.25 * unit;
-        if (!Number.isFinite(baseZ) || Math.abs(baseZ) > unit * 6.0) baseZ = zSign * 1.2 * unit;
-        const ox = blushOffX * unit;
-        const oy = blushOffY * unit;
-        // Position & size
-        const s = unit * 1.6 * Math.max(0.5, Math.min(2.5, blushSize));
-
-        // IMPORTANT:
-        // In this app we scale the VRM head bone massively (makeHeadOnly) to show "head only".
-        // If we attach blush planes directly under the head bone, their local position/scale will be
-        // multiplied by that scale and fly far away / become gigantic.
-        // NOTE: In head-only mode, the head bone may be scaled up a lot.
-        // We intentionally keep blush meshes in head-local space so they stick perfectly to the cheeks.
-        // (Counter-scaling by head world scale makes the effect tiny / invisible.)
-
-        blushMeshL.position.set(-baseX + ox, baseY + oy, baseZ);
-        blushMeshR.position.set(+baseX + ox, baseY + oy, baseZ);
-
-        const sLocal = s;
-        blushMeshL.scale.set(sLocal, sLocal, sLocal);
-        blushMeshR.scale.set(sLocal, sLocal, sLocal);
-
-        // Slight mirror so hatch doesn't look identical
-        blushMeshL.rotation.set(0, 0, 0);
-        blushMeshR.rotation.set(0, Math.PI, 0);
-
-        // Visibility/strength
-        const a = Math.max(0, Math.min(1, blushStrength));
-        blushMatL.opacity = a;
-        blushMatR.opacity = a;
-
-        const vis = !!isBlushEnabled && a > 0.001;
-        blushMeshL.visible = vis;
-        blushMeshR.visible = vis;
-      }
-
-      function updateBreathEmitterFromVRM(vrm) {
-        if (!breathEmitter || !vrm) return;
-
-        // detach from previous parent
-        if (breathEmitter.parent) {
-          breathEmitter.parent.remove(breathEmitter);
-        }
-
-        // Helpers to get humanoid bones (normalized preferred)
-        const humanoid = vrm.humanoid;
-        const getBone = (name) => {
-          try {
-            return humanoid?.getNormalizedBoneNode?.(name) || humanoid?.getRawBoneNode?.(name) || humanoid?.getBoneNode?.(name) || null;
-          } catch (_) {
-            return null;
-          }
-        };
-
-        const head = getBone("head");
-        const neck = getBone("neck");
-        const jaw = getBone("jaw");
-
-        // Estimate a "head unit" in world space to scale offsets robustly
-        let unit = 0.12;
-        try {
-          if (head && neck) {
-            const ph = new THREE.Vector3();
-            const pn = new THREE.Vector3();
-            head.getWorldPosition(ph);
-            neck.getWorldPosition(pn);
-            const d = ph.distanceTo(pn);
-            if (Number.isFinite(d) && d > 0.001) unit = d;
-          }
-        } catch (_) {}
-
-        // store unit for debug
-        breathEmitter.userData.unit = unit;
-
-        // Prefer attaching to Jaw if present; else Head; else fallback to adjustmentGroup
-        const attach = jaw || head;
-        if (attach) {
-          attach.add(breathEmitter);
-
-          // Offsets in attach-local space
-          if (jaw) {
-            // Slightly forward and a bit up from jaw pivot
-            breathEmitter.position.set(0, unit * 0.1, unit * 0.22);
-          } else {
-            // From head pivot: down towards mouth + forward
-            breathEmitter.position.set(0, -unit * 0.25, unit * 0.6);
-          }
-
-          // Apply user offsets (relative to unit)
-          breathEmitter.position.x += breathOffX * unit;
-          breathEmitter.position.y += breathOffY * unit;
-          breathEmitter.position.z += breathOffZ * unit;
-          breathEmitter.updateMatrixWorld(true);
-        } else {
-          // fallback: roughly mouth-ish in adjustmentGroup local space
-          adjustmentGroup.add(breathEmitter);
-          breathEmitter.position.set(0, -0.12, 0.18);
-        }
-      }
-
-      function clearBreathParticles() {
-        if (!breathParticles) return;
-        for (const s of [...breathParticles.children]) {
-          if (s.material) s.material.dispose();
-          breathParticles.remove(s);
-        }
-        breathEmitAcc = 0;
-      }
-
-      function spawnBreathParticle() {
-        if (!breathParticles || !breathEmitter || !breathTexture) return;
-        if (breathParticles.children.length >= BREATH_MAX_PARTICLES) return;
-
-        const mat = new THREE.SpriteMaterial({
-          map: breathTexture,
-          transparent: true,
-          opacity: 0.0,
-          depthWrite: false,
-          depthTest: false,
-        });
-        const sp = new THREE.Sprite(mat);
-        sp.renderOrder = 50;
-
-        const p = new THREE.Vector3();
-        const q = new THREE.Quaternion();
-        breathEmitter.getWorldPosition(p);
-        breathEmitter.getWorldQuaternion(q);
-        sp.position.copy(p);
-
-        // out of face (~local -Z) with randomness
-        const dir = new THREE.Vector3(0, 0, 1).applyQuaternion(q).normalize();
-        dir.x += (Math.random() - 0.5) * 0.25;
-        dir.y += (Math.random() - 0.5) * 0.15;
-        dir.z += (Math.random() - 0.5) * 0.25;
-        dir.normalize();
-
-        const speed = (35 + Math.random() * 25) * (0.6 + breathStrength * 0.4);
-        const vel = dir.multiplyScalar(speed);
-        vel.y += 10 + Math.random() * 8;
-
-        const life = 0.7 + Math.random() * 0.6;
-        const s0 = 10 * (0.7 + Math.random() * 0.6);
-        const s1 = s0 * (2.2 + Math.random() * 1.2);
-
-        sp.userData = { age: 0, life, vel, s0, s1 };
-        sp.scale.setScalar(s0);
-
-        breathParticles.add(sp);
-      }
-
       function resizeBreathOverlayCanvas() {
         if (!breathOverlayCanvas) return;
         const pr = Math.min(window.devicePixelRatio || 1, 2);
@@ -4618,7 +4171,7 @@
           breathOverlayCtx.restore();
         }; // --- Cheek blush (2D overlay; sticks to tracked face) ---
         // When trackingPaused is ON, freeze blush position so it doesn't drift with live landmarks.
-        if (USE_BLUSH_2D_OVERLAY && isBlushEnabled && blushStrength > 0.001 && !vrmHidden) {
+        if (isBlushEnabled && blushStrength > 0.001 && !vrmHidden) {
           const hasPausedBlush = !!(trackingPaused && pausedBlushOverlayState && pausedBlushOverlayState.L && pausedBlushOverlayState.R);
 
           if (hasPausedBlush) {
@@ -4874,7 +4427,7 @@
         breathOverlayCtx.filter = "blur(1.6px)";
 
         // 吐息位置は MediaPipe 口ランドマーク由来の baseMouthX/Y（全回転で表示画面上の実口に一致）
-        // ＋ 2D位置スライダーのみを使う。shiftX/Y（adjustmentGroup差分）と breathEmitter 投影は
+        // ＋ 2D位置スライダーのみを使う。shiftX/Y（adjustmentGroup差分）や3D投影は
         // inputRotationDeg=90 で画面外へ破綻するため吐息からは使わない。
         if (baseValid) {
           let mx = baseMouthX;
@@ -4966,7 +4519,7 @@
 ` +
               `canvas(css): ${w.toFixed(0)}x${h.toFixed(0)} (pr:${(window.devicePixelRatio || 1).toFixed(2)})
 ` +
-              `unit:${((breathEmitter && breathEmitter.userData && breathEmitter.userData.unit) || 0).toFixed(3)} off:${breathOffX.toFixed(2)},${breathOffY.toFixed(2)},${breathOffZ.toFixed(2)}
+              `off:${breathOffX.toFixed(2)},${breathOffY.toFixed(2)}
 ` +
               `particles: ${breathParticles2D.length}
 ` +
@@ -5202,12 +4755,6 @@
         };
       }
 
-      function getCreamButtonCenterPx() {
-        const btn = null;
-        if (!btn) return { x: 60, y: window.innerHeight - 80 };
-        const r = btn.getBoundingClientRect();
-        return { x: r.left + r.width * 0.5, y: r.top + r.height * 0.5 };
-      }
       function sampleAutoCreamTargetPx(basis, cssW, cssH) {
         if (!basis) {
           if (debugTextEnabled) _dbgAutoLast = { kind: "autoCream", mode: "none", reason: "no basis" };
@@ -5817,11 +5364,6 @@
         ctx.restore();
       }
 
-      function drawCreamDrip(ctx, x, y, w, h, opacity, angleRad) {
-        // Slightly more elongated than projectile
-        drawCreamDroplet(ctx, x, y, w, h * 1.15, opacity, angleRad);
-      }
-
       function updateCreamVfx(delta) {
         if (!creamOverlayCanvas || !creamOverlayCtx) return;
 
@@ -6109,63 +5651,12 @@
       function updateBlushDebug() {
         if (!blushDebugEnabled || !blushDebugEl) return;
 
-        const hasVrm = !!currentVrm;
-        const hasScene = !!scene && !!camera && !!renderer;
-        const hasMeshes = !!blushMeshL && !!blushMeshR;
-
-        let headName = "(none)";
-        let headScale = 0;
-        let invHeadScale = 0;
-        let parentL = "(none)",
-          parentR = "(none)";
-        let scrL = null,
-          scrR = null;
-
         const w = renderer?.domElement?.clientWidth || 0;
         const h = renderer?.domElement?.clientHeight || 0;
 
-        const projectObj = (obj) => {
-          if (!obj || !camera || !renderer) return null;
-          obj.getWorldPosition(blushDbgTmp);
-          blushDbgTmp2.copy(blushDbgTmp).project(camera);
-          const sx = (blushDbgTmp2.x * 0.5 + 0.5) * w;
-          const sy = (-blushDbgTmp2.y * 0.5 + 0.5) * h;
-          const inView = blushDbgTmp2.z >= -1 && blushDbgTmp2.z <= 1 && sx >= -50 && sx <= w + 50 && sy >= -50 && sy <= h + 50;
-          return { world: blushDbgTmp.clone(), ndc: blushDbgTmp2.clone(), sx, sy, inView };
-        };
-
-        try {
-          if (currentVrm) {
-            const getBoneNode = (name) => {
-              try {
-                return currentVrm.humanoid?.getRawBoneNode?.(name) || null;
-              } catch (_) {
-                return null;
-              }
-            };
-            const head = getBoneNode("head") || adjustmentGroup || currentVrm.scene;
-            headName = head?.name || "head";
-            parentL = blushMeshL?.parent?.name || "(no parent)";
-            parentR = blushMeshR?.parent?.name || "(no parent)";
-            if (head && head.getWorldScale) {
-              const ws = head.getWorldScale(new THREE.Vector3());
-              headScale = ws.x || 0;
-              invHeadScale = headScale ? 1.0 / headScale : 0;
-            }
-          }
-        } catch (_) {}
-
-        scrL = projectObj(blushMeshL);
-        scrR = projectObj(blushMeshR);
-
         const lines = [];
         lines.push(`[BlushDebug] enabled=${isBlushEnabled} strength=${blushStrength.toFixed(2)}`);
-        lines.push(`vrm=${hasVrm} meshes=${hasMeshes} scene=${hasScene}`);
-        lines.push(`head=${headName} headScale=${headScale.toFixed(4)} inv=${invHeadScale.toFixed(8)}`);
-        lines.push(`parents: L=${parentL} R=${parentR}`);
-        if (blushMatL) lines.push(`matL: op=${(blushMatL.opacity ?? 0).toFixed(2)} depthTest=${!!blushMatL.depthTest} polyOff=${!!blushMatL.polygonOffset}`);
-        if (blushMatR) lines.push(`matR: op=${(blushMatR.opacity ?? 0).toFixed(2)} depthTest=${!!blushMatR.depthTest} polyOff=${!!blushMatR.polygonOffset}`);
-        lines.push(`params: off=(${blushOffX.toFixed(2)},${blushOffY.toFixed(2)}) size=${blushSize.toFixed(2)} spread=${blushSpread.toFixed(2)} unit=${blushUnit.toFixed(4)}`);
+        lines.push(`params: off=(${blushOffX.toFixed(2)},${blushOffY.toFixed(2)}) size=${blushSize.toFixed(2)} spread=${blushSpread.toFixed(2)}`);
         lines.push(`viewport: ${w}x${h}`);
 
         // 2D blush mapping debug (used in current implementation)
@@ -6177,13 +5668,6 @@
         } else {
           lines.push(`2D: (no data)`);
         }
-
-        const fmt = (p, tag) => {
-          if (!p) return `${tag}: (no data)`;
-          return `${tag}: screen=(${p.sx.toFixed(1)},${p.sy.toFixed(1)}) inView=${p.inView} ndc=(${p.ndc.x.toFixed(2)},${p.ndc.y.toFixed(2)},${p.ndc.z.toFixed(2)}) world=(${p.world.x.toFixed(3)},${p.world.y.toFixed(3)},${p.world.z.toFixed(3)})`;
-        };
-        lines.push(fmt(scrL, "L"));
-        lines.push(fmt(scrR, "R"));
 
         blushDebugEl.textContent = lines.join("\n");
       }
@@ -6567,11 +6051,6 @@
           adjustmentGroup = null;
           pivotGroup = null;
 
-          breathEmitter = null;
-          if (breathParticles) {
-            clearBreathParticles();
-            breathParticles = null;
-          }
           // keep breathTexture cached across restarts
 
           if (arContainer) arContainer.innerHTML = "";
@@ -6785,18 +6264,6 @@
 
           // Video background plane
           bgPlaneDepth = 500;
-          const inputFramesDepth = bgPlaneDepth;
-          function getViewportSizeAtDepth(depth) {
-            const viewportHeightAtDepth = 2 * depth * Math.tan(THREE.MathUtils.degToRad(0.5 * camera.fov));
-            const viewportWidthAtDepth = viewportHeightAtDepth * camera.aspect;
-            return { width: viewportWidthAtDepth, height: viewportHeightAtDepth };
-          }
-          function createCameraPlaneMesh(depth, material) {
-            const size = getViewportSizeAtDepth(depth);
-            const geom = new THREE.PlaneGeometry(size.width, size.height);
-            geom.translate(0, 0, -depth);
-            return new THREE.Mesh(geom, material);
-          }
 
           // Build filtered background texture using displayCanvas
           updateCameraFilter(); // ensure cameraFilterStr is up to date
@@ -6848,19 +6315,8 @@
           pivotGroup.add(adjustmentGroup);
           updateTransform();
 
-          // --- Breath effect setup ---
-          if (!breathParticles) {
-            breathParticles = new THREE.Group();
-            breathParticles.renderOrder = 50;
-            scene.add(breathParticles);
-          } else {
-            clearBreathParticles();
-          }
+          // --- Breath effect setup (2D overlay particles) ---
           if (!breathTexture) breathTexture = createBreathTexture();
-
-          breathEmitter = new THREE.Object3D();
-          breathEmitter.position.set(0, -0.12, 0.18); // fallback
-          adjustmentGroup.add(breathEmitter);
 
           // --- Occluder (mask) ---
           occluderGroup = new THREE.Group();
@@ -7050,8 +6506,6 @@
               // Mouth open estimate from faceLandmarks (fallback if blendshapes are weak/unsupported)
               const lms = res && res.faceLandmarks && res.faceLandmarks[0];
               if (lms) {
-                latestCheekVideoValid = false; // will be set true if indices available
-
                 const up = lms[13],
                   lo = lms[14],
                   lc = lms[78],
@@ -7080,36 +6534,6 @@
                     latestMouthCenterVideoX = Math.min(1, Math.max(0, vv.x));
                     latestMouthCenterVideoY = Math.min(1, Math.max(0, vv.y));
                     latestMouthCenterVideoValid = true;
-
-                    // Cheek centers for blush (faceLandmarks indices)
-                    // Use a blended center (cheek + eye outer + mouth corner) for more stable placement across VRMs
-                    // Left: cheek(234), eyeOuter(33), mouthCorner(61)
-                    // Right: cheek(454), eyeOuter(263), mouthCorner(291)
-                    const lCheek = lms[234],
-                      rCheek = lms[454];
-                    const lEyeO = lms[33],
-                      rEyeO = lms[263];
-                    const lMouth = lms[61],
-                      rMouth = lms[291];
-
-                    if (lCheek && rCheek && lEyeO && rEyeO && lMouth && rMouth) {
-                      // Weighted blend to pull the spot slightly down/in from the raw cheek landmark
-                      const lx = lCheek.x * 0.55 + lEyeO.x * 0.15 + lMouth.x * 0.3;
-                      const ly = lCheek.y * 0.45 + lEyeO.y * 0.1 + lMouth.y * 0.45;
-                      const rx = rCheek.x * 0.55 + rEyeO.x * 0.15 + rMouth.x * 0.3;
-                      const ry = rCheek.y * 0.45 + rEyeO.y * 0.1 + rMouth.y * 0.45;
-
-                      const vcl = mpLandmarkNormToVideoNorm(lx, ly, vw0, vh0, inputRotationDeg, mpW0, mpH0);
-                      const vcr = mpLandmarkNormToVideoNorm(rx, ry, vw0, vh0, inputRotationDeg, mpW0, mpH0);
-
-                      if (vcl.ok && vcr.ok) {
-                        latestCheekLVideoX = Math.min(1, Math.max(0, vcl.x));
-                        latestCheekLVideoY = Math.min(1, Math.max(0, vcl.y));
-                        latestCheekRVideoX = Math.min(1, Math.max(0, vcr.x));
-                        latestCheekRVideoY = Math.min(1, Math.max(0, vcr.y));
-                        latestCheekVideoValid = true;
-                      }
-                    }
                   }
                 }
               }
@@ -7391,8 +6815,6 @@
                   updateMaterialSettings(vrm);
 
                   adjustmentGroup.add(vrm.scene);
-                  updateBreathEmitterFromVRM(vrm);
-                  updateBlushAnchorsFromVRM(vrm);
                 }
 
                 const loaded = loadSettings(currentFileName, { silent: true, label: currentFileName });
