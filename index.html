@@ -1064,6 +1064,45 @@
 
           </div>
 
+          <div class="slider-container">
+            <label class="toggle-label">
+              <input type="checkbox" id="drool-toggle" class="toggle-checkbox" />
+              よだれ（口角から・開口連動）
+            </label>
+          </div>
+          <div id="drool-controls" style="display: none">
+            <div class="slider-container">
+              <span class="slider-label">よだれの量</span>
+              <input type="range" id="drool-strength-slider" min="0.0" max="0.5" step="0.01" value="0.4" />
+              <span id="drool-strength-slider-val" class="val-display">0.40</span>
+            </div>
+            <div class="slider-container">
+              <span class="slider-label">よだれの太さ</span>
+              <input type="range" id="drool-size-slider" min="1.0" max="5.0" step="0.05" value="2.0" />
+              <span id="drool-size-slider-val" class="val-display">2.00</span>
+            </div>
+            <div class="slider-container">
+              <span class="slider-label">落下速度</span>
+              <input type="range" id="drool-fall-slider" min="0.1" max="1.0" step="0.05" value="0.3" />
+              <span id="drool-fall-slider-val" class="val-display">0.30</span>
+            </div>
+            <div class="slider-container">
+              <span class="slider-label">落下間隔</span>
+              <input type="range" id="drool-interval-slider" min="0.1" max="3.0" step="0.05" value="1.0" />
+              <span id="drool-interval-slider-val" class="val-display">1.00</span>
+            </div>
+            <div class="slider-container">
+              <span class="slider-label">よだれ位置X</span>
+              <input type="range" id="drool-offx-slider" min="-2.0" max="2.0" step="0.01" value="0.00" />
+              <span id="drool-offx-slider-val" class="val-display">0.00</span>
+            </div>
+            <div class="slider-container">
+              <span class="slider-label">よだれ位置Y</span>
+              <input type="range" id="drool-offy-slider" min="-2.0" max="2.0" step="0.01" value="0.00" />
+              <span id="drool-offy-slider-val" class="val-display">0.00</span>
+            </div>
+          </div>
+
           <div class="slider-container" style="margin-top: 8px; border-top: 1px solid rgba(255,255,255,0.12); padding-top: 6px;">
             <span class="slider-label" style="font-size: 11px; opacity: 0.7">表情オフセット（カメラと重ねる）</span>
           </div>
@@ -1429,8 +1468,8 @@
 
     <script type="module">
       // ===== App Version (single source of truth) =====
-      const APP_VERSION = "v6.01.93";
-      const APP_VERSION_NOTE = "feat: 視線スライダー追加（上下・寄り目／eyeボーン回転） / fix: 寄り目の向きを修正";
+      const APP_VERSION = "v6.02.01";
+      const APP_VERSION_NOTE = "fix: よだれ 先端の塊がそのまま雫になって落下・筋に塊を残さない";
 
       function getOverlayPixelRatio() {
         // Must match resizeCreamOverlayCanvas()/resizeBreathOverlayCanvas() DPR clamp for performance.
@@ -1601,6 +1640,19 @@
       let creamLastShotMs = 0;
 
       let creamNextPatchGroupId = 1;
+
+      // Drool (よだれ) state — per-VRM
+      let isDroolEnabled = false;
+      let droolStrength = 0.8;
+      let droolSize = 2.0;
+      let droolFall = 0.3;
+      let droolInterval = 1.0;
+      let droolOffX = 0.0;
+      let droolOffY = 0.0;
+      let droolLen = 0.0;        // current strand length (face-local v units)
+      let droolDrops = [];       // falling droplets: {x,y,vy,size,age,life}
+      let droolDripTimer = 0.0;  // drip rate limiter
+
       // Cream lifetime (seconds). Controlled via UI slider (1-30s).
       var creamLifetimeSec = 10.0;
       function getCreamFadeStartSec() {
@@ -2581,6 +2633,21 @@
       const breathDebugToggle = document.getElementById("breath-debug-toggle");
       breathDebugEl = document.getElementById("breath-debug");
 
+      const droolToggle = document.getElementById("drool-toggle");
+      const droolStrengthSlider = document.getElementById("drool-strength-slider");
+      const droolStrengthSliderVal = document.getElementById("drool-strength-slider-val");
+      const droolSizeSlider = document.getElementById("drool-size-slider");
+      const droolSizeSliderVal = document.getElementById("drool-size-slider-val");
+      const droolFallSlider = document.getElementById("drool-fall-slider");
+      const droolFallSliderVal = document.getElementById("drool-fall-slider-val");
+      const droolIntervalSlider = document.getElementById("drool-interval-slider");
+      const droolIntervalSliderVal = document.getElementById("drool-interval-slider-val");
+      const droolOffXSlider = document.getElementById("drool-offx-slider");
+      const droolOffXSliderVal = document.getElementById("drool-offx-slider-val");
+      const droolOffYSlider = document.getElementById("drool-offy-slider");
+      const droolOffYSliderVal = document.getElementById("drool-offy-slider-val");
+      const droolControls = document.getElementById("drool-controls");
+
       const exprHappySlider     = document.getElementById("expr-happy-slider");
       const exprSadSlider       = document.getElementById("expr-sad-slider");
       const exprSurprisedSlider = document.getElementById("expr-surprised-slider");
@@ -2667,6 +2734,43 @@
         if (!skipSave && typeof saveSettings === "function") saveSettings();
       }
 
+      function updateDroolUI(skipSave = false) {
+        if (!droolToggle) return;
+        const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+
+        isDroolEnabled = !!droolToggle.checked;
+        if (droolControls) droolControls.style.display = isDroolEnabled ? "block" : "none";
+
+        droolStrength = droolStrengthSlider ? parseFloat(droolStrengthSlider.value) : 0.4;
+        if (!Number.isFinite(droolStrength)) droolStrength = 0.4;
+        droolStrength = clamp(droolStrength, 0.0, 0.5);
+        if (droolStrengthSliderVal) droolStrengthSliderVal.textContent = droolStrength.toFixed(2);
+
+        droolSize = droolSizeSlider ? parseFloat(droolSizeSlider.value) : 2.0;
+        if (!Number.isFinite(droolSize)) droolSize = 2.0;
+        droolSize = clamp(droolSize, 1.0, 5.0);
+        if (droolSizeSliderVal) droolSizeSliderVal.textContent = droolSize.toFixed(2);
+
+        droolFall = droolFallSlider ? parseFloat(droolFallSlider.value) : 0.3;
+        if (!Number.isFinite(droolFall)) droolFall = 0.3;
+        droolFall = clamp(droolFall, 0.1, 1.0);
+        if (droolFallSliderVal) droolFallSliderVal.textContent = droolFall.toFixed(2);
+
+        droolInterval = droolIntervalSlider ? parseFloat(droolIntervalSlider.value) : 1.0;
+        if (!Number.isFinite(droolInterval)) droolInterval = 1.0;
+        droolInterval = clamp(droolInterval, 0.1, 3.0);
+        if (droolIntervalSliderVal) droolIntervalSliderVal.textContent = droolInterval.toFixed(2);
+
+        droolOffX = droolOffXSlider ? parseFloat(droolOffXSlider.value) || 0 : 0;
+        droolOffY = droolOffYSlider ? parseFloat(droolOffYSlider.value) || 0 : 0;
+        droolOffX = clamp(droolOffX, -2.0, 2.0);
+        droolOffY = clamp(droolOffY, -2.0, 2.0);
+        if (droolOffXSliderVal) droolOffXSliderVal.textContent = droolOffX.toFixed(2);
+        if (droolOffYSliderVal) droolOffYSliderVal.textContent = droolOffY.toFixed(2);
+
+        if (!skipSave && typeof saveSettings === "function") saveSettings();
+      }
+
       if (blushToggle) blushToggle.addEventListener("change", () => updateBlushUI(false));
       if (blushStrengthSlider) blushStrengthSlider.addEventListener("input", () => updateBlushUI(false));
       if (blushOffXSlider) blushOffXSlider.addEventListener("input", () => updateBlushUI(false));
@@ -2683,6 +2787,15 @@
       if (breathDebugToggle) breathDebugToggle.addEventListener("change", () => updateBreathUI(false));
       if (typeof updateBlushUI === "function") updateBlushUI(true);
       updateBreathUI(true);
+
+      if (droolToggle) droolToggle.addEventListener("change", () => updateDroolUI(false));
+      if (droolStrengthSlider) droolStrengthSlider.addEventListener("input", () => updateDroolUI(false));
+      if (droolSizeSlider) droolSizeSlider.addEventListener("input", () => updateDroolUI(false));
+      if (droolFallSlider) droolFallSlider.addEventListener("input", () => updateDroolUI(false));
+      if (droolIntervalSlider) droolIntervalSlider.addEventListener("input", () => updateDroolUI(false));
+      if (droolOffXSlider) droolOffXSlider.addEventListener("input", () => updateDroolUI(false));
+      if (droolOffYSlider) droolOffYSlider.addEventListener("input", () => updateDroolUI(false));
+      updateDroolUI(true);
 
       [exprHappySlider, exprSadSlider, exprSurprisedSlider, exprRelaxedSlider, exprAngrySlider, exprBrowSorrowSlider, exprEyeSorrowSlider, gazeVertSlider, gazeConvergeSlider]
         .forEach((sl) => {
@@ -3931,6 +4044,14 @@
           exprEyeSorrow:  typeof exprEyeSorrowSlider  !== "undefined" && exprEyeSorrowSlider  ? exprEyeSorrowSlider.value  : "0",
           gazeVert:     typeof gazeVertSlider     !== "undefined" && gazeVertSlider     ? gazeVertSlider.value     : "0",
           gazeConverge: typeof gazeConvergeSlider !== "undefined" && gazeConvergeSlider ? gazeConvergeSlider.value : "0",
+          // Drool (per-VRM)
+          droolEnabled:  typeof droolToggle !== "undefined" && droolToggle ? !!droolToggle.checked : false,
+          droolStrength: typeof droolStrengthSlider !== "undefined" && droolStrengthSlider ? droolStrengthSlider.value : "0.4",
+          droolSize:     typeof droolSizeSlider !== "undefined" && droolSizeSlider ? droolSizeSlider.value : "2.0",
+          droolFall:     typeof droolFallSlider !== "undefined" && droolFallSlider ? droolFallSlider.value : "0.3",
+          droolInterval: typeof droolIntervalSlider !== "undefined" && droolIntervalSlider ? droolIntervalSlider.value : "1.0",
+          droolOffX:     typeof droolOffXSlider !== "undefined" && droolOffXSlider ? droolOffXSlider.value : "0.0",
+          droolOffY:     typeof droolOffYSlider !== "undefined" && droolOffYSlider ? droolOffYSlider.value : "0.0",
           // Blush (per-VRM)
           blushEnabled: typeof blushToggle !== "undefined" && blushToggle ? !!blushToggle.checked : false,
           blushStrength: typeof blushStrengthSlider !== "undefined" && blushStrengthSlider ? blushStrengthSlider.value : "0.70",
@@ -4173,6 +4294,16 @@
               if (Object.prototype.hasOwnProperty.call(s, "exprEyeSorrow")  && exprEyeSorrowSlider)  { exprEyeSorrowSlider.value  = s.exprEyeSorrow;  updateSliderDisplay(exprEyeSorrowSlider); }
               if (Object.prototype.hasOwnProperty.call(s, "gazeVert")     && gazeVertSlider)     { gazeVertSlider.value     = s.gazeVert;     updateSliderDisplay(gazeVertSlider); }
               if (Object.prototype.hasOwnProperty.call(s, "gazeConverge") && gazeConvergeSlider) { gazeConvergeSlider.value = s.gazeConverge; updateSliderDisplay(gazeConvergeSlider); }
+
+              // Drool (per-VRM)
+              if (Object.prototype.hasOwnProperty.call(s, "droolEnabled") && droolToggle) droolToggle.checked = !!s.droolEnabled;
+              if (Object.prototype.hasOwnProperty.call(s, "droolStrength") && droolStrengthSlider) droolStrengthSlider.value = s.droolStrength;
+              if (Object.prototype.hasOwnProperty.call(s, "droolSize") && droolSizeSlider) droolSizeSlider.value = s.droolSize;
+              if (Object.prototype.hasOwnProperty.call(s, "droolFall") && droolFallSlider) droolFallSlider.value = s.droolFall;
+              if (Object.prototype.hasOwnProperty.call(s, "droolInterval") && droolIntervalSlider) droolIntervalSlider.value = s.droolInterval;
+              if (Object.prototype.hasOwnProperty.call(s, "droolOffX") && droolOffXSlider) droolOffXSlider.value = s.droolOffX;
+              if (Object.prototype.hasOwnProperty.call(s, "droolOffY") && droolOffYSlider) droolOffYSlider.value = s.droolOffY;
+              if (typeof updateDroolUI === "function") updateDroolUI(true);
 
               // Blush (per-VRM)
               if (Object.prototype.hasOwnProperty.call(s, "blushEnabled") && blushToggle) blushToggle.checked = !!s.blushEnabled;
@@ -5006,7 +5137,7 @@
         const su = 1.0 - k + k * Math.max(0.35, cy);
         const sv = 1.0 - k + k * Math.max(0.35, cp);
 
-        return { rect, le, re, eyeMid, mouthMid, faceW, faceH, ux, uy, vx, vy, roll, su, sv };
+        return { rect, le, re, ml, mr, eyeMid, mouthMid, faceW, faceH, ux, uy, vx, vy, roll, su, sv };
       }
 
       function screenPxToFaceLocal(px, py, basis) {
@@ -5725,6 +5856,115 @@
         }
 
         ctx.restore();
+      }
+
+      // よだれ（口角から開口連動で垂れる透明唾液）。creamOverlayCanvas を共有し、
+      // updateCreamVfx の clearRect 直後に重ね描きする。
+      function updateDroolEffect(delta) {
+        if (!creamOverlayCtx) return;
+        const ctx = creamOverlayCtx;
+        const pr = getOverlayPixelRatio();
+        const cssW = creamOverlayCanvas.width / pr;
+        const cssH = creamOverlayCanvas.height / pr;
+        if (cssW <= 0 || cssH <= 0) return;
+
+        ctx.setTransform(pr, 0, 0, pr, 0, 0);
+        ctx.globalCompositeOperation = "source-over";
+        ctx.filter = "none";
+
+        const basis = computeCreamFaceBasis(cssW, cssH) || creamLastFaceBasis;
+        const open = Math.max(0, Math.min(1, smoothedMouthRatio || 0));
+
+        if (isDroolEnabled && basis && basis.ml) {
+          // 口角アンカー（片側固定: ml）＋ 顔ローカルオフセット
+          const ax = basis.ml.x + (droolOffX * basis.ux + droolOffY * basis.vx) * basis.faceW * 0.15;
+          const ay = basis.ml.y + (droolOffX * basis.uy + droolOffY * basis.vy) * basis.faceH * 0.15;
+
+          // 物理：すべて下向き。筋は細く伸び、先端の塊(雫)が育つ→その塊がそのまま千切れて落下→
+          // 口元には細い根本だけ残る（塊は残さない）→また伸びる。口へ吸い戻る（上向き）は一切しない。
+          const STUB = 0.06;            // 千切れた後に口元に残る根本の長さ（face単位／塊なしの細い糸）
+          const active = open > 0.03;   // 口が少しでも開いていれば垂れる
+          const gv = 1.6 * droolFall;   // 筋の降下速度（face単位/秒）
+          const ang = Math.atan2(basis.vy, basis.vx) - Math.PI / 2;
+          // 太さは口の開きに比例（細い糸〜太い垂れ）。
+          const thick = Math.max(0.12, Math.min(1, open / 0.6));
+          const beadShowLen = 0.16;     // これ以上伸びたら先端に塊(雫)が育つ
+          const beadSize = basis.faceW * 0.012 * droolSize * thick;
+
+          // 先端の塊をそのまま落下する雫にする（筋には塊を残さない）。
+          const dropFromTip = () => {
+            droolDrops.push({
+              x: ax + basis.vx * droolLen * basis.faceH,
+              y: ay + basis.vy * droolLen * basis.faceH,
+              vy: gv * basis.faceH,        // 筋の降下速度を初速に引き継ぐ（重力で少し速くなる）
+              w: beadSize,
+              h: beadSize * 1.3,
+              ang,
+              age: 0,
+              life: 2.5,
+            });
+          };
+
+          droolDripTimer -= delta;
+          if (active) {
+            // 成長（クールダウン中は保持＝伸ばさない・縮めない）。
+            if (droolDripTimer <= 0 && droolLen < droolStrength) {
+              droolLen = Math.min(droolStrength, droolLen + gv * delta);
+            }
+            // 千切れ：量(最大長)に追従するしきい値。量が小さくても筋が届いて落ちる。
+            const dripLen = Math.max(0.04, droolStrength * 0.85);
+            if (droolLen >= dripLen && droolDripTimer <= 0) {
+              dropFromTip();    // 先端の塊が落ちる
+              droolLen = STUB;  // 細い根本だけ残す（塊なし・上後退なし）
+              droolDripTimer = (0.4 + Math.random() * 0.6) * droolInterval;
+            }
+          } else {
+            // 口を閉じた：先端の塊が落ちて消える（上には戻さない）。
+            if (droolLen > beadShowLen) dropFromTip();
+            droolLen = 0;
+          }
+
+          // 筋の描画（細いテーパの糸）。先端の塊は十分伸びたときだけ描く＝根本(STUB)には塊を残さない。
+          if (droolLen > 0.02) {
+            const tipX = ax + basis.vx * droolLen * basis.faceH;
+            const tipY = ay + basis.vy * droolLen * basis.faceH;
+            const w0 = basis.faceW * 0.013 * droolSize * thick;
+            const w1 = w0 * 0.4;
+            const px = -basis.vy, py = basis.vx; // 流れ方向に垂直
+            ctx.beginPath();
+            ctx.moveTo(ax + px * w0 * 0.5, ay + py * w0 * 0.5);
+            ctx.lineTo(tipX + px * w1 * 0.5, tipY + py * w1 * 0.5);
+            ctx.lineTo(tipX - px * w1 * 0.5, tipY - py * w1 * 0.5);
+            ctx.lineTo(ax - px * w0 * 0.5, ay - py * w0 * 0.5);
+            ctx.closePath();
+            const g = ctx.createLinearGradient(ax, ay, tipX, tipY);
+            g.addColorStop(0.0, "rgba(236, 242, 255, 0.42)");
+            g.addColorStop(1.0, "rgba(225, 235, 255, 0.30)");
+            ctx.fillStyle = g;
+            ctx.fill();
+            if (droolLen > beadShowLen) {
+              drawCreamDroplet(ctx, tipX, tipY, beadSize, beadSize * 1.3, 0.9, ang);
+            }
+          }
+        } else {
+          // 無効/顔ロスト時：位置が取れないので筋は消す（落下中の雫はそのまま落ちる）。
+          droolLen = 0;
+        }
+
+        // 落下滴の更新・描画。初速＝筋の降下速度、重力で少しだけ加速して筋より速くなる（すべて下向き）。
+        const G = 300 * droolFall;
+        for (let i = droolDrops.length - 1; i >= 0; i--) {
+          const d = droolDrops[i];
+          d.age += delta;
+          d.vy += G * delta;
+          d.y += d.vy * delta;
+          if (d.age >= d.life || d.y - d.h > cssH) {
+            droolDrops.splice(i, 1);
+            continue;
+          }
+          const fade = Math.max(0, 1 - d.age / d.life);
+          drawCreamDroplet(ctx, d.x, d.y, d.w, d.h, 0.85 * fade, d.ang || 0);
+        }
       }
 
       function updateCreamVfx(delta) {
@@ -6975,6 +7215,7 @@
 
             updateBreathEffect(delta);
             updateCreamVfx(delta);
+            updateDroolEffect(delta);
             updateBlushDebug();
             composer.render();
           });
