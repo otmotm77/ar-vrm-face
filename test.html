@@ -1360,8 +1360,8 @@
 
     <script type="module">
       // ===== App Version (single source of truth) =====
-      const APP_VERSION = "v6.01.74";
-      const APP_VERSION_NOTE = "tune: 二相A/Bを接近(サイズ/速度/不透明度/ツヤ/粘度のレンジを重複させ連続変化に)";
+      const APP_VERSION = "v6.01.76";
+      const APP_VERSION_NOTE = "feat: 自動射出を「ぴゅっぴゅっ…ぴゅ…ぴゅぴゅー……」リズムに(1〜3連射サルボ＋可変休止, 1発毎の強さもばらつき)";
 
       function getOverlayPixelRatio() {
         // Must match resizeCreamOverlayCanvas()/resizeBreathOverlayCanvas() DPR clamp for performance.
@@ -1549,11 +1549,22 @@
       var creamZAttach = 0.92; // pseudo "Z-stick" (0..1)
       let creamAutoElapsedSec = 0.0;
       let creamNextAutoIntervalSec = null;
+      let creamSalvoRemaining = 0; // 現在のサルボ（連射）で残っている「ぴゅ」の数
 
+      // 「ぴゅっぴゅっ…ぴゅ…ぴゅぴゅー……」のリズム:
+      // 1サルボ＝1〜3連射（短い間隔）、サルボ間は可変の休止。発射ごとに呼ぶ。
       function scheduleNextAutoCream() {
-        const base = Math.max(0.2, creamAutoIntervalSec || 1.5);
-        // Add ±20% randomness to the interval
-        creamNextAutoIntervalSec = base * (0.5 + Math.random() * 1.5);
+        if (creamSalvoRemaining > 0) {
+          // 同一サルボ内の次の「ぴゅ」：短い間隔（連射）
+          creamNextAutoIntervalSec = 0.09 + Math.random() * 0.16; // ~0.09-0.25s
+        } else {
+          // サルボ完了 → 可変の休止のあと新しいサルボを開始
+          const base = Math.max(0.2, creamAutoIntervalSec || 1.5);
+          creamNextAutoIntervalSec = base * (0.7 + Math.random() * 1.8); // 休止（ばらつき大）
+          // 次サルボの連射数（1〜3、たまに3）
+          const r = Math.random();
+          creamSalvoRemaining = r < 0.45 ? 1 : r < 0.82 ? 2 : 3;
+        }
         creamAutoElapsedSec = 0.0;
       }
 
@@ -2695,6 +2706,7 @@
       function setCreamAutoEnabled(v) {
         creamAutoEnabled = !!v;
         if (creamAutoEnabled) {
+          creamSalvoRemaining = 0; // クリーンに開始（休止→新サルボ）
           scheduleNextAutoCream();
         } else {
           creamNextAutoIntervalSec = null;
@@ -5061,9 +5073,14 @@
         const centerX = basis.eyeMid.x * 0.55 + basis.mouthMid.x * 0.45;
         const centerY = basis.eyeMid.y * 0.55 + basis.mouthMid.y * 0.45;
 
-        // Shot start point: bottom-center relative to the face (screen space).
-        // Place the nozzle under the face center, clamped near the bottom of the viewport.
-        let start = { x: centerX, y: centerY + basis.faceW * 1.35 };
+        // Shot start point: 常に「顔の下側（顎の下）」。顔の下方向軸(vx,vy)に沿って配置し、
+        // 顔が傾いても横にずれず、顔の下から射出されるようにする。
+        const _downLen = basis.faceW * 1.35;
+        let start = {
+          x: centerX + basis.vx * _downLen,
+          y: centerY + basis.vy * _downLen,
+        };
+        start.x = Math.max(24, Math.min(cssW - 24, start.x));
         start.y = Math.max(24, Math.min(cssH - 24, start.y)); // If user tapped, aim at that screen point. Otherwise aim around face center.
         let tx = targetX !== null ? targetX : null;
         let ty = targetY !== null ? targetY : null;
@@ -5466,7 +5483,8 @@
             if (creamAutoElapsedSec >= creamNextAutoIntervalSec) {
               // Fire "double" the current simultaneous count, but treat them as ONE cream count group.
               const baseCount = Math.max(1, Math.min(20, creamSimulCount | 0 || 1));
-              const shotCount = baseCount * 2;
+              // 1発(ぴゅ)ごとに強さをばらつかせる（弱い「ぴゅ」〜強い「ぴゅー」）
+              const shotCount = Math.max(1, Math.round(baseCount * (1.3 + Math.random() * 1.2)));
 
               const pr = getOverlayPixelRatio();
               const cssW = creamOverlayCanvas ? creamOverlayCanvas.width / pr : window.innerWidth;
@@ -5528,6 +5546,7 @@
                   ay = Math.min(Math.max(ay, 0), cssH);
                   spawnCreamBurst(ax, ay, true, gid);
                 }
+                creamSalvoRemaining = Math.max(0, creamSalvoRemaining - 1); // この「ぴゅ」を消費
                 scheduleNextAutoCream();
               } else {
                 scheduleNextAutoCream();
