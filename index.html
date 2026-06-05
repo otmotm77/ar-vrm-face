@@ -886,7 +886,7 @@
       <div class="control-panel" id="control-panel" style="display: none">
         <h1>全般オプション</h1>
         <details class="acc-section" data-acc="basic" open>
-          <summary>モデル</summary>
+          <summary>モデル（VRM毎）</summary>
 
           <label for="vrm-upload" class="custom-file-upload">📂 VRMファイルを選択</label>
           <input type="file" id="vrm-upload" />
@@ -919,7 +919,7 @@
         </details>
 
         <details class="acc-section" data-acc="mask">
-          <summary>肩マスキング</summary>
+          <summary>肩マスキング（VRM毎）</summary>
 
           <div class="slider-container">
             <label class="toggle-label">
@@ -982,70 +982,8 @@
           </div>
         </details>
 
-        <details class="acc-section" data-acc="cream">
-          <summary>白濁液射出</summary>
-
-          <div class="slider-container">
-            <label class="toggle-label">
-              <input type="checkbox" id="cream-auto-toggle" class="toggle-checkbox" />
-              自動射出（左下ボタンでも切替）
-            </label>
-          </div>
-          <div class="slider-container">
-            <span class="slider-label">射出間隔秒数</span>
-            <input type="range" id="cream-auto-interval-slider" min="0.2" max="10" step="0.1" value="1.5" />
-            <span id="cream-auto-interval-slider-val" class="val-display">1.5</span>
-          </div>
-          <div class="slider-container">
-            <span class="slider-label">顔への集中率</span>
-            <input type="range" id="cream-face-ratio-slider" min="0" max="1" step="0.05" value="1" />
-            <span id="cream-face-ratio-slider-val" class="val-display">1</span>
-          </div>
-
-          <div class="slider-container">
-            <span class="slider-label">サイズ</span>
-            <input type="range" id="cream-size-mul-slider" min="0.5" max="2.0" step="0.05" value="1.0" />
-            <span id="cream-size-mul-slider-val" class="val-display">1.0</span>
-          </div>
-
-          <div class="slider-container">
-            <span class="slider-label">光沢</span>
-            <input type="range" id="cream-gloss-slider" min="0" max="2.0" step="0.05" value="1.0" />
-            <span id="cream-gloss-slider-val" class="val-display">1.0</span>
-          </div>
-
-          <div class="slider-container">
-            <span class="slider-label">粘度</span>
-            <input type="range" id="cream-viscosity-slider" min="0.2" max="5.0" step="0.05" value="1.0" />
-            <span id="cream-viscosity-slider-val" class="val-display">1.0</span>
-          </div>
-
-          <div class="slider-container">
-            <span class="slider-label">貼り付き（擬似Z）</span>
-            <input type="range" id="cream-z-attach-slider" min="0" max="1" step="0.05" value="0.92" />
-            <span id="cream-z-attach-slider-val" class="val-display">0.6</span>
-          </div>
-
-          <div class="slider-container">
-            <span class="slider-label">同時射出数</span>
-            <input type="range" id="cream-simul-count-slider" min="1" max="20" step="1" value="3" />
-            <span id="cream-simul-count-slider-val" class="val-display">3</span>
-          </div>
-
-          <div class="slider-container">
-            <span class="slider-label">消滅時間</span>
-            <input type="range" id="cream-life-slider" min="1" max="30" step="1" value="10" />
-            <span id="cream-life-slider-val" class="val-display">10</span>
-          </div>
-          <div class="slider-container">
-            <span class="slider-label">最大数</span>
-            <input type="range" id="cream-max-count-slider" min="10" max="200" step="1" value="40" />
-            <span id="cream-max-count-slider-val" class="val-display">40</span>
-          </div>
-        </details>
-
         <details class="acc-section" data-acc="expression">
-          <summary>表情設定</summary>
+          <summary>表情（VRM毎）</summary>
 
           <div class="slider-container">
             <label class="toggle-label">
@@ -1167,8 +1105,70 @@
           </div>
         </details>
 
+        <details class="acc-section" data-acc="cream">
+          <summary>白濁液射出（共通）</summary>
+
+          <div class="slider-container">
+            <label class="toggle-label">
+              <input type="checkbox" id="cream-auto-toggle" class="toggle-checkbox" />
+              自動射出（左下ボタンでも切替）
+            </label>
+          </div>
+          <div class="slider-container">
+            <span class="slider-label">射出間隔秒数</span>
+            <input type="range" id="cream-auto-interval-slider" min="0.2" max="10" step="0.1" value="1.5" />
+            <span id="cream-auto-interval-slider-val" class="val-display">1.5</span>
+          </div>
+          <div class="slider-container">
+            <span class="slider-label">顔への集中率</span>
+            <input type="range" id="cream-face-ratio-slider" min="0" max="1" step="0.05" value="1" />
+            <span id="cream-face-ratio-slider-val" class="val-display">1</span>
+          </div>
+
+          <div class="slider-container">
+            <span class="slider-label">サイズ</span>
+            <input type="range" id="cream-size-mul-slider" min="0.5" max="2.0" step="0.05" value="1.0" />
+            <span id="cream-size-mul-slider-val" class="val-display">1.0</span>
+          </div>
+
+          <div class="slider-container">
+            <span class="slider-label">光沢</span>
+            <input type="range" id="cream-gloss-slider" min="0" max="2.0" step="0.05" value="1.0" />
+            <span id="cream-gloss-slider-val" class="val-display">1.0</span>
+          </div>
+
+          <div class="slider-container">
+            <span class="slider-label">粘度</span>
+            <input type="range" id="cream-viscosity-slider" min="0.2" max="5.0" step="0.05" value="1.0" />
+            <span id="cream-viscosity-slider-val" class="val-display">1.0</span>
+          </div>
+
+          <div class="slider-container">
+            <span class="slider-label">貼り付き（擬似Z）</span>
+            <input type="range" id="cream-z-attach-slider" min="0" max="1" step="0.05" value="0.92" />
+            <span id="cream-z-attach-slider-val" class="val-display">0.6</span>
+          </div>
+
+          <div class="slider-container">
+            <span class="slider-label">同時射出数</span>
+            <input type="range" id="cream-simul-count-slider" min="1" max="20" step="1" value="3" />
+            <span id="cream-simul-count-slider-val" class="val-display">3</span>
+          </div>
+
+          <div class="slider-container">
+            <span class="slider-label">消滅時間</span>
+            <input type="range" id="cream-life-slider" min="1" max="30" step="1" value="10" />
+            <span id="cream-life-slider-val" class="val-display">10</span>
+          </div>
+          <div class="slider-container">
+            <span class="slider-label">最大数</span>
+            <input type="range" id="cream-max-count-slider" min="10" max="200" step="1" value="40" />
+            <span id="cream-max-count-slider-val" class="val-display">40</span>
+          </div>
+        </details>
+
         <details class="acc-section" data-acc="tracking">
-          <summary>トラッキング</summary>
+          <summary>トラッキング（共通）</summary>
 
           <div class="slider-container">
             <label class="toggle-label">
@@ -1274,7 +1274,7 @@
       <div class="control-panel" id="light-panel" style="display: none">
         <h1>照明・画質</h1>
         <details class="acc-section" data-acc="light_vrm">
-          <summary>VRM照明</summary>
+          <summary>VRM照明（VRM毎）</summary>
           <div id="vrm-light-settings">
             <!-- 親コンテナのdisplayをblockにして改行を強制 -->
             <div class="slider-container" style="background: #e8f0fe; padding: 10px; border-radius: 8px; border: 1px solid #4a90e2; margin-bottom: 10px; display: block">
@@ -1343,7 +1343,7 @@
         </details>
 
         <details class="acc-section" data-acc="light_cam">
-          <summary>カメラ画質</summary>
+          <summary>カメラ照明（共通）</summary>
           <div id="camera-settings" style="display: block">
             <div class="slider-container">
               <span class="slider-label">美肌補正</span>
@@ -1409,8 +1409,8 @@
 
     <script type="module">
       // ===== App Version (single source of truth) =====
-      const APP_VERSION = "v6.01.84";
-      const APP_VERSION_NOTE = "tune: 1ショット内のリブレット配置を縦寄せ(横は最大±約1個分, 縦は必ず少し下にずらす)";
+      const APP_VERSION = "v6.01.86";
+      const APP_VERSION_NOTE = "fix: 起動時グローバル復元のTDZエラー修正 / feat: per-VRMキーをVRMメタ由来に(旧ファイル名から移行) / 見出し整理(表情・カメラ照明・順入替・スコープ表記を(VRM毎)(共通)に)";
 
       function getOverlayPixelRatio() {
         // Must match resizeCreamOverlayCanvas()/resizeBreathOverlayCanvas() DPR clamp for performance.
@@ -1532,6 +1532,7 @@
       let appliedMinCF = 0.0005;
       let appliedBeta = 0.04;
       let currentFileName = "";
+      let currentVrmKey = ""; // VRMメタ由来の保存キー（ファイル名に依存しない・それなりにユニーク）
       let currentFacingMode = "user"; // カメラの向き (user / environment)
       const LS_CAMERA_DEVICE_ID = "camera_device_id";
       let cameraDeviceId = localStorage.getItem(LS_CAMERA_DEVICE_ID) || "";
@@ -2773,8 +2774,13 @@
           updateOccluder();
         });
       });
-      // ページロード時にグローバルカメラ設定を復元
-      loadCamSettings();
+      // ページロード時にグローバル設定(カメラ画質/トラッキング/クリーム)を復元。
+      // クリーム系スライダー等の宣言(後述)が全て初期化された後に実行するため次タスクへ遅延。
+      setTimeout(() => {
+        try {
+          loadGlobalSettings();
+        } catch (_) {}
+      }, 0);
       // Cream lifetime slider (1-30s)
       const creamLifeSlider = document.getElementById("cream-life-slider");
       if (creamLifeSlider) {
@@ -3742,8 +3748,8 @@
         try {
           loadSettings("default", { silent: true, label: "デフォルト" });
         } catch (_) {}
-        // グローバルカメラ設定で上書き
-        loadCamSettings();
+        // 共通設定(カメラ画質/トラッキング/クリーム)で上書き
+        loadGlobalSettings();
 
         _forceOpenBasicOnce = true;
         await startAR();
@@ -3836,9 +3842,27 @@
         displayCanvas.style.objectFit = bgFitMode || "cover";
       }
 
+      // VRMメタデータから保存キーを生成（タイトル|作者|バージョン）。無ければファイル名にフォールバック。
+      // 確実なユニークではないが、ファイル名変更に強く、それなりにユニーク。
+      function deriveVrmKey(vrm, fallbackName) {
+        try {
+          const m = vrm && vrm.meta ? vrm.meta : null;
+          if (m) {
+            const name = m.name || m.title || "";
+            const author = Array.isArray(m.authors) ? m.authors.join(",") : m.author || "";
+            const version = m.version || "";
+            const parts = [name, author, version].map((x) => String(x || "").trim()).filter(Boolean);
+            if (parts.length) {
+              return "meta:" + parts.join("|").replace(/\s+/g, " ").slice(0, 120);
+            }
+          }
+        } catch (_) {}
+        return fallbackName ? "file:" + fallbackName : "";
+      }
+
       function saveSettings(forceName) {
         if (window.__suppressAutoSave) return;
-        const fname = forceName && String(forceName) ? String(forceName) : currentFileName || "default";
+        const fname = forceName && String(forceName) ? String(forceName) : currentVrmKey || currentFileName || "default";
         if (!fname) return;
         const settings = {
           scale: scaleSlider.value,
@@ -3870,17 +3894,7 @@
           lightColor: lightColorSlider.value,
           vrmSat: vrmSatSlider.value,
           vrmRed: vrmRedSlider ? vrmRedSlider.value : "0",
-          skinSmooth: skinSmoothSlider.value,
-          camBright: camBrightSlider.value,
-          camSat: camSatSlider.value,
-          camCont: camContSlider.value,
-          camBlur: camBlurSlider.value,
-          camSepia: camSepiaSlider.value,
-          camBlack: camBlackSlider ? camBlackSlider.value : "0",
-          camTemp: camTempSlider ? camTempSlider.value : "50",
-          camRed: camRedSlider ? camRedSlider.value : "0",
-          camVignette: camVignetteSlider ? camVignetteSlider.value : "0",
-          camSoftGlow: camSoftGlowSlider ? camSoftGlowSlider.value : "0",
+          // カメラ画質/クリーム/トラッキングは共通保存(saveGlobalSettings)へ移行
           // Breath (per-VRM)
           breathEnabled: typeof breathToggle !== "undefined" ? !!breathToggle.checked : false,
           breathStrength: typeof breathStrengthSlider !== "undefined" && breathStrengthSlider ? breathStrengthSlider.value : "1.0",
@@ -3902,19 +3916,7 @@
           blushSpread: typeof blushSpreadSlider !== "undefined" && blushSpreadSlider ? blushSpreadSlider.value : "1.00",
 
           blushColor: typeof blushColorPicker !== "undefined" && blushColorPicker ? blushColorPicker.value : "#ff5fa0",
-          // Cream shooting
-          creamLife: typeof creamLifeSlider !== "undefined" && creamLifeSlider ? creamLifeSlider.value : String(creamLifetimeSec),
-          creamAuto: typeof creamAutoEnabled !== "undefined" ? !!creamAutoEnabled : false,
-          creamInterval: typeof creamAutoIntervalSlider !== "undefined" && creamAutoIntervalSlider ? creamAutoIntervalSlider.value : String(creamAutoIntervalSec),
-          creamMax: typeof creamMaxCountSlider !== "undefined" && creamMaxCountSlider ? creamMaxCountSlider.value : String(creamMaxCount),
-          creamSizeMul: typeof creamSizeMulSlider !== "undefined" && creamSizeMulSlider ? creamSizeMulSlider.value : String(creamSizeMul),
-          creamGloss: typeof creamGlossSlider !== "undefined" && creamGlossSlider ? creamGlossSlider.value : String(creamGloss),
-          creamViscosity: typeof creamViscositySlider !== "undefined" && creamViscositySlider ? creamViscositySlider.value : String(creamViscosity),
-          creamSimul: typeof creamSimulCountSlider !== "undefined" && creamSimulCountSlider ? creamSimulCountSlider.value : String(creamSimulCount),
-          creamZAttach: typeof creamZAttachSlider !== "undefined" && creamZAttachSlider ? creamZAttachSlider.value : String(creamZAttach),
-          creamFaceRatio: typeof creamFaceRatioSlider !== "undefined" && creamFaceRatioSlider ? creamFaceRatioSlider.value : String(creamFaceTargetRatio),
-          trackingFacing: currentFacingMode,
-          trackingMirror: !!mirrorEnabled,
+          // クリーム射出・トラッキングは共通保存(saveGlobalSettings)へ移行
         };
 
         try {
@@ -3922,13 +3924,14 @@
         } catch (e) {
           console.error("Save failed:", e);
         }
-        saveCamSettings();
+        saveGlobalSettings();
       }
 
-      const LS_CAM_GLOBAL = "vrm_cam_global";
+      const LS_CAM_GLOBAL = "vrm_cam_global"; // 共通(グローバル)設定: カメラ画質 + トラッキング + クリーム
 
-      function saveCamSettings() {
+      function saveGlobalSettings() {
         const s = {
+          // カメラ画質
           skinSmooth: skinSmoothSlider.value,
           camBright: camBrightSlider.value,
           camSat: camSatSlider.value,
@@ -3940,35 +3943,138 @@
           camRed: camRedSlider ? camRedSlider.value : "0",
           camVignette: camVignetteSlider ? camVignetteSlider.value : "0",
           camSoftGlow: camSoftGlowSlider ? camSoftGlowSlider.value : "0",
+          // クリーム射出（共通）
+          creamLife: typeof creamLifeSlider !== "undefined" && creamLifeSlider ? creamLifeSlider.value : String(creamLifetimeSec),
+          creamAuto: typeof creamAutoEnabled !== "undefined" ? !!creamAutoEnabled : false,
+          creamInterval: typeof creamAutoIntervalSlider !== "undefined" && creamAutoIntervalSlider ? creamAutoIntervalSlider.value : String(creamAutoIntervalSec),
+          creamMax: typeof creamMaxCountSlider !== "undefined" && creamMaxCountSlider ? creamMaxCountSlider.value : String(creamMaxCount),
+          creamSizeMul: typeof creamSizeMulSlider !== "undefined" && creamSizeMulSlider ? creamSizeMulSlider.value : String(creamSizeMul),
+          creamGloss: typeof creamGlossSlider !== "undefined" && creamGlossSlider ? creamGlossSlider.value : String(creamGloss),
+          creamViscosity: typeof creamViscositySlider !== "undefined" && creamViscositySlider ? creamViscositySlider.value : String(creamViscosity),
+          creamSimul: typeof creamSimulCountSlider !== "undefined" && creamSimulCountSlider ? creamSimulCountSlider.value : String(creamSimulCount),
+          creamZAttach: typeof creamZAttachSlider !== "undefined" && creamZAttachSlider ? creamZAttachSlider.value : String(creamZAttach),
+          creamFaceRatio: typeof creamFaceRatioSlider !== "undefined" && creamFaceRatioSlider ? creamFaceRatioSlider.value : String(creamFaceTargetRatio),
+          // トラッキング（共通）
+          trackingMirror: !!mirrorEnabled,
+          trackingFacing: currentFacingMode,
         };
         try {
           localStorage.setItem(LS_CAM_GLOBAL, JSON.stringify(s));
         } catch (_) {}
       }
 
-      function loadCamSettings() {
+      function loadGlobalSettings() {
+        window.__suppressAutoSave = true;
         try {
-          const data = localStorage.getItem(LS_CAM_GLOBAL);
-          if (!data) return false;
-          const s = JSON.parse(data);
-          if (Object.prototype.hasOwnProperty.call(s, "skinSmooth") && skinSmoothSlider) skinSmoothSlider.value = s.skinSmooth;
-          if (Object.prototype.hasOwnProperty.call(s, "camBright") && camBrightSlider) camBrightSlider.value = s.camBright;
-          if (Object.prototype.hasOwnProperty.call(s, "camSat") && camSatSlider) camSatSlider.value = s.camSat;
-          if (Object.prototype.hasOwnProperty.call(s, "camCont") && camContSlider) camContSlider.value = s.camCont;
-          if (Object.prototype.hasOwnProperty.call(s, "camBlur") && camBlurSlider) camBlurSlider.value = s.camBlur;
-          if (Object.prototype.hasOwnProperty.call(s, "camSepia") && camSepiaSlider) camSepiaSlider.value = s.camSepia;
-          if (Object.prototype.hasOwnProperty.call(s, "camBlack") && camBlackSlider) camBlackSlider.value = s.camBlack;
-          if (Object.prototype.hasOwnProperty.call(s, "camTemp") && camTempSlider) camTempSlider.value = s.camTemp;
-          if (Object.prototype.hasOwnProperty.call(s, "camRed") && camRedSlider) camRedSlider.value = s.camRed;
-          if (Object.prototype.hasOwnProperty.call(s, "camVignette") && camVignetteSlider) camVignetteSlider.value = s.camVignette;
-          if (Object.prototype.hasOwnProperty.call(s, "camSoftGlow") && camSoftGlowSlider) camSoftGlowSlider.value = s.camSoftGlow;
-          allSliders.forEach((el) => updateSliderDisplay(el));
+          let s = {};
           try {
-            updateCameraFilter();
-          } catch (_) {}
+            const data = localStorage.getItem(LS_CAM_GLOBAL);
+            if (data) s = JSON.parse(data) || {};
+          } catch (_) {
+            s = {};
+          }
+          const hasOwn = (k) => Object.prototype.hasOwnProperty.call(s, k);
+
+          // 一時マイグレーション: global に cream/tracking が無ければ default(per-VRM) から引き継ぐ
+          let seeded = false;
+          if (!hasOwn("creamSimul") && !hasOwn("trackingMirror")) {
+            try {
+              const def = localStorage.getItem("vrm_settings_default");
+              if (def) {
+                const d = JSON.parse(def);
+                ["creamLife", "creamAuto", "creamInterval", "creamMax", "creamSizeMul", "creamGloss", "creamViscosity", "creamSimul", "creamZAttach", "creamFaceRatio", "trackingMirror", "trackingFacing"].forEach((k) => {
+                  if (Object.prototype.hasOwnProperty.call(d, k) && !hasOwn(k)) {
+                    s[k] = d[k];
+                    seeded = true;
+                  }
+                });
+              }
+            } catch (_) {}
+          }
+
+          // --- カメラ画質 ---
+          if (hasOwn("skinSmooth") && skinSmoothSlider) skinSmoothSlider.value = s.skinSmooth;
+          if (hasOwn("camBright") && camBrightSlider) camBrightSlider.value = s.camBright;
+          if (hasOwn("camSat") && camSatSlider) camSatSlider.value = s.camSat;
+          if (hasOwn("camCont") && camContSlider) camContSlider.value = s.camCont;
+          if (hasOwn("camBlur") && camBlurSlider) camBlurSlider.value = s.camBlur;
+          if (hasOwn("camSepia") && camSepiaSlider) camSepiaSlider.value = s.camSepia;
+          if (hasOwn("camBlack") && camBlackSlider) camBlackSlider.value = s.camBlack;
+          if (hasOwn("camTemp") && camTempSlider) camTempSlider.value = s.camTemp;
+          if (hasOwn("camRed") && camRedSlider) camRedSlider.value = s.camRed;
+          if (hasOwn("camVignette") && camVignetteSlider) camVignetteSlider.value = s.camVignette;
+          if (hasOwn("camSoftGlow") && camSoftGlowSlider) camSoftGlowSlider.value = s.camSoftGlow;
+
+          // --- クリーム射出 ---
+          if (hasOwn("creamLife") && typeof creamLifeSlider !== "undefined" && creamLifeSlider) {
+            creamLifeSlider.value = s.creamLife;
+            creamLifetimeSec = parseFloat(creamLifeSlider.value) || creamLifetimeSec;
+          }
+          if (hasOwn("creamInterval") && typeof creamAutoIntervalSlider !== "undefined" && creamAutoIntervalSlider) {
+            creamAutoIntervalSlider.value = s.creamInterval;
+            creamAutoIntervalSec = parseFloat(creamAutoIntervalSlider.value) || creamAutoIntervalSec;
+          }
+          if (hasOwn("creamMax") && typeof creamMaxCountSlider !== "undefined" && creamMaxCountSlider) {
+            creamMaxCountSlider.value = s.creamMax;
+            creamMaxCount = parseInt(creamMaxCountSlider.value, 10) || creamMaxCount;
+            try { enforceCreamLimit(); } catch (_) {}
+          }
+          if (hasOwn("creamSizeMul") && typeof creamSizeMulSlider !== "undefined" && creamSizeMulSlider) {
+            creamSizeMulSlider.value = s.creamSizeMul;
+            creamSizeMul = parseFloat(creamSizeMulSlider.value) || creamSizeMul;
+          }
+          if (hasOwn("creamSimul") && typeof creamSimulCountSlider !== "undefined" && creamSimulCountSlider) {
+            creamSimulCountSlider.value = s.creamSimul;
+            creamSimulCount = parseInt(creamSimulCountSlider.value, 10) || creamSimulCount;
+          }
+          if (hasOwn("creamZAttach") && typeof creamZAttachSlider !== "undefined" && creamZAttachSlider) {
+            creamZAttachSlider.value = s.creamZAttach;
+            creamZAttach = Math.max(0, Math.min(1, parseFloat(creamZAttachSlider.value) || creamZAttach));
+          }
+          if (hasOwn("creamFaceRatio") && typeof creamFaceRatioSlider !== "undefined" && creamFaceRatioSlider) {
+            creamFaceRatioSlider.value = s.creamFaceRatio;
+            creamFaceTargetRatio = Math.max(0, Math.min(1, parseFloat(creamFaceRatioSlider.value) || 1));
+          }
+          if (hasOwn("creamGloss") && typeof creamGlossSlider !== "undefined" && creamGlossSlider) {
+            creamGlossSlider.value = s.creamGloss;
+            creamGloss = parseFloat(creamGlossSlider.value) || creamGloss;
+          }
+          if (hasOwn("creamViscosity") && typeof creamViscositySlider !== "undefined" && creamViscositySlider) {
+            creamViscositySlider.value = s.creamViscosity;
+            creamViscosity = parseFloat(creamViscositySlider.value) || creamViscosity;
+          }
+          if (hasOwn("creamAuto")) {
+            try { setCreamAutoEnabled(!!s.creamAuto); } catch (_) {}
+          } else {
+            try { syncCreamAutoUI(); } catch (_) {}
+          }
+
+          // --- トラッキング ---
+          if (hasOwn("trackingMirror")) {
+            mirrorEnabled = !!s.trackingMirror;
+            mirrorUserOverride = true;
+            try { if (mirrorToggle) mirrorToggle.checked = mirrorEnabled; } catch (_) {}
+            try { applyMirrorToRenderer(); } catch (_) {}
+          }
+          if (hasOwn("trackingFacing")) {
+            const want = s.trackingFacing;
+            if (want === "user" || want === "environment") {
+              currentFacingMode = want;
+              try { if (facingToggle) facingToggle.checked = want === "environment"; } catch (_) {}
+              try {
+                if (videoEl && stream) setTimeout(() => { try { switchCameraFacing(want); } catch (_) {} }, 0);
+              } catch (_) {}
+            }
+          }
+
+          allSliders.forEach((el) => updateSliderDisplay(el));
+          try { updateCameraFilter(); } catch (_) {}
+          if (seeded) {
+            try { saveGlobalSettings(); } catch (_) {} // シード値を以後グローバルに固定
+          }
           return true;
-        } catch (_) {
-          return false;
+        } finally {
+          window.__suppressAutoSave = false;
         }
       }
 
@@ -4017,7 +4123,7 @@
               if (s.lightColor) lightColorSlider.value = s.lightColor;
               if (s.vrmSat) vrmSatSlider.value = s.vrmSat;
               if (Object.prototype.hasOwnProperty.call(s, "vrmRed") && vrmRedSlider) vrmRedSlider.value = s.vrmRed;
-              // カメラ画質設定はグローバル管理（loadCamSettings）に移行済み
+              // カメラ画質/クリーム/トラッキングは共通管理（loadGlobalSettings）に移行済み
 
               // Breath (per-VRM)
               if (Object.prototype.hasOwnProperty.call(s, "breathEnabled") && typeof breathToggle !== "undefined") {
@@ -4050,93 +4156,7 @@
                   updateBlushUI(true);
                 } catch (_) {}
 
-              // Cream shooting
-              if (Object.prototype.hasOwnProperty.call(s, "creamLife") && typeof creamLifeSlider !== "undefined" && creamLifeSlider) {
-                creamLifeSlider.value = s.creamLife;
-                updateSliderDisplay(creamLifeSlider);
-                creamLifetimeSec = parseFloat(creamLifeSlider.value) || creamLifetimeSec;
-              }
-              if (Object.prototype.hasOwnProperty.call(s, "creamInterval") && typeof creamAutoIntervalSlider !== "undefined" && creamAutoIntervalSlider) {
-                creamAutoIntervalSlider.value = s.creamInterval;
-                updateSliderDisplay(creamAutoIntervalSlider);
-                creamAutoIntervalSec = parseFloat(creamAutoIntervalSlider.value) || creamAutoIntervalSec;
-              }
-              if (Object.prototype.hasOwnProperty.call(s, "creamMax") && typeof creamMaxCountSlider !== "undefined" && creamMaxCountSlider) {
-                creamMaxCountSlider.value = s.creamMax;
-                updateSliderDisplay(creamMaxCountSlider);
-                creamMaxCount = parseInt(creamMaxCountSlider.value, 10) || creamMaxCount;
-                enforceCreamLimit();
-              }
-              if (Object.prototype.hasOwnProperty.call(s, "creamSizeMul") && typeof creamSizeMulSlider !== "undefined" && creamSizeMulSlider) {
-                creamSizeMulSlider.value = s.creamSizeMul;
-                updateSliderDisplay(creamSizeMulSlider);
-                creamSizeMul = parseFloat(creamSizeMulSlider.value) || creamSizeMul;
-              }
-              if (Object.prototype.hasOwnProperty.call(s, "creamSimul") && typeof creamSimulCountSlider !== "undefined" && creamSimulCountSlider) {
-                creamSimulCountSlider.value = s.creamSimul;
-                updateSliderDisplay(creamSimulCountSlider);
-                creamSimulCount = parseInt(creamSimulCountSlider.value, 10) || creamSimulCount;
-              }
-              if (Object.prototype.hasOwnProperty.call(s, "creamZAttach") && typeof creamZAttachSlider !== "undefined" && creamZAttachSlider) {
-                creamZAttachSlider.value = s.creamZAttach;
-                updateSliderDisplay(creamZAttachSlider);
-                creamZAttach = Math.max(0, Math.min(1, parseFloat(creamZAttachSlider.value) || creamZAttach));
-              }
-              if (Object.prototype.hasOwnProperty.call(s, "creamFaceRatio") && typeof creamFaceRatioSlider !== "undefined" && creamFaceRatioSlider) {
-                creamFaceRatioSlider.value = s.creamFaceRatio;
-                updateSliderDisplay(creamFaceRatioSlider);
-                creamFaceTargetRatio = Math.max(0, Math.min(1, parseFloat(creamFaceRatioSlider.value) || 1));
-              }
-              if (Object.prototype.hasOwnProperty.call(s, "creamGloss") && typeof creamGlossSlider !== "undefined" && creamGlossSlider) {
-                creamGlossSlider.value = s.creamGloss;
-                updateSliderDisplay(creamGlossSlider);
-                creamGloss = parseFloat(creamGlossSlider.value) || creamGloss;
-              }
-              if (Object.prototype.hasOwnProperty.call(s, "creamViscosity") && typeof creamViscositySlider !== "undefined" && creamViscositySlider) {
-                creamViscositySlider.value = s.creamViscosity;
-                updateSliderDisplay(creamViscositySlider);
-                creamViscosity = parseFloat(creamViscositySlider.value) || creamViscosity;
-              }
-
-              if (Object.prototype.hasOwnProperty.call(s, "creamAuto")) {
-                setCreamAutoEnabled(!!s.creamAuto);
-              } else {
-                try {
-                  syncCreamAutoUI();
-                } catch (_) {}
-              }
-
-              // Tracking (camera + mirror)
-              if (Object.prototype.hasOwnProperty.call(s, "trackingMirror")) {
-                mirrorEnabled = !!s.trackingMirror;
-                mirrorUserOverride = true;
-                try {
-                  if (mirrorToggle) mirrorToggle.checked = mirrorEnabled;
-                } catch (_) {}
-                try {
-                  try {
-                    applyMirrorToRenderer();
-                  } catch (_) {}
-                } catch (_) {}
-              }
-              if (Object.prototype.hasOwnProperty.call(s, "trackingFacing")) {
-                const want = s.trackingFacing;
-                if (want === "user" || want === "environment") {
-                  currentFacingMode = want;
-                  try {
-                    if (facingToggle) facingToggle.checked = want === "environment";
-                  } catch (_) {}
-                  // If camera already running, switch now (non-blocking)
-                  try {
-                    if (videoEl && stream)
-                      setTimeout(() => {
-                        try {
-                          switchCameraFacing(want);
-                        } catch (_) {}
-                      }, 0);
-                  } catch (_) {}
-                }
-              }
+              // クリーム射出・トラッキングは共通保存(loadGlobalSettings)へ移行
 
               if (typeof updateBreathUI === "function")
                 try {
@@ -7071,7 +7091,7 @@
             return;
           }
           // Overwrite per-VRM save with the defaults we just loaded
-          saveSettings(currentFileName);
+          saveSettings(currentVrmKey || currentFileName);
           showToast("デフォルト設定をこのVRMに反映しました");
         });
       }
@@ -7118,6 +7138,7 @@
                   VRMUtils.deepDispose(currentVrm.scene);
                 }
                 currentVrm = vrm;
+                currentVrmKey = deriveVrmKey(vrm, currentFileName); // メタ由来の保存キー
 
                 if (applyDefaultToVrmBtn) applyDefaultToVrmBtn.disabled = false;
                 VRMUtils.rotateVRM0(vrm);
@@ -7157,15 +7178,25 @@
                   adjustmentGroup.add(vrm.scene);
                 }
 
-                const loaded = loadSettings(currentFileName, { silent: true, label: currentFileName });
+                let loaded = loadSettings(currentVrmKey, { silent: true, label: currentFileName });
+                if (!loaded && currentFileName) {
+                  // 旧形式（ファイル名キー）からの移行：あればメタキーへ保存し直す
+                  const legacy = loadSettings(currentFileName, { silent: true, label: currentFileName });
+                  if (legacy) {
+                    loaded = true;
+                    try {
+                      saveSettings(currentVrmKey);
+                    } catch (_) {}
+                  }
+                }
                 if (!loaded) {
                   loadSettings("default", { silent: true, label: "デフォルト" });
                   showToast("デフォルト設定を適用しました");
                 } else {
                   showToast(`設定を復元しました:\n${currentFileName}`);
                 }
-                // グローバルカメラ設定で上書き（VRM切替でもカメラ画質を維持）
-                loadCamSettings();
+                // 共通設定で上書き（VRM切替でもカメラ画質/トラッキング/クリームを維持）
+                loadGlobalSettings();
 
                 updateTransform();
 
