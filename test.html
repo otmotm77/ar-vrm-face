@@ -1108,7 +1108,7 @@
             <span id="gaze-vert-slider-val" class="val-display">0.00</span>
           </div>
           <div class="slider-container">
-            <span class="slider-label">🥴 視線寄せ（寄り目）</span>
+            <span class="slider-label">🥴 寄り目</span>
             <input type="range" id="gaze-converge-slider" min="0" max="1" step="0.01" value="0" />
             <span id="gaze-converge-slider-val" class="val-display">0.00</span>
           </div>
@@ -1429,8 +1429,8 @@
 
     <script type="module">
       // ===== App Version (single source of truth) =====
-      const APP_VERSION = "v6.01.92";
-      const APP_VERSION_NOTE = "feat: 視線スライダー追加（上下・寄り目／eyeボーン回転）";
+      const APP_VERSION = "v6.01.93";
+      const APP_VERSION_NOTE = "feat: 視線スライダー追加（上下・寄り目／eyeボーン回転） / fix: 寄り目の向きを修正";
 
       function getOverlayPixelRatio() {
         // Must match resizeCreamOverlayCanvas()/resizeBreathOverlayCanvas() DPR clamp for performance.
@@ -7126,8 +7126,8 @@
             const yaw   = conv * MAX_YAW;          // 内向き量
             leftEye.rotation.x  = pitch;
             rightEye.rotation.x = pitch;
-            leftEye.rotation.y  =  yaw;            // 左右の内向き符号は実機で確認・必要なら反転
-            rightEye.rotation.y = -yaw;
+            leftEye.rotation.y  = -yaw;            // +で寄り目（内向き）
+            rightEye.rotation.y =  yaw;
           }
         }
       }
