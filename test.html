@@ -1468,8 +1468,8 @@
 
     <script type="module">
       // ===== App Version (single source of truth) =====
-      const APP_VERSION = "v6.01.98";
-      const APP_VERSION_NOTE = "fix: よだれ 量0.1以下でも滴下するよう調整 / 落下速度ベースを1/3に・滴の寿命延長";
+      const APP_VERSION = "v6.01.99";
+      const APP_VERSION_NOTE = "fix: よだれ 筋の降下と雫の落下を落下速度で連動（雫が少し速い）・滴下後は筋をゆっくり後退";
 
       function getOverlayPixelRatio() {
         // Must match resizeCreamOverlayCanvas()/resizeBreathOverlayCanvas() DPR clamp for performance.
@@ -5881,12 +5881,15 @@
           const ay = basis.ml.y + (droolOffX * basis.uy + droolOffY * basis.vy) * basis.faceH * 0.15;
 
           // 口がちょっとでも開いていれば垂れる（長さは量で決まり、開口量には依存しない）。
-          // クールダウン中(droolDripTimer>0)は伸ばさず縮める → 滴下後に筋が一旦消える。
+          // クールダウン中(droolDripTimer>0)は伸ばさず、ゆっくり後退 → 滴下後に筋が徐々に消える。
           const active = open > 0.03;
           const growing = active && droolDripTimer <= 0;
           const Ltarget = growing ? droolStrength : 0;
+          // 落下速度スライダーで筋の降下/後退も一緒にスケール（雫の落下と関係づける）。
+          const gv = 1.6 * droolFall;   // 筋の降下速度（face単位/秒）
+          const rv = gv * 0.7;          // 後退（消える）速度：降下よりやや緩やか
           const dL = Ltarget - droolLen;
-          droolLen += Math.max(-1.5 * delta, Math.min(0.8 * delta, dL));
+          droolLen += Math.max(-rv * delta, Math.min(gv * delta, dL));
           if (droolLen < 0) droolLen = 0;
 
           // 太さは口の開きに比例（細い糸〜太い垂れ）。
@@ -5925,12 +5928,12 @@
             droolDrops.push({
               x: tipX,
               y: tipY,
-              vy: (40 + Math.random() * 40) * droolFall,
+              vy: gv * basis.faceH,  // 筋の降下速度を初速に引き継ぎ（重力で少し速くなる）
               size: bead,
               age: 0,
               life: 2.5,
             });
-            droolLen = 0;  // 滴下したら筋を消す（落ちた後に一旦リセット）
+            // 即リセットせず、クールダウン中に rv でゆっくり後退して消える。
             droolDripTimer = (0.4 + Math.random() * 0.6) * droolInterval;
           }
         } else {
@@ -5938,8 +5941,8 @@
           droolLen *= 1 - Math.min(1, 4 * delta);
         }
 
-        // 落下滴の更新・描画（実重力 = 画面下方向。落下速度スライダーで倍率調整）
-        const G = 500 * droolFall;
+        // 落下滴の更新・描画。初速＝筋の降下速度、重力で少しだけ加速して筋より速くなる。
+        const G = 300 * droolFall;
         for (let i = droolDrops.length - 1; i >= 0; i--) {
           const d = droolDrops[i];
           d.age += delta;
