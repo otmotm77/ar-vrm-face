@@ -1468,8 +1468,8 @@
 
     <script type="module">
       // ===== App Version (single source of truth) =====
-      const APP_VERSION = "v6.02.00";
-      const APP_VERSION_NOTE = "fix: よだれを下向きのみの物理（千切れて落下・根本が残る・上に戻らない）に修正";
+      const APP_VERSION = "v6.02.01";
+      const APP_VERSION_NOTE = "fix: よだれ 先端の塊がそのまま雫になって落下・筋に塊を残さない";
 
       function getOverlayPixelRatio() {
         // Must match resizeCreamOverlayCanvas()/resizeBreathOverlayCanvas() DPR clamp for performance.
@@ -5880,27 +5880,25 @@
           const ax = basis.ml.x + (droolOffX * basis.ux + droolOffY * basis.vx) * basis.faceW * 0.15;
           const ay = basis.ml.y + (droolOffX * basis.uy + droolOffY * basis.vy) * basis.faceH * 0.15;
 
-          // 物理：すべて下向き。筋は伸びる→下部が千切れて雫が落下→口元に短い根本が残る→また伸びる。
-          // 口へ吸い戻る（上向き後退）は一切しない。
-          const STUB = 0.08;            // 千切れた後に口元に残る根本の長さ（face単位）
+          // 物理：すべて下向き。筋は細く伸び、先端の塊(雫)が育つ→その塊がそのまま千切れて落下→
+          // 口元には細い根本だけ残る（塊は残さない）→また伸びる。口へ吸い戻る（上向き）は一切しない。
+          const STUB = 0.06;            // 千切れた後に口元に残る根本の長さ（face単位／塊なしの細い糸）
           const active = open > 0.03;   // 口が少しでも開いていれば垂れる
           const gv = 1.6 * droolFall;   // 筋の降下速度（face単位/秒）
           const ang = Math.atan2(basis.vy, basis.vx) - Math.PI / 2;
           // 太さは口の開きに比例（細い糸〜太い垂れ）。
           const thick = Math.max(0.12, Math.min(1, open / 0.6));
+          const beadShowLen = 0.16;     // これ以上伸びたら先端に塊(雫)が育つ
+          const beadSize = basis.faceW * 0.012 * droolSize * thick;
 
-          // 千切れた下部を縦長の雫として落とすヘルパ（下向きのみ）。
-          const detach = () => {
-            const detachedLen = droolLen - STUB;
-            if (detachedLen <= 0.01) return;
-            const midT = STUB + detachedLen * 0.5;
-            const w = basis.faceW * 0.013 * droolSize * thick * 0.5;
+          // 先端の塊をそのまま落下する雫にする（筋には塊を残さない）。
+          const dropFromTip = () => {
             droolDrops.push({
-              x: ax + basis.vx * midT * basis.faceH,
-              y: ay + basis.vy * midT * basis.faceH,
-              vy: gv * basis.faceH,                 // 筋の降下速度を初速に引き継ぐ
-              w,
-              h: Math.max(w, detachedLen * basis.faceH * 0.5),  // 千切れた部分を表す縦長
+              x: ax + basis.vx * droolLen * basis.faceH,
+              y: ay + basis.vy * droolLen * basis.faceH,
+              vy: gv * basis.faceH,        // 筋の降下速度を初速に引き継ぐ（重力で少し速くなる）
+              w: beadSize,
+              h: beadSize * 1.3,
               ang,
               age: 0,
               life: 2.5,
@@ -5916,17 +5914,17 @@
             // 千切れ：量(最大長)に追従するしきい値。量が小さくても筋が届いて落ちる。
             const dripLen = Math.max(0.04, droolStrength * 0.85);
             if (droolLen >= dripLen && droolDripTimer <= 0) {
-              detach();
-              droolLen = STUB;  // 根本だけ残す（0でも上後退でもない）
+              dropFromTip();    // 先端の塊が落ちる
+              droolLen = STUB;  // 細い根本だけ残す（塊なし・上後退なし）
               droolDripTimer = (0.4 + Math.random() * 0.6) * droolInterval;
             }
           } else {
-            // 口を閉じた：残った筋は千切れて下へ落ち、消える（上には戻さない）。
-            detach();
+            // 口を閉じた：先端の塊が落ちて消える（上には戻さない）。
+            if (droolLen > beadShowLen) dropFromTip();
             droolLen = 0;
           }
 
-          // 筋の描画（口角=太/先端=細のテーパ＋先端の艶）。根本(STUB)も小さな雫として描かれる。
+          // 筋の描画（細いテーパの糸）。先端の塊は十分伸びたときだけ描く＝根本(STUB)には塊を残さない。
           if (droolLen > 0.02) {
             const tipX = ax + basis.vx * droolLen * basis.faceH;
             const tipY = ay + basis.vy * droolLen * basis.faceH;
@@ -5944,8 +5942,9 @@
             g.addColorStop(1.0, "rgba(225, 235, 255, 0.30)");
             ctx.fillStyle = g;
             ctx.fill();
-            const bead = basis.faceW * 0.012 * droolSize * thick;
-            drawCreamDroplet(ctx, tipX, tipY, bead, bead * 1.3, 0.9, ang);
+            if (droolLen > beadShowLen) {
+              drawCreamDroplet(ctx, tipX, tipY, beadSize, beadSize * 1.3, 0.9, ang);
+            }
           }
         } else {
           // 無効/顔ロスト時：位置が取れないので筋は消す（落下中の雫はそのまま落ちる）。
