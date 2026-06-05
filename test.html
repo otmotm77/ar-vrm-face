@@ -1468,8 +1468,8 @@
 
     <script type="module">
       // ===== App Version (single source of truth) =====
-      const APP_VERSION = "v6.02.03";
-      const APP_VERSION_NOTE = "fix: クリーム流下・よだれ筋/雫の落下方向を「画面下主体＋顔少し」のブレンドに";
+      const APP_VERSION = "v6.02.04";
+      const APP_VERSION_NOTE = "fix: 落下方向の「実下」を顔の向きから判定（軸スナップ）。画面横固定の縦持ちでも正しく落下";
 
       function getOverlayPixelRatio() {
         // Must match resizeCreamOverlayCanvas()/resizeBreathOverlayCanvas() DPR clamp for performance.
@@ -5858,13 +5858,19 @@
         ctx.restore();
       }
 
-      // 落下/流下方向：画面の真下(0,1)を主に、顔の下方向(face-local V軸)を少し加味した単位ベクトル。
-      // 頭を傾けても基本は画面下辺へ落ち、顔の傾きにわずかに寄る。クリーム流下・よだれ共通。
-      const DOWN_FACE_BLEND = 0.3; // 0=画面真下のみ, 1=顔の下のみ
+      // 落下/流下方向：実際の下方向を主に、顔の傾きを少し加味した単位ベクトル。クリーム流下・よだれ共通。
+      // 「実際の下」は顔の下方向(basis V)を最寄りのキャンバス軸にスナップして求める。
+      // → 画面横固定で縦持ち等、(0,1)が実下とずれる持ち方でも正しい下になる（デバイス向き非依存）。
+      const DOWN_FACE_BLEND = 0.3; // 0=スナップした実下のみ, 1=顔の下のみ
       function blendedDownDir(basis) {
+        if (!basis) return { x: 0, y: 1 };
+        // 顔の下を最寄り軸へスナップ＝頭の傾きを除いたグロスな実下方向
+        let wx, wy;
+        if (Math.abs(basis.vy) >= Math.abs(basis.vx)) { wx = 0; wy = basis.vy >= 0 ? 1 : -1; }
+        else { wx = basis.vx >= 0 ? 1 : -1; wy = 0; }
         const k = DOWN_FACE_BLEND;
-        let dx = k * (basis ? basis.vx : 0);
-        let dy = k * (basis ? basis.vy : 1) + (1 - k);
+        let dx = (1 - k) * wx + k * basis.vx;
+        let dy = (1 - k) * wy + k * basis.vy;
         const len = Math.hypot(dx, dy) || 1;
         return { x: dx / len, y: dy / len };
       }
