@@ -1468,8 +1468,8 @@
 
     <script type="module">
       // ===== App Version (single source of truth) =====
-      const APP_VERSION = "v6.01.97";
-      const APP_VERSION_NOTE = "feat: よだれ 落下間隔スライダー追加(0.1-3.0) / fix: 滴下後に筋を消す・量の最大を0.5に";
+      const APP_VERSION = "v6.01.98";
+      const APP_VERSION_NOTE = "fix: よだれ 量0.1以下でも滴下するよう調整 / 落下速度ベースを1/3に・滴の寿命延長";
 
       function getOverlayPixelRatio() {
         // Must match resizeCreamOverlayCanvas()/resizeBreathOverlayCanvas() DPR clamp for performance.
@@ -5918,7 +5918,8 @@
 
           // 滴下（ポタッと落下）。口が開いていれば量に応じて落ちる。
           droolDripTimer -= delta;
-          const dripLen = Math.max(0.12, droolStrength * 0.5);
+          // しきい値は量(最大長)に追従させる。量が小さくても筋が届いて滴下する。
+          const dripLen = Math.max(0.04, droolStrength * 0.85);
           if (droolLen >= dripLen && active && droolDripTimer <= 0) {
             const bead = basis.faceW * 0.013 * droolSize * thick;
             droolDrops.push({
@@ -5927,7 +5928,7 @@
               vy: (40 + Math.random() * 40) * droolFall,
               size: bead,
               age: 0,
-              life: 1.4,
+              life: 2.5,
             });
             droolLen = 0;  // 滴下したら筋を消す（落ちた後に一旦リセット）
             droolDripTimer = (0.4 + Math.random() * 0.6) * droolInterval;
@@ -5938,7 +5939,7 @@
         }
 
         // 落下滴の更新・描画（実重力 = 画面下方向。落下速度スライダーで倍率調整）
-        const G = 1500 * droolFall;
+        const G = 500 * droolFall;
         for (let i = droolDrops.length - 1; i >= 0; i--) {
           const d = droolDrops[i];
           d.age += delta;
