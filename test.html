@@ -895,8 +895,8 @@
           <div style="font-size: 12px; opacity: 0.85; margin-top: 4px; line-height: 1.4">既に個別セーブがあるVRMに、保存済みデフォルトオプションを反映（上書き保存）します。</div>
           <div class="slider-container">
             <span class="slider-label">サイズ</span>
-            <input type="range" id="scale-slider" min="2.0" max="8.0" step="0.05" value="8.0" />
-            <span id="scale-slider-val" class="val-display">8.0</span>
+            <input type="range" id="scale-slider" min="2.0" max="8.0" step="0.05" value="3.0" />
+            <span id="scale-slider-val" class="val-display">3.0</span>
           </div>
           <div class="slider-container">
             <span class="slider-label">高さ</span>
@@ -911,8 +911,8 @@
           </div>
           <div class="slider-container">
             <span class="slider-label">前後</span>
-            <input type="range" id="z-slider" min="-2.0" max="2.0" step="0.05" value="-1.0" />
-            <span id="z-slider-val" class="val-display">-1.0</span>
+            <input type="range" id="z-slider" min="-2.0" max="2.0" step="0.05" value="-0.2" />
+            <span id="z-slider-val" class="val-display">-0.2</span>
           </div>
 
           <!-- マスキング設定 -->
@@ -991,17 +991,6 @@
               自動まばたき
             </label>
           </div>
-          <div class="slider-container">
-            <span class="slider-label">目の感度</span>
-            <input type="range" id="eye-sens-slider" min="0.5" max="5.0" step="0.1" value="2.0" />
-            <span id="eye-sens-slider-val" class="val-display">2.0</span>
-          </div>
-          <div class="slider-container">
-            <span class="slider-label">口の感度</span>
-            <input type="range" id="mouth-sens-slider" min="0.5" max="5.0" step="0.1" value="1.5" />
-            <span id="mouth-sens-slider-val" class="val-display">1.5</span>
-          </div>
-
           <div class="slider-container">
             <label class="toggle-label">
               <input type="checkbox" id="blush-toggle" class="toggle-checkbox" />
@@ -1209,6 +1198,17 @@
           </div>
 
           <div class="slider-container">
+            <span class="slider-label">目の感度</span>
+            <input type="range" id="eye-sens-slider" min="0.5" max="5.0" step="0.1" value="1.0" />
+            <span id="eye-sens-slider-val" class="val-display">1.0</span>
+          </div>
+          <div class="slider-container">
+            <span class="slider-label">口の感度</span>
+            <input type="range" id="mouth-sens-slider" min="0.5" max="5.0" step="0.1" value="1.5" />
+            <span id="mouth-sens-slider-val" class="val-display">1.5</span>
+          </div>
+
+          <div class="slider-container">
             <span class="slider-label">滑らかさ</span>
             <input type="range" id="mincf-slider" min="0.0001" max="0.01" step="0.0001" value="0.0005" />
             <span id="mincf-slider-val" class="val-display">0.0005</span>
@@ -1409,8 +1409,8 @@
 
     <script type="module">
       // ===== App Version (single source of truth) =====
-      const APP_VERSION = "v6.01.86";
-      const APP_VERSION_NOTE = "fix: 起動時グローバル復元のTDZエラー修正 / feat: per-VRMキーをVRMメタ由来に(旧ファイル名から移行) / 見出し整理(表情・カメラ照明・順入替・スコープ表記を(VRM毎)(共通)に)";
+      const APP_VERSION = "v6.01.88";
+      const APP_VERSION_NOTE = "feat: トラッキング全項目(目/口感度・滑らかさ・敏感さ)を共通保存に統一 / tune: 目感度1.0・サイズ3.0・前後-0.2";
 
       function getOverlayPixelRatio() {
         // Must match resizeCreamOverlayCanvas()/resizeBreathOverlayCanvas() DPR clamp for performance.
@@ -2955,7 +2955,7 @@
 
       minCfSlider.value = 0.0005;
       betaSlider.value = 0.04;
-      eyeSensSlider.value = 2.0;
+      eyeSensSlider.value = 1.0;
       // JSでの初期値設定後に表示更新
       updateSliderDisplay(minCfSlider);
       updateSliderDisplay(betaSlider);
@@ -3869,10 +3869,7 @@
           x: xSlider ? xSlider.value : 0,
           y: ySlider.value,
           z: zSlider.value,
-          minCF: minCfSlider.value,
-          beta: betaSlider.value,
-          mouthSens: mouthSensSlider.value,
-          eyeSens: eyeSensSlider.value,
+          // 滑らかさ(minCF)/敏感さ(beta)/目/口の感度は共通保存(saveGlobalSettings)へ移行
           autoBlink: autoBlinkToggle.checked,
           occlusion: occlusionToggle.checked,
           forceShadow: forceShadowToggle.checked,
@@ -3957,6 +3954,10 @@
           // トラッキング（共通）
           trackingMirror: !!mirrorEnabled,
           trackingFacing: currentFacingMode,
+          mouthSens: mouthSensSlider ? mouthSensSlider.value : "1.5",
+          eyeSens: eyeSensSlider ? eyeSensSlider.value : "1.0",
+          minCF: minCfSlider ? minCfSlider.value : "0.0005",
+          beta: betaSlider ? betaSlider.value : "0.04",
         };
         try {
           localStorage.setItem(LS_CAM_GLOBAL, JSON.stringify(s));
@@ -3982,7 +3983,7 @@
               const def = localStorage.getItem("vrm_settings_default");
               if (def) {
                 const d = JSON.parse(def);
-                ["creamLife", "creamAuto", "creamInterval", "creamMax", "creamSizeMul", "creamGloss", "creamViscosity", "creamSimul", "creamZAttach", "creamFaceRatio", "trackingMirror", "trackingFacing"].forEach((k) => {
+                ["creamLife", "creamAuto", "creamInterval", "creamMax", "creamSizeMul", "creamGloss", "creamViscosity", "creamSimul", "creamZAttach", "creamFaceRatio", "trackingMirror", "trackingFacing", "mouthSens", "eyeSens", "minCF", "beta"].forEach((k) => {
                   if (Object.prototype.hasOwnProperty.call(d, k) && !hasOwn(k)) {
                     s[k] = d[k];
                     seeded = true;
@@ -4066,6 +4067,10 @@
               } catch (_) {}
             }
           }
+          if (hasOwn("mouthSens") && mouthSensSlider) mouthSensSlider.value = s.mouthSens;
+          if (hasOwn("eyeSens") && eyeSensSlider) eyeSensSlider.value = s.eyeSens;
+          if (hasOwn("minCF") && minCfSlider) minCfSlider.value = s.minCF;
+          if (hasOwn("beta") && betaSlider) betaSlider.value = s.beta;
 
           allSliders.forEach((el) => updateSliderDisplay(el));
           try { updateCameraFilter(); } catch (_) {}
@@ -4091,10 +4096,7 @@
               if (Object.prototype.hasOwnProperty.call(s, "x") && xSlider) xSlider.value = s.x;
               if (Object.prototype.hasOwnProperty.call(s, "y")) ySlider.value = s.y;
               if (Object.prototype.hasOwnProperty.call(s, "z")) zSlider.value = s.z;
-              if (s.minCF) minCfSlider.value = s.minCF;
-              if (s.beta) betaSlider.value = s.beta;
-              if (s.mouthSens) mouthSensSlider.value = s.mouthSens;
-              if (s.eyeSens) eyeSensSlider.value = s.eyeSens;
+              // 滑らかさ(minCF)/敏感さ(beta)/目/口の感度は共通管理(loadGlobalSettings)へ移行
               if (s.autoBlink !== undefined) {
                 autoBlinkToggle.checked = s.autoBlink;
                 isAutoBlink = s.autoBlink;
