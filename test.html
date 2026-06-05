@@ -1360,8 +1360,8 @@
 
     <script type="module">
       // ===== App Version (single source of truth) =====
-      const APP_VERSION = "v6.01.77";
-      const APP_VERSION_NOTE = "tune: 同時射出の散らしを縦方向メインに(横は控えめ・縦は同時数で拡大, 自動/タップとも顔軸基準)";
+      const APP_VERSION = "v6.01.78";
+      const APP_VERSION_NOTE = "feat: 着弾時間を射出位置からの距離に比例(遠い的ほど遅く着弾, 一定速度＋±10%ゆらぎ)";
 
       function getOverlayPixelRatio() {
         // Must match resizeCreamOverlayCanvas()/resizeBreathOverlayCanvas() DPR clamp for performance.
@@ -5122,13 +5122,16 @@
           // User tap: keep the exact tapped point (no target jitter).
         }
 
-        const dur = 0.13 + Math.random() * 0.12;
         const size = (8 + Math.random() * 6) * (creamSizeMul || 1.0);
 
         const dx = tx - start.x;
         const dy = ty - start.y;
         const dist = Math.max(1.0, Math.hypot(dx, dy));
         const baseAng = Math.atan2(dy, dx);
+
+        // 着弾時間は射出位置からの距離に比例（≒一定速度）＝遠い的ほど遅く着弾。±10%のゆらぎ。
+        const CREAM_SHOT_SPEED_PX = 1500; // px/秒
+        const dur = Math.max(0.1, Math.min(0.5, dist / CREAM_SHOT_SPEED_PX)) * (0.9 + Math.random() * 0.2);
 
         // Add slight randomness to the shot angle (±5°) while keeping the endpoint fixed.
         const deltaAng = (Math.random() * 2 - 1) * ((5.0 * Math.PI) / 180.0);
