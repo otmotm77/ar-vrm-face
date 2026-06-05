@@ -1360,8 +1360,8 @@
 
     <script type="module">
       // ===== App Version (single source of truth) =====
-      const APP_VERSION = "v6.01.76";
-      const APP_VERSION_NOTE = "feat: 自動射出を「ぴゅっぴゅっ…ぴゅ…ぴゅぴゅー……」リズムに(1〜3連射サルボ＋可変休止, 1発毎の強さもばらつき)";
+      const APP_VERSION = "v6.01.77";
+      const APP_VERSION_NOTE = "tune: 同時射出の散らしを縦方向メインに(横は控えめ・縦は同時数で拡大, 自動/タップとも顔軸基準)";
 
       function getOverlayPixelRatio() {
         // Must match resizeCreamOverlayCanvas()/resizeBreathOverlayCanvas() DPR clamp for performance.
@@ -2804,10 +2804,15 @@
         creamLastShotMs = now;
 
         const shotCount = Math.max(1, Math.min(20, creamSimulCount | 0 || 1));
+        // 顔軸に沿って散らす：横(U軸)は控えめ、縦(V軸=顔の下方向)をメインに少し下バイアス
+        const _bTap = creamLastFaceBasis;
+        const _hx = _bTap ? _bTap.ux : 1, _hy = _bTap ? _bTap.uy : 0; // 横軸
+        const _vx = _bTap ? _bTap.vx : 0, _vy = _bTap ? _bTap.vy : 1; // 縦軸（顔の下）
         for (let i = 0; i < shotCount; i++) {
-          // Keep horizontal jitter tiny, vertical jitter a bit larger (slightly biased downward)
-          const dx = (Math.random() * 2 - 1) * 5.0; // ±5px
-          const dy = (Math.random() * 2 - 1) * 14.0 + 6.0; // mostly vertical, slight down-bias
+          const oh = (Math.random() * 2 - 1) * 5.0; // 横は小さく ±5px
+          const ov = (Math.random() * 2 - 1) * 14.0 + 6.0; // 縦メイン・やや下
+          const dx = _hx * oh + _vx * ov;
+          const dy = _hy * oh + _vy * ov;
           spawnCreamBurst(x + dx, y + dy, true);
         }
       };
@@ -5525,12 +5530,14 @@
                   const axYv = tgt.axY && Number.isFinite(tgt.axY.x) && Number.isFinite(tgt.axY.y) ? tgt.axY : { x: 0, y: 1 };
                   const fw = Number.isFinite(tgt.faceW) && tgt.faceW > 0 ? tgt.faceW : 120;
                   const fh = Number.isFinite(tgt.faceH) && tgt.faceH > 0 ? tgt.faceH : fw;
+                  // 縦方向メインの散らし：横は控えめ固定気味、縦は同時数で広げる
                   const baseR = 0.12 * Math.min(fw, fh);
-                  const R = Math.min(60, Math.max(8, baseR + Math.max(0, baseCount - 1) * 2.5));
-                  const rr = Math.sqrt(Math.random()) * R;
+                  const Ry = Math.min(90, Math.max(8, baseR + Math.max(0, baseCount - 1) * 4.5)); // 縦：数で増える
+                  const Rx = Math.min(22, Math.max(4, baseR * 0.35 + Math.max(0, baseCount - 1) * 0.5)); // 横：控えめ
                   const th = Math.random() * Math.PI * 2.0;
-                  const ox = Math.cos(th) * rr;
-                  const oy = Math.sin(th) * rr;
+                  const rr = Math.sqrt(Math.random());
+                  const ox = Math.cos(th) * rr * Rx; // 横方向成分（顔のU軸）
+                  const oy = Math.sin(th) * rr * Ry; // 縦方向成分（顔のV軸＝下方向）
 
                   const dx = axXv.x * ox + axYv.x * oy;
                   const dy = axXv.y * ox + axYv.y * oy;
