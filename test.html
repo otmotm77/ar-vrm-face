@@ -1082,6 +1082,11 @@
               <span id="drool-size-slider-val" class="val-display">1.00</span>
             </div>
             <div class="slider-container">
+              <span class="slider-label">落下速度</span>
+              <input type="range" id="drool-fall-slider" min="0.3" max="3.0" step="0.05" value="1.0" />
+              <span id="drool-fall-slider-val" class="val-display">1.00</span>
+            </div>
+            <div class="slider-container">
               <span class="slider-label">よだれ位置X</span>
               <input type="range" id="drool-offx-slider" min="-2.0" max="2.0" step="0.01" value="0.00" />
               <span id="drool-offx-slider-val" class="val-display">0.00</span>
@@ -1458,8 +1463,8 @@
 
     <script type="module">
       // ===== App Version (single source of truth) =====
-      const APP_VERSION = "v6.01.94";
-      const APP_VERSION_NOTE = "feat: よだれエフェクト追加（口角から開口連動で垂れる透明唾液）";
+      const APP_VERSION = "v6.01.95";
+      const APP_VERSION_NOTE = "feat: よだれに落下速度スライダー追加 / fix: 量が少なくても滴下するよう調整・滴を小さく";
 
       function getOverlayPixelRatio() {
         // Must match resizeCreamOverlayCanvas()/resizeBreathOverlayCanvas() DPR clamp for performance.
@@ -1635,6 +1640,7 @@
       let isDroolEnabled = false;
       let droolStrength = 0.8;
       let droolSize = 1.0;
+      let droolFall = 1.0;
       let droolOffX = 0.0;
       let droolOffY = 0.0;
       let droolLen = 0.0;        // current strand length (face-local v units)
@@ -2626,6 +2632,8 @@
       const droolStrengthSliderVal = document.getElementById("drool-strength-slider-val");
       const droolSizeSlider = document.getElementById("drool-size-slider");
       const droolSizeSliderVal = document.getElementById("drool-size-slider-val");
+      const droolFallSlider = document.getElementById("drool-fall-slider");
+      const droolFallSliderVal = document.getElementById("drool-fall-slider-val");
       const droolOffXSlider = document.getElementById("drool-offx-slider");
       const droolOffXSliderVal = document.getElementById("drool-offx-slider-val");
       const droolOffYSlider = document.getElementById("drool-offy-slider");
@@ -2735,6 +2743,11 @@
         droolSize = clamp(droolSize, 0.3, 3.0);
         if (droolSizeSliderVal) droolSizeSliderVal.textContent = droolSize.toFixed(2);
 
+        droolFall = droolFallSlider ? parseFloat(droolFallSlider.value) : 1.0;
+        if (!Number.isFinite(droolFall)) droolFall = 1.0;
+        droolFall = clamp(droolFall, 0.3, 3.0);
+        if (droolFallSliderVal) droolFallSliderVal.textContent = droolFall.toFixed(2);
+
         droolOffX = droolOffXSlider ? parseFloat(droolOffXSlider.value) || 0 : 0;
         droolOffY = droolOffYSlider ? parseFloat(droolOffYSlider.value) || 0 : 0;
         droolOffX = clamp(droolOffX, -2.0, 2.0);
@@ -2765,6 +2778,7 @@
       if (droolToggle) droolToggle.addEventListener("change", () => updateDroolUI(false));
       if (droolStrengthSlider) droolStrengthSlider.addEventListener("input", () => updateDroolUI(false));
       if (droolSizeSlider) droolSizeSlider.addEventListener("input", () => updateDroolUI(false));
+      if (droolFallSlider) droolFallSlider.addEventListener("input", () => updateDroolUI(false));
       if (droolOffXSlider) droolOffXSlider.addEventListener("input", () => updateDroolUI(false));
       if (droolOffYSlider) droolOffYSlider.addEventListener("input", () => updateDroolUI(false));
       updateDroolUI(true);
@@ -4020,6 +4034,7 @@
           droolEnabled:  typeof droolToggle !== "undefined" && droolToggle ? !!droolToggle.checked : false,
           droolStrength: typeof droolStrengthSlider !== "undefined" && droolStrengthSlider ? droolStrengthSlider.value : "0.8",
           droolSize:     typeof droolSizeSlider !== "undefined" && droolSizeSlider ? droolSizeSlider.value : "1.0",
+          droolFall:     typeof droolFallSlider !== "undefined" && droolFallSlider ? droolFallSlider.value : "1.0",
           droolOffX:     typeof droolOffXSlider !== "undefined" && droolOffXSlider ? droolOffXSlider.value : "0.0",
           droolOffY:     typeof droolOffYSlider !== "undefined" && droolOffYSlider ? droolOffYSlider.value : "0.0",
           // Blush (per-VRM)
@@ -4269,6 +4284,7 @@
               if (Object.prototype.hasOwnProperty.call(s, "droolEnabled") && droolToggle) droolToggle.checked = !!s.droolEnabled;
               if (Object.prototype.hasOwnProperty.call(s, "droolStrength") && droolStrengthSlider) droolStrengthSlider.value = s.droolStrength;
               if (Object.prototype.hasOwnProperty.call(s, "droolSize") && droolSizeSlider) droolSizeSlider.value = s.droolSize;
+              if (Object.prototype.hasOwnProperty.call(s, "droolFall") && droolFallSlider) droolFallSlider.value = s.droolFall;
               if (Object.prototype.hasOwnProperty.call(s, "droolOffX") && droolOffXSlider) droolOffXSlider.value = s.droolOffX;
               if (Object.prototype.hasOwnProperty.call(s, "droolOffY") && droolOffYSlider) droolOffYSlider.value = s.droolOffY;
               if (typeof updateDroolUI === "function") updateDroolUI(true);
@@ -5873,19 +5889,20 @@
             g.addColorStop(1.0, "rgba(225, 235, 255, 0.30)");
             ctx.fillStyle = g;
             ctx.fill();
-            // 先端の艶のある滴
-            const bead = basis.faceW * 0.018 * droolSize;
-            drawCreamDroplet(ctx, tipX, tipY, bead, bead * 1.25, 0.9, Math.atan2(basis.vy, basis.vx) - Math.PI / 2);
+            // 先端の艶のある滴（筋との差を抑えるため小さめ）
+            const bead = basis.faceW * 0.012 * droolSize;
+            drawCreamDroplet(ctx, tipX, tipY, bead, bead * 1.3, 0.9, Math.atan2(basis.vy, basis.vx) - Math.PI / 2);
           }
 
-          // 滴下（ポタッと落下）
+          // 滴下（ポタッと落下）。しきい値は量に連動させ、量が少なくても落ちるように。
           droolDripTimer -= delta;
-          if (droolLen > 0.5 && open > 0.25 && droolDripTimer <= 0) {
-            const bead = basis.faceW * 0.02 * droolSize;
+          const dripLen = Math.max(0.12, droolStrength * 0.5);
+          if (droolLen >= dripLen && open > 0.12 && droolDripTimer <= 0) {
+            const bead = basis.faceW * 0.013 * droolSize;
             droolDrops.push({
               x: tipX,
               y: tipY,
-              vy: 40 + Math.random() * 40,
+              vy: (40 + Math.random() * 40) * droolFall,
               size: bead,
               age: 0,
               life: 1.4,
@@ -5898,8 +5915,8 @@
           droolLen *= 1 - Math.min(1, 4 * delta);
         }
 
-        // 落下滴の更新・描画（実重力 = 画面下方向）
-        const G = 1500;
+        // 落下滴の更新・描画（実重力 = 画面下方向。落下速度スライダーで倍率調整）
+        const G = 1500 * droolFall;
         for (let i = droolDrops.length - 1; i >= 0; i--) {
           const d = droolDrops[i];
           d.age += delta;
