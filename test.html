@@ -1097,6 +1097,21 @@
             <input type="range" id="expr-brow-sorrow-slider" min="0" max="1" step="0.01" value="0" />
             <span id="expr-brow-sorrow-slider-val" class="val-display">0.00</span>
           </div>
+          <div class="slider-container">
+            <span class="slider-label">😢 たれ目</span>
+            <input type="range" id="expr-eye-sorrow-slider" min="0" max="1" step="0.01" value="0" />
+            <span id="expr-eye-sorrow-slider-val" class="val-display">0.00</span>
+          </div>
+          <div class="slider-container">
+            <span class="slider-label">😠 つり目</span>
+            <input type="range" id="expr-eye-angry-slider" min="0" max="1" step="0.01" value="0" />
+            <span id="expr-eye-angry-slider-val" class="val-display">0.00</span>
+          </div>
+          <div class="slider-container">
+            <span class="slider-label">🙂 口角上げ</span>
+            <input type="range" id="expr-mth-up-slider" min="0" max="1" step="0.01" value="0" />
+            <span id="expr-mth-up-slider-val" class="val-display">0.00</span>
+          </div>
         </details>
 
         <details class="acc-section" data-acc="cream">
@@ -1414,8 +1429,8 @@
 
     <script type="module">
       // ===== App Version (single source of truth) =====
-      const APP_VERSION = "v6.01.89";
-      const APP_VERSION_NOTE = "feat: 困り眉スライダー追加（Fcl_BRW_Sorrowを独立制御）";
+      const APP_VERSION = "v6.01.90";
+      const APP_VERSION_NOTE = "fix: 個別モーフが0に戻らない不具合(max合成→直接代入) / feat: たれ目・つり目・口角上げスライダー追加";
 
       function getOverlayPixelRatio() {
         // Must match resizeCreamOverlayCanvas()/resizeBreathOverlayCanvas() DPR clamp for performance.
@@ -2572,6 +2587,9 @@
       const exprRelaxedSlider   = document.getElementById("expr-relaxed-slider");
       const exprAngrySlider     = document.getElementById("expr-angry-slider");
       const exprBrowSorrowSlider = document.getElementById("expr-brow-sorrow-slider");
+      const exprEyeSorrowSlider  = document.getElementById("expr-eye-sorrow-slider");
+      const exprEyeAngrySlider   = document.getElementById("expr-eye-angry-slider");
+      const exprMthUpSlider      = document.getElementById("expr-mth-up-slider");
 
       function updateBlushUI(skipSave = false) {
         if (!blushToggle || !blushStrengthSlider) return;
@@ -2666,7 +2684,7 @@
       if (typeof updateBlushUI === "function") updateBlushUI(true);
       updateBreathUI(true);
 
-      [exprHappySlider, exprSadSlider, exprSurprisedSlider, exprRelaxedSlider, exprAngrySlider, exprBrowSorrowSlider]
+      [exprHappySlider, exprSadSlider, exprSurprisedSlider, exprRelaxedSlider, exprAngrySlider, exprBrowSorrowSlider, exprEyeSorrowSlider, exprEyeAngrySlider, exprMthUpSlider]
         .forEach((sl) => {
           if (!sl) return;
           updateSliderDisplay(sl);
@@ -3910,6 +3928,9 @@
           exprRelaxed:   typeof exprRelaxedSlider   !== "undefined" && exprRelaxedSlider   ? exprRelaxedSlider.value   : "0",
           exprAngry:     typeof exprAngrySlider     !== "undefined" && exprAngrySlider     ? exprAngrySlider.value     : "0",
           exprBrowSorrow: typeof exprBrowSorrowSlider !== "undefined" && exprBrowSorrowSlider ? exprBrowSorrowSlider.value : "0",
+          exprEyeSorrow:  typeof exprEyeSorrowSlider  !== "undefined" && exprEyeSorrowSlider  ? exprEyeSorrowSlider.value  : "0",
+          exprEyeAngry:   typeof exprEyeAngrySlider   !== "undefined" && exprEyeAngrySlider   ? exprEyeAngrySlider.value   : "0",
+          exprMthUp:      typeof exprMthUpSlider       !== "undefined" && exprMthUpSlider       ? exprMthUpSlider.value       : "0",
           // Blush (per-VRM)
           blushEnabled: typeof blushToggle !== "undefined" && blushToggle ? !!blushToggle.checked : false,
           blushStrength: typeof blushStrengthSlider !== "undefined" && blushStrengthSlider ? blushStrengthSlider.value : "0.70",
@@ -4149,6 +4170,9 @@
               if (Object.prototype.hasOwnProperty.call(s, "exprRelaxed")   && exprRelaxedSlider)   { exprRelaxedSlider.value   = s.exprRelaxed;   updateSliderDisplay(exprRelaxedSlider); }
               if (Object.prototype.hasOwnProperty.call(s, "exprAngry")     && exprAngrySlider)     { exprAngrySlider.value     = s.exprAngry;     updateSliderDisplay(exprAngrySlider); }
               if (Object.prototype.hasOwnProperty.call(s, "exprBrowSorrow") && exprBrowSorrowSlider) { exprBrowSorrowSlider.value = s.exprBrowSorrow; updateSliderDisplay(exprBrowSorrowSlider); }
+              if (Object.prototype.hasOwnProperty.call(s, "exprEyeSorrow")  && exprEyeSorrowSlider)  { exprEyeSorrowSlider.value  = s.exprEyeSorrow;  updateSliderDisplay(exprEyeSorrowSlider); }
+              if (Object.prototype.hasOwnProperty.call(s, "exprEyeAngry")   && exprEyeAngrySlider)   { exprEyeAngrySlider.value   = s.exprEyeAngry;   updateSliderDisplay(exprEyeAngrySlider); }
+              if (Object.prototype.hasOwnProperty.call(s, "exprMthUp")      && exprMthUpSlider)      { exprMthUpSlider.value      = s.exprMthUp;      updateSliderDisplay(exprMthUpSlider); }
 
               // Blush (per-VRM)
               if (Object.prototype.hasOwnProperty.call(s, "blushEnabled") && blushToggle) blushToggle.checked = !!s.blushEnabled;
@@ -7081,11 +7105,11 @@
           vrm.expressionManager.setValue(name, v);
         }
 
-        // 困り眉: Fcl_BRW_Sorrow を直接制御（expressionManager.update 後に max 合成で上書き）
-        const browVal = exprBrowSorrowSlider ? Math.max(0, Math.min(1, parseFloat(exprBrowSorrowSlider.value) || 0)) : 0;
-        for (const t of browSorrowTargets) {
-          if (t.mesh.morphTargetInfluences) {
-            t.mesh.morphTargetInfluences[t.index] = Math.max(t.mesh.morphTargetInfluences[t.index] || 0, browVal);
+        // 個別モーフ直接制御（expressionManager.update 後に上書き。直接代入で0に戻せる）
+        for (const ms of morphSliderTargets) {
+          const v = ms.slider ? Math.max(0, Math.min(1, parseFloat(ms.slider.value) || 0)) : 0;
+          for (const t of ms.targets) {
+            if (t.mesh.morphTargetInfluences) t.mesh.morphTargetInfluences[t.index] = v;
           }
         }
       }
@@ -7162,16 +7186,17 @@
                 VRMUtils.rotateVRM0(vrm);
                 makeHeadOnly(vrm);
 
-                // 困り眉(Fcl_BRW_Sorrow)モーフを収集してキャッシュ
-                browSorrowTargets = [];
-                vrm.scene.traverse((obj) => {
-                  if ((obj.isMesh || obj.isSkinnedMesh) && obj.morphTargetDictionary) {
-                    for (const key in obj.morphTargetDictionary) {
-                      if (key.includes("BRW_Sorrow")) {
-                        browSorrowTargets.push({ mesh: obj, index: obj.morphTargetDictionary[key] });
+                // 個別モーフ直接制御スライダーの対象モーフを収集してキャッシュ
+                morphSliderTargets = morphSliderDefs.map((d) => {
+                  const targets = [];
+                  vrm.scene.traverse((obj) => {
+                    if ((obj.isMesh || obj.isSkinnedMesh) && obj.morphTargetDictionary) {
+                      for (const key in obj.morphTargetDictionary) {
+                        if (key.includes(d.morph)) targets.push({ mesh: obj, index: obj.morphTargetDictionary[key] });
                       }
                     }
-                  }
+                  });
+                  return { slider: d.slider, targets };
                 });
 
                 vrm.scene.rotation.y = Math.PI;
@@ -7246,7 +7271,14 @@
         reader.readAsArrayBuffer(file);
       });
 
-      let browSorrowTargets = [];
+      // 個別モーフ直接制御スライダーの定義（slider参照は前方で取得済み）
+      const morphSliderDefs = [
+        { slider: exprBrowSorrowSlider, morph: "BRW_Sorrow" },
+        { slider: exprEyeSorrowSlider,  morph: "EYE_Sorrow" },
+        { slider: exprEyeAngrySlider,   morph: "EYE_Angry"  },
+        { slider: exprMthUpSlider,      morph: "MTH_Up"     },
+      ];
+      let morphSliderTargets = []; // [{ slider, targets:[{mesh,index}] }]
 
       function makeHeadOnly(vrm) {
         const hips = vrm.humanoid.getNormalizedBoneNode("hips");
