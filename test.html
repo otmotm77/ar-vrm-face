@@ -1078,13 +1078,13 @@
             </div>
             <div class="slider-container">
               <span class="slider-label">よだれの太さ</span>
-              <input type="range" id="drool-size-slider" min="0.3" max="3.0" step="0.05" value="1.0" />
-              <span id="drool-size-slider-val" class="val-display">1.00</span>
+              <input type="range" id="drool-size-slider" min="1.0" max="5.0" step="0.05" value="2.0" />
+              <span id="drool-size-slider-val" class="val-display">2.00</span>
             </div>
             <div class="slider-container">
               <span class="slider-label">落下速度</span>
-              <input type="range" id="drool-fall-slider" min="0.3" max="3.0" step="0.05" value="1.0" />
-              <span id="drool-fall-slider-val" class="val-display">1.00</span>
+              <input type="range" id="drool-fall-slider" min="0.1" max="1.0" step="0.05" value="0.3" />
+              <span id="drool-fall-slider-val" class="val-display">0.30</span>
             </div>
             <div class="slider-container">
               <span class="slider-label">よだれ位置X</span>
@@ -1463,8 +1463,8 @@
 
     <script type="module">
       // ===== App Version (single source of truth) =====
-      const APP_VERSION = "v6.01.95";
-      const APP_VERSION_NOTE = "feat: よだれに落下速度スライダー追加 / fix: 量が少なくても滴下するよう調整・滴を小さく";
+      const APP_VERSION = "v6.01.96";
+      const APP_VERSION_NOTE = "fix: よだれ 太さを開口に比例・少しでも開けば垂れる / 落下速度0.1-1.0(初期0.3)・太さ1.0-5.0";
 
       function getOverlayPixelRatio() {
         // Must match resizeCreamOverlayCanvas()/resizeBreathOverlayCanvas() DPR clamp for performance.
@@ -1639,8 +1639,8 @@
       // Drool (よだれ) state — per-VRM
       let isDroolEnabled = false;
       let droolStrength = 0.8;
-      let droolSize = 1.0;
-      let droolFall = 1.0;
+      let droolSize = 2.0;
+      let droolFall = 0.3;
       let droolOffX = 0.0;
       let droolOffY = 0.0;
       let droolLen = 0.0;        // current strand length (face-local v units)
@@ -2738,14 +2738,14 @@
         droolStrength = clamp(droolStrength, 0.0, 1.5);
         if (droolStrengthSliderVal) droolStrengthSliderVal.textContent = droolStrength.toFixed(2);
 
-        droolSize = droolSizeSlider ? parseFloat(droolSizeSlider.value) : 1.0;
-        if (!Number.isFinite(droolSize)) droolSize = 1.0;
-        droolSize = clamp(droolSize, 0.3, 3.0);
+        droolSize = droolSizeSlider ? parseFloat(droolSizeSlider.value) : 2.0;
+        if (!Number.isFinite(droolSize)) droolSize = 2.0;
+        droolSize = clamp(droolSize, 1.0, 5.0);
         if (droolSizeSliderVal) droolSizeSliderVal.textContent = droolSize.toFixed(2);
 
-        droolFall = droolFallSlider ? parseFloat(droolFallSlider.value) : 1.0;
-        if (!Number.isFinite(droolFall)) droolFall = 1.0;
-        droolFall = clamp(droolFall, 0.3, 3.0);
+        droolFall = droolFallSlider ? parseFloat(droolFallSlider.value) : 0.3;
+        if (!Number.isFinite(droolFall)) droolFall = 0.3;
+        droolFall = clamp(droolFall, 0.1, 1.0);
         if (droolFallSliderVal) droolFallSliderVal.textContent = droolFall.toFixed(2);
 
         droolOffX = droolOffXSlider ? parseFloat(droolOffXSlider.value) || 0 : 0;
@@ -4033,8 +4033,8 @@
           // Drool (per-VRM)
           droolEnabled:  typeof droolToggle !== "undefined" && droolToggle ? !!droolToggle.checked : false,
           droolStrength: typeof droolStrengthSlider !== "undefined" && droolStrengthSlider ? droolStrengthSlider.value : "0.8",
-          droolSize:     typeof droolSizeSlider !== "undefined" && droolSizeSlider ? droolSizeSlider.value : "1.0",
-          droolFall:     typeof droolFallSlider !== "undefined" && droolFallSlider ? droolFallSlider.value : "1.0",
+          droolSize:     typeof droolSizeSlider !== "undefined" && droolSizeSlider ? droolSizeSlider.value : "2.0",
+          droolFall:     typeof droolFallSlider !== "undefined" && droolFallSlider ? droolFallSlider.value : "0.3",
           droolOffX:     typeof droolOffXSlider !== "undefined" && droolOffXSlider ? droolOffXSlider.value : "0.0",
           droolOffY:     typeof droolOffYSlider !== "undefined" && droolOffYSlider ? droolOffYSlider.value : "0.0",
           // Blush (per-VRM)
@@ -5864,18 +5864,22 @@
           const ax = basis.ml.x + (droolOffX * basis.ux + droolOffY * basis.vx) * basis.faceW * 0.15;
           const ay = basis.ml.y + (droolOffX * basis.uy + droolOffY * basis.vy) * basis.faceH * 0.15;
 
-          // 目標長（開口連動）。伸びは緩やか、戻り（口を閉じる）は速め。
-          const Ltarget = open * droolStrength;
+          // 口がちょっとでも開いていれば垂れる（長さは量で決まり、開口量には依存しない）。
+          const active = open > 0.03;
+          const Ltarget = active ? droolStrength : 0;
           const dL = Ltarget - droolLen;
           droolLen += Math.max(-1.5 * delta, Math.min(0.8 * delta, dL));
           if (droolLen < 0) droolLen = 0;
+
+          // 太さは口の開きに比例（細い糸〜太い垂れ）。
+          const thick = Math.max(0.12, Math.min(1, open / 0.6));
 
           const tipX = ax + basis.vx * droolLen * basis.faceH;
           const tipY = ay + basis.vy * droolLen * basis.faceH;
 
           if (droolLen > 0.02) {
             // テーパした筋（口角=太/先端=細）
-            const w0 = basis.faceW * 0.013 * droolSize;
+            const w0 = basis.faceW * 0.013 * droolSize * thick;
             const w1 = w0 * 0.4;
             const px = -basis.vy, py = basis.vx; // 流れ方向に垂直
             ctx.beginPath();
@@ -5890,15 +5894,15 @@
             ctx.fillStyle = g;
             ctx.fill();
             // 先端の艶のある滴（筋との差を抑えるため小さめ）
-            const bead = basis.faceW * 0.012 * droolSize;
+            const bead = basis.faceW * 0.012 * droolSize * thick;
             drawCreamDroplet(ctx, tipX, tipY, bead, bead * 1.3, 0.9, Math.atan2(basis.vy, basis.vx) - Math.PI / 2);
           }
 
-          // 滴下（ポタッと落下）。しきい値は量に連動させ、量が少なくても落ちるように。
+          // 滴下（ポタッと落下）。口が開いていれば量に応じて落ちる。
           droolDripTimer -= delta;
           const dripLen = Math.max(0.12, droolStrength * 0.5);
-          if (droolLen >= dripLen && open > 0.12 && droolDripTimer <= 0) {
-            const bead = basis.faceW * 0.013 * droolSize;
+          if (droolLen >= dripLen && active && droolDripTimer <= 0) {
+            const bead = basis.faceW * 0.013 * droolSize * thick;
             droolDrops.push({
               x: tipX,
               y: tipY,
