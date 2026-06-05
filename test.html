@@ -1409,8 +1409,8 @@
 
     <script type="module">
       // ===== App Version (single source of truth) =====
-      const APP_VERSION = "v6.01.82";
-      const APP_VERSION_NOTE = "fix: 設定パネルのスクロール誤操作を強力に防止(縦/未確定中はスライダー値変更を握りつぶし横ドラッグ確定時のみ反映)";
+      const APP_VERSION = "v6.01.83";
+      const APP_VERSION_NOTE = "fix: 設定パネルでタップ変更を復活(スクロールせず離した時のみ触れた位置の値を適用, snap-on-release)";
 
       function getOverlayPixelRatio() {
         // Must match resizeCreamOverlayCanvas()/resizeBreathOverlayCanvas() DPR clamp for performance.
@@ -1899,10 +1899,11 @@
 
       // --- 設定パネルのスクロール誤操作防止 ---
       // タッチで縦スクロール（または方向未確定）の間はスライダー値変更を握りつぶし、
-      // 横ドラッグと確定した時だけ反映する。マウス操作は素通し（従来どおり）。
+      // 横ドラッグ確定時はライブ反映、スクロールせず離した時（タップ）は触れた位置の値を適用する。
+      // マウス操作は素通し（従来どおり）。
       function installPanelScrollGuard(panel) {
         if (!panel) return;
-        let active = null; // { slider, x, y, val, axis }
+        let active = null; // { slider, x, y, val, axis, pending }
         panel.addEventListener(
           "pointerdown",
           (e) => {
@@ -1911,7 +1912,7 @@
               return;
             }
             const slider = e.target && e.target.closest ? e.target.closest('input[type="range"]') : null;
-            active = slider ? { slider, x: e.clientX, y: e.clientY, val: slider.value, axis: null } : null;
+            active = slider ? { slider, x: e.clientX, y: e.clientY, val: slider.value, axis: null, pending: null } : null;
           },
           true,
         );
@@ -1933,19 +1934,37 @@
           (e) => {
             if (!active || e.target !== active.slider) return;
             if (active.axis !== "h") {
-              // 未確定 or 縦ドラッグ中：値変更を取り消し、アプリ側ハンドラも止める
+              // 未確定 or 縦ドラッグ中：触れた位置を記憶しつつ見た目は元値に保持、アプリ側ハンドラも止める
+              active.pending = active.slider.value;
               active.slider.value = active.val;
               e.stopImmediatePropagation();
             }
           },
           true,
         );
-        const _end = () => {
+        panel.addEventListener(
+          "pointerup",
+          () => {
+            if (!active) return;
+            const a = active;
+            active = null;
+            // スクロールせず離した（タップ）＝触れた位置の値を適用
+            if (a.axis === null && a.pending !== null && a.pending !== a.val) {
+              a.slider.value = a.pending;
+              a.slider.dispatchEvent(new Event("input", { bubbles: true }));
+              a.slider.dispatchEvent(new Event("change", { bubbles: true }));
+            }
+          },
+          true,
+        );
+        const _cancel = () => {
+          if (!active) return;
+          // スクロール確定等：元値に戻す
+          if (active.axis !== "h") active.slider.value = active.val;
           active = null;
         };
-        panel.addEventListener("pointerup", _end, true);
-        panel.addEventListener("pointercancel", _end, true);
-        panel.addEventListener("lostpointercapture", _end, true);
+        panel.addEventListener("pointercancel", _cancel, true);
+        panel.addEventListener("lostpointercapture", _cancel, true);
       }
       installPanelScrollGuard(controlPanel);
       installPanelScrollGuard(lightPanel);
