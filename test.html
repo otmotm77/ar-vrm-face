@@ -1468,8 +1468,8 @@
 
     <script type="module">
       // ===== App Version (single source of truth) =====
-      const APP_VERSION = "v6.01.99";
-      const APP_VERSION_NOTE = "fix: よだれ 筋の降下と雫の落下を落下速度で連動（雫が少し速い）・滴下後は筋をゆっくり後退";
+      const APP_VERSION = "v6.02.00";
+      const APP_VERSION_NOTE = "fix: よだれを下向きのみの物理（千切れて落下・根本が残る・上に戻らない）に修正";
 
       function getOverlayPixelRatio() {
         // Must match resizeCreamOverlayCanvas()/resizeBreathOverlayCanvas() DPR clamp for performance.
@@ -5880,26 +5880,56 @@
           const ax = basis.ml.x + (droolOffX * basis.ux + droolOffY * basis.vx) * basis.faceW * 0.15;
           const ay = basis.ml.y + (droolOffX * basis.uy + droolOffY * basis.vy) * basis.faceH * 0.15;
 
-          // 口がちょっとでも開いていれば垂れる（長さは量で決まり、開口量には依存しない）。
-          // クールダウン中(droolDripTimer>0)は伸ばさず、ゆっくり後退 → 滴下後に筋が徐々に消える。
-          const active = open > 0.03;
-          const growing = active && droolDripTimer <= 0;
-          const Ltarget = growing ? droolStrength : 0;
-          // 落下速度スライダーで筋の降下/後退も一緒にスケール（雫の落下と関係づける）。
+          // 物理：すべて下向き。筋は伸びる→下部が千切れて雫が落下→口元に短い根本が残る→また伸びる。
+          // 口へ吸い戻る（上向き後退）は一切しない。
+          const STUB = 0.08;            // 千切れた後に口元に残る根本の長さ（face単位）
+          const active = open > 0.03;   // 口が少しでも開いていれば垂れる
           const gv = 1.6 * droolFall;   // 筋の降下速度（face単位/秒）
-          const rv = gv * 0.7;          // 後退（消える）速度：降下よりやや緩やか
-          const dL = Ltarget - droolLen;
-          droolLen += Math.max(-rv * delta, Math.min(gv * delta, dL));
-          if (droolLen < 0) droolLen = 0;
-
+          const ang = Math.atan2(basis.vy, basis.vx) - Math.PI / 2;
           // 太さは口の開きに比例（細い糸〜太い垂れ）。
           const thick = Math.max(0.12, Math.min(1, open / 0.6));
 
-          const tipX = ax + basis.vx * droolLen * basis.faceH;
-          const tipY = ay + basis.vy * droolLen * basis.faceH;
+          // 千切れた下部を縦長の雫として落とすヘルパ（下向きのみ）。
+          const detach = () => {
+            const detachedLen = droolLen - STUB;
+            if (detachedLen <= 0.01) return;
+            const midT = STUB + detachedLen * 0.5;
+            const w = basis.faceW * 0.013 * droolSize * thick * 0.5;
+            droolDrops.push({
+              x: ax + basis.vx * midT * basis.faceH,
+              y: ay + basis.vy * midT * basis.faceH,
+              vy: gv * basis.faceH,                 // 筋の降下速度を初速に引き継ぐ
+              w,
+              h: Math.max(w, detachedLen * basis.faceH * 0.5),  // 千切れた部分を表す縦長
+              ang,
+              age: 0,
+              life: 2.5,
+            });
+          };
 
+          droolDripTimer -= delta;
+          if (active) {
+            // 成長（クールダウン中は保持＝伸ばさない・縮めない）。
+            if (droolDripTimer <= 0 && droolLen < droolStrength) {
+              droolLen = Math.min(droolStrength, droolLen + gv * delta);
+            }
+            // 千切れ：量(最大長)に追従するしきい値。量が小さくても筋が届いて落ちる。
+            const dripLen = Math.max(0.04, droolStrength * 0.85);
+            if (droolLen >= dripLen && droolDripTimer <= 0) {
+              detach();
+              droolLen = STUB;  // 根本だけ残す（0でも上後退でもない）
+              droolDripTimer = (0.4 + Math.random() * 0.6) * droolInterval;
+            }
+          } else {
+            // 口を閉じた：残った筋は千切れて下へ落ち、消える（上には戻さない）。
+            detach();
+            droolLen = 0;
+          }
+
+          // 筋の描画（口角=太/先端=細のテーパ＋先端の艶）。根本(STUB)も小さな雫として描かれる。
           if (droolLen > 0.02) {
-            // テーパした筋（口角=太/先端=細）
+            const tipX = ax + basis.vx * droolLen * basis.faceH;
+            const tipY = ay + basis.vy * droolLen * basis.faceH;
             const w0 = basis.faceW * 0.013 * droolSize * thick;
             const w1 = w0 * 0.4;
             const px = -basis.vy, py = basis.vx; // 流れ方向に垂直
@@ -5914,46 +5944,27 @@
             g.addColorStop(1.0, "rgba(225, 235, 255, 0.30)");
             ctx.fillStyle = g;
             ctx.fill();
-            // 先端の艶のある滴（筋との差を抑えるため小さめ）
             const bead = basis.faceW * 0.012 * droolSize * thick;
-            drawCreamDroplet(ctx, tipX, tipY, bead, bead * 1.3, 0.9, Math.atan2(basis.vy, basis.vx) - Math.PI / 2);
-          }
-
-          // 滴下（ポタッと落下）。口が開いていれば量に応じて落ちる。
-          droolDripTimer -= delta;
-          // しきい値は量(最大長)に追従させる。量が小さくても筋が届いて滴下する。
-          const dripLen = Math.max(0.04, droolStrength * 0.85);
-          if (droolLen >= dripLen && active && droolDripTimer <= 0) {
-            const bead = basis.faceW * 0.013 * droolSize * thick;
-            droolDrops.push({
-              x: tipX,
-              y: tipY,
-              vy: gv * basis.faceH,  // 筋の降下速度を初速に引き継ぎ（重力で少し速くなる）
-              size: bead,
-              age: 0,
-              life: 2.5,
-            });
-            // 即リセットせず、クールダウン中に rv でゆっくり後退して消える。
-            droolDripTimer = (0.4 + Math.random() * 0.6) * droolInterval;
+            drawCreamDroplet(ctx, tipX, tipY, bead, bead * 1.3, 0.9, ang);
           }
         } else {
-          // 無効/顔ロスト時はフェード
-          droolLen *= 1 - Math.min(1, 4 * delta);
+          // 無効/顔ロスト時：位置が取れないので筋は消す（落下中の雫はそのまま落ちる）。
+          droolLen = 0;
         }
 
-        // 落下滴の更新・描画。初速＝筋の降下速度、重力で少しだけ加速して筋より速くなる。
+        // 落下滴の更新・描画。初速＝筋の降下速度、重力で少しだけ加速して筋より速くなる（すべて下向き）。
         const G = 300 * droolFall;
         for (let i = droolDrops.length - 1; i >= 0; i--) {
           const d = droolDrops[i];
           d.age += delta;
           d.vy += G * delta;
           d.y += d.vy * delta;
-          if (d.age >= d.life || d.y - d.size > cssH) {
+          if (d.age >= d.life || d.y - d.h > cssH) {
             droolDrops.splice(i, 1);
             continue;
           }
           const fade = Math.max(0, 1 - d.age / d.life);
-          drawCreamDroplet(ctx, d.x, d.y, d.size, d.size * 1.3, 0.85 * fade, 0);
+          drawCreamDroplet(ctx, d.x, d.y, d.w, d.h, 0.85 * fade, d.ang || 0);
         }
       }
 
