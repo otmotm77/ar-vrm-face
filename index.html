@@ -563,6 +563,7 @@
       }
       input[type="range"] {
         flex-grow: 1;
+        touch-action: pan-y; /* 縦ドラッグはパネルのスクロールに通す（横ドラッグのみ値変更）誤操作防止 */
       }
 
       /* スライダー値表示用スタイル */
@@ -611,10 +612,12 @@
         font-weight: bold;
         font-size: 12px;
         margin-bottom: 8px;
+        touch-action: manipulation;
       }
       .toggle-checkbox {
         margin-right: 10px;
         transform: scale(1.2);
+        touch-action: manipulation;
       }
 
       .restart-btn {
@@ -736,6 +739,7 @@
         justify-content: space-between;
         gap: 10px;
         color: #39338d;
+        touch-action: manipulation;
       }
       .acc-section > summary::-webkit-details-marker {
         display: none;
@@ -979,7 +983,7 @@
         </details>
 
         <details class="acc-section" data-acc="cream">
-          <summary>クリーム射出</summary>
+          <summary>白濁液射出</summary>
 
           <div class="slider-container">
             <label class="toggle-label">
@@ -999,7 +1003,7 @@
           </div>
 
           <div class="slider-container">
-            <span class="slider-label">クリームサイズ</span>
+            <span class="slider-label">サイズ</span>
             <input type="range" id="cream-size-mul-slider" min="0.5" max="2.0" step="0.05" value="1.0" />
             <span id="cream-size-mul-slider-val" class="val-display">1.0</span>
           </div>
@@ -1023,18 +1027,18 @@
           </div>
 
           <div class="slider-container">
-            <span class="slider-label">同時射出個数</span>
+            <span class="slider-label">同時射出数</span>
             <input type="range" id="cream-simul-count-slider" min="1" max="20" step="1" value="3" />
             <span id="cream-simul-count-slider-val" class="val-display">3</span>
           </div>
 
           <div class="slider-container">
-            <span class="slider-label">クリーム消滅時間</span>
+            <span class="slider-label">消滅時間</span>
             <input type="range" id="cream-life-slider" min="1" max="30" step="1" value="10" />
             <span id="cream-life-slider-val" class="val-display">10</span>
           </div>
           <div class="slider-container">
-            <span class="slider-label">最大クリーム数</span>
+            <span class="slider-label">最大数</span>
             <input type="range" id="cream-max-count-slider" min="10" max="200" step="1" value="40" />
             <span id="cream-max-count-slider-val" class="val-display">40</span>
           </div>
@@ -1405,8 +1409,8 @@
 
     <script type="module">
       // ===== App Version (single source of truth) =====
-      const APP_VERSION = "v6.01.80";
-      const APP_VERSION_NOTE = "feat: スクショボタン追加(映像+VRM+VFX合成をJPEG保存,UI除外,ファイル名VRMAR日時ms) / tune: ボトムボタン40pxに縮小し1行収め";
+      const APP_VERSION = "v6.01.84";
+      const APP_VERSION_NOTE = "tune: 1ショット内のリブレット配置を縦寄せ(横は最大±約1個分, 縦は必ず少し下にずらす)";
 
       function getOverlayPixelRatio() {
         // Must match resizeCreamOverlayCanvas()/resizeBreathOverlayCanvas() DPR clamp for performance.
@@ -1892,6 +1896,78 @@
       const uiContainer = document.getElementById("ui-container");
       const controlPanel = document.getElementById("control-panel");
       const lightPanel = document.getElementById("light-panel");
+
+      // --- 設定パネルのスクロール誤操作防止 ---
+      // タッチで縦スクロール（または方向未確定）の間はスライダー値変更を握りつぶし、
+      // 横ドラッグ確定時はライブ反映、スクロールせず離した時（タップ）は触れた位置の値を適用する。
+      // マウス操作は素通し（従来どおり）。
+      function installPanelScrollGuard(panel) {
+        if (!panel) return;
+        let active = null; // { slider, x, y, val, axis, pending }
+        panel.addEventListener(
+          "pointerdown",
+          (e) => {
+            if (e.pointerType !== "touch") {
+              active = null;
+              return;
+            }
+            const slider = e.target && e.target.closest ? e.target.closest('input[type="range"]') : null;
+            active = slider ? { slider, x: e.clientX, y: e.clientY, val: slider.value, axis: null, pending: null } : null;
+          },
+          true,
+        );
+        panel.addEventListener(
+          "pointermove",
+          (e) => {
+            if (!active || e.pointerType !== "touch") return;
+            if (active.axis === null) {
+              const dx = Math.abs(e.clientX - active.x);
+              const dy = Math.abs(e.clientY - active.y);
+              if (dx > 6 || dy > 6) active.axis = dx > dy ? "h" : "v";
+            }
+          },
+          { capture: true, passive: true },
+        );
+        // capture phase: スライダー個別の input ハンドラより先に実行してブロックする
+        panel.addEventListener(
+          "input",
+          (e) => {
+            if (!active || e.target !== active.slider) return;
+            if (active.axis !== "h") {
+              // 未確定 or 縦ドラッグ中：触れた位置を記憶しつつ見た目は元値に保持、アプリ側ハンドラも止める
+              active.pending = active.slider.value;
+              active.slider.value = active.val;
+              e.stopImmediatePropagation();
+            }
+          },
+          true,
+        );
+        panel.addEventListener(
+          "pointerup",
+          () => {
+            if (!active) return;
+            const a = active;
+            active = null;
+            // スクロールせず離した（タップ）＝触れた位置の値を適用
+            if (a.axis === null && a.pending !== null && a.pending !== a.val) {
+              a.slider.value = a.pending;
+              a.slider.dispatchEvent(new Event("input", { bubbles: true }));
+              a.slider.dispatchEvent(new Event("change", { bubbles: true }));
+            }
+          },
+          true,
+        );
+        const _cancel = () => {
+          if (!active) return;
+          // スクロール確定等：元値に戻す
+          if (active.axis !== "h") active.slider.value = active.val;
+          active = null;
+        };
+        panel.addEventListener("pointercancel", _cancel, true);
+        panel.addEventListener("lostpointercapture", _cancel, true);
+      }
+      installPanelScrollGuard(controlPanel);
+      installPanelScrollGuard(lightPanel);
 
       // --- UI Dim Toggle (temporary) ---
       const uiDimToggleBtn = document.getElementById("ui-dim-toggle-btn");
@@ -5770,6 +5846,8 @@
                 const n = 1 + Math.floor(Math.random() * 2);
                 for (let i = 0; i < n; i++) {
                   const su = (0.055 + Math.random() * 0.05) * (creamSizeMul || 1.0);
+                  const hOff = (Math.random() * 2 - 1) * 0.04; // 横：最大±約1個分に抑える
+                  const vOff = 0.025 + Math.random() * 0.05 + i * 0.03; // 縦：必ず少し下へ（本数で段違い）
                   creamPatches.push({
                     phase: "rivulet",
                     isSplatter: true,
@@ -5779,8 +5857,8 @@
                     age: 0,
                     life: 4.0 + Math.random() * 3.0,
                     fadeStart: 2.5,
-                    u: local.u + (Math.random() - 0.5) * 0.12,
-                    v0: local.v,
+                    u: local.u + hOff,
+                    v0: local.v + vOff,
                     flowDist: 0,
                     refW: useBasis && useBasis.faceW ? useBasis.faceW : null,
                     refH: useBasis && useBasis.faceH ? useBasis.faceH : null,
