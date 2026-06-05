@@ -1409,8 +1409,8 @@
 
     <script type="module">
       // ===== App Version (single source of truth) =====
-      const APP_VERSION = "v6.01.83";
-      const APP_VERSION_NOTE = "fix: 設定パネルでタップ変更を復活(スクロールせず離した時のみ触れた位置の値を適用, snap-on-release)";
+      const APP_VERSION = "v6.01.84";
+      const APP_VERSION_NOTE = "tune: 1ショット内のリブレット配置を縦寄せ(横は最大±約1個分, 縦は必ず少し下にずらす)";
 
       function getOverlayPixelRatio() {
         // Must match resizeCreamOverlayCanvas()/resizeBreathOverlayCanvas() DPR clamp for performance.
@@ -5846,6 +5846,8 @@
                 const n = 1 + Math.floor(Math.random() * 2);
                 for (let i = 0; i < n; i++) {
                   const su = (0.055 + Math.random() * 0.05) * (creamSizeMul || 1.0);
+                  const hOff = (Math.random() * 2 - 1) * 0.04; // 横：最大±約1個分に抑える
+                  const vOff = 0.025 + Math.random() * 0.05 + i * 0.03; // 縦：必ず少し下へ（本数で段違い）
                   creamPatches.push({
                     phase: "rivulet",
                     isSplatter: true,
@@ -5855,8 +5857,8 @@
                     age: 0,
                     life: 4.0 + Math.random() * 3.0,
                     fadeStart: 2.5,
-                    u: local.u + (Math.random() - 0.5) * 0.12,
-                    v0: local.v,
+                    u: local.u + hOff,
+                    v0: local.v + vOff,
                     flowDist: 0,
                     refW: useBasis && useBasis.faceW ? useBasis.faceW : null,
                     refH: useBasis && useBasis.faceH ? useBasis.faceH : null,
