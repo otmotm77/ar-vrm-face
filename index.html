@@ -135,8 +135,8 @@
         position: fixed;
         right: 12px;
         bottom: 12px;
-        width: 44px;
-        height: 44px;
+        width: 40px;
+        height: 40px;
         border-radius: 999px;
         border: none;
         background: rgba(255, 255, 255, 0.25);
@@ -156,14 +156,47 @@
           opacity 0.12s ease;
       }
       #ui-dim-toggle-btn svg {
-        width: 22px;
-        height: 22px;
+        width: 20px;
+        height: 20px;
       }
       #ui-dim-toggle-btn.active {
         background: rgba(0, 0, 0, 0.18);
         color: rgba(255, 255, 255, 0.92);
       }
       #ui-dim-toggle-btn:active {
+        transform: scale(0.96);
+      }
+
+      /* Screenshot button (bottom-right, left of lock buttons) */
+      #screenshot-btn {
+        position: fixed;
+        right: 252px; /* 204 + 40 + 8 */
+        bottom: 12px;
+        width: 40px;
+        height: 40px;
+        border-radius: 999px;
+        border: none;
+        background: rgba(255, 255, 255, 0.25);
+        backdrop-filter: blur(6px);
+        -webkit-backdrop-filter: blur(6px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: rgba(0, 0, 0, 0.85);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+        pointer-events: auto;
+        z-index: 2002;
+        cursor: pointer;
+        transition:
+          transform 0.12s ease,
+          background 0.12s ease,
+          opacity 0.12s ease;
+      }
+      #screenshot-btn svg {
+        width: 20px;
+        height: 20px;
+      }
+      #screenshot-btn:active {
         transform: scale(0.96);
       }
 
@@ -174,6 +207,9 @@
       body.ui-dim #ui-container .control-panel,
       body.ui-dim #ui-dim-toggle-btn,
       body.ui-dim #tracking-pause-btn,
+      body.ui-dim #screenshot-btn,
+      body.ui-dim #lock-pitch-btn,
+      body.ui-dim #lock-yaw-btn,
       body.ui-dim #vrm-hide-btn {
         opacity: 0.1;
       }
@@ -181,10 +217,10 @@
       /* VRM hide toggle (bottom-right, left of tracking pause) */
       #lock-yaw-btn {
         position: fixed;
-        right: 174px; /* 120 + 44 + 10 */
+        right: 156px; /* 108 + 40 + 8 */
         bottom: 12px;
-        width: 44px;
-        height: 44px;
+        width: 40px;
+        height: 40px;
         border-radius: 999px;
         border: none;
         background: rgba(255, 255, 255, 0.25);
@@ -204,8 +240,8 @@
           opacity 0.12s ease;
       }
       #lock-yaw-btn svg {
-        width: 22px;
-        height: 22px;
+        width: 20px;
+        height: 20px;
       }
       #lock-yaw-btn.active {
         background: rgba(0, 0, 0, 0.18);
@@ -217,10 +253,10 @@
 
       #lock-pitch-btn {
         position: fixed;
-        right: 228px; /* 174 + 44 + 10 */
+        right: 204px; /* 156 + 40 + 8 */
         bottom: 12px;
-        width: 44px;
-        height: 44px;
+        width: 40px;
+        height: 40px;
         border-radius: 999px;
         border: none;
         background: rgba(255, 255, 255, 0.25);
@@ -240,8 +276,8 @@
           opacity 0.12s ease;
       }
       #lock-pitch-btn svg {
-        width: 22px;
-        height: 22px;
+        width: 20px;
+        height: 20px;
       }
       #lock-pitch-btn.active {
         background: rgba(0, 0, 0, 0.18);
@@ -253,10 +289,10 @@
 
       #vrm-hide-btn {
         position: fixed;
-        right: 120px; /* 66 + 44 + 10 */
+        right: 108px; /* 60 + 40 + 8 */
         bottom: 12px;
-        width: 44px;
-        height: 44px;
+        width: 40px;
+        height: 40px;
         border-radius: 999px;
         border: none;
         background: rgba(255, 255, 255, 0.25);
@@ -276,8 +312,8 @@
           opacity 0.12s ease;
       }
       #vrm-hide-btn svg {
-        width: 22px;
-        height: 22px;
+        width: 20px;
+        height: 20px;
       }
       #vrm-hide-btn.active {
         background: rgba(0, 0, 0, 0.18);
@@ -290,10 +326,10 @@
       /* Tracking pause toggle (bottom-right, left of UI dim) */
       #tracking-pause-btn {
         position: fixed;
-        right: 66px; /* 12 + 44 + 10 */
+        right: 60px; /* 12 + 40 + 8 */
         bottom: 12px;
-        width: 44px;
-        height: 44px;
+        width: 40px;
+        height: 40px;
         border-radius: 999px;
         border: none;
         background: rgba(255, 255, 255, 0.25);
@@ -313,8 +349,8 @@
           opacity 0.12s ease;
       }
       #tracking-pause-btn svg {
-        width: 22px;
-        height: 22px;
+        width: 20px;
+        height: 20px;
       }
       #tracking-pause-btn.active {
         background: rgba(0, 0, 0, 0.18);
@@ -331,8 +367,8 @@
         position: fixed;
         left: 12px;
         bottom: 12px;
-        width: 44px;
-        height: 44px;
+        width: 40px;
+        height: 40px;
         border-radius: 999px;
         border: 1px solid rgba(255, 255, 255, 0.4);
         background: rgba(0, 0, 0, 0.25);
@@ -786,6 +822,15 @@
 
       <!-- Left-bottom toggle button: Auto cream shot -->
       <button id="auto-cream-toggle-btn" class="cream-shot-btn" type="button" title="自動射出 ON/OFF">💧</button>
+
+      <!-- Right-bottom button: Screenshot (left of lock buttons) -->
+      <button id="screenshot-btn" type="button" title="スクリーンショット">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none"
+             stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 8a2 2 0 0 1 2-2h2l1.2-1.6A1 1 0 0 1 10 4h4a1 1 0 0 1 .8.4L16 6h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/>
+          <circle cx="12" cy="12.5" r="3.2"/>
+        </svg>
+      </button>
 
       <!-- Right-bottom toggle button: Lock pitch (縦回転) -->
       <button id="lock-pitch-btn" type="button" title="縦回転をロック" aria-pressed="false">
@@ -1360,8 +1405,8 @@
 
     <script type="module">
       // ===== App Version (single source of truth) =====
-      const APP_VERSION = "v6.01.78";
-      const APP_VERSION_NOTE = "feat: 着弾時間を射出位置からの距離に比例(遠い的ほど遅く着弾, 一定速度＋±10%ゆらぎ)";
+      const APP_VERSION = "v6.01.80";
+      const APP_VERSION_NOTE = "feat: スクショボタン追加(映像+VRM+VFX合成をJPEG保存,UI除外,ファイル名VRMAR日時ms) / tune: ボトムボタン40pxに縮小し1行収め";
 
       function getOverlayPixelRatio() {
         // Must match resizeCreamOverlayCanvas()/resizeBreathOverlayCanvas() DPR clamp for performance.
@@ -1863,6 +1908,93 @@
         uiDimToggleBtn.addEventListener("click", (e) => {
           e.stopPropagation();
           setUiDimEnabled(!uiDimEnabled);
+        });
+      }
+
+      // --- Screenshot (映像+VRM+VFX を1枚に合成して JPEG 保存。UIは含めない) ---
+      function captureScreenshot() {
+        try {
+          const scale = Math.min(window.devicePixelRatio || 1, 2);
+          const outW = Math.max(1, Math.round(window.innerWidth * scale));
+          const outH = Math.max(1, Math.round(window.innerHeight * scale));
+          const cv = document.createElement("canvas");
+          cv.width = outW;
+          cv.height = outH;
+          const ctx = cv.getContext("2d");
+          if (!ctx) return;
+
+          ctx.save();
+          // 画面と同じ左右反転（ミラー時）を合成全体に一括適用
+          if (typeof mirrorEnabled !== "undefined" && mirrorEnabled) {
+            ctx.translate(outW, 0);
+            ctx.scale(-1, 1);
+          }
+          // 1. カメラ映像（object-fit: cover 相当）
+          if (typeof displayCanvas !== "undefined" && displayCanvas && displayCanvas.width && displayCanvas.height) {
+            const iw = displayCanvas.width,
+              ih = displayCanvas.height;
+            const s = Math.max(outW / iw, outH / ih);
+            const w = iw * s,
+              h = ih * s;
+            ctx.drawImage(displayCanvas, (outW - w) / 2, (outH - h) / 2, w, h);
+          }
+          // 2. VRM（WebGL, preserveDrawingBuffer:true で読める）
+          if (typeof renderer !== "undefined" && renderer && renderer.domElement) {
+            ctx.drawImage(renderer.domElement, 0, 0, outW, outH);
+          }
+          // 3,4. オーバーレイ（呼吸・クリーム, 全面）
+          if (typeof breathOverlayCanvas !== "undefined" && breathOverlayCanvas && breathOverlayCanvas.width) {
+            ctx.drawImage(breathOverlayCanvas, 0, 0, outW, outH);
+          }
+          if (typeof creamOverlayCanvas !== "undefined" && creamOverlayCanvas && creamOverlayCanvas.width) {
+            ctx.drawImage(creamOverlayCanvas, 0, 0, outW, outH);
+          }
+          ctx.restore();
+
+          const _p2 = (n) => (n < 10 ? "0" + n : "" + n);
+          const _p3 = (n) => (n < 10 ? "00" + n : n < 100 ? "0" + n : "" + n);
+          const d = new Date();
+          const fn =
+            "VRMAR" +
+            d.getFullYear() +
+            _p2(d.getMonth() + 1) +
+            _p2(d.getDate()) +
+            "-" +
+            _p2(d.getHours()) +
+            _p2(d.getMinutes()) +
+            _p2(d.getSeconds()) +
+            _p3(d.getMilliseconds()) +
+            ".jpg";
+
+          cv.toBlob(
+            (blob) => {
+              if (!blob) {
+                if (typeof showToast === "function") showToast("スクショに失敗しました");
+                return;
+              }
+              const a = document.createElement("a");
+              const url = URL.createObjectURL(blob);
+              a.href = url;
+              a.download = fn;
+              document.body.appendChild(a);
+              a.click();
+              a.remove();
+              setTimeout(() => URL.revokeObjectURL(url), 1000);
+              if (typeof showToast === "function") showToast("保存: " + fn);
+            },
+            "image/jpeg",
+            0.85,
+          );
+        } catch (err) {
+          if (typeof showToast === "function") showToast("スクショに失敗しました");
+          console.error("captureScreenshot error", err);
+        }
+      }
+      const screenshotBtn = document.getElementById("screenshot-btn");
+      if (screenshotBtn) {
+        screenshotBtn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          captureScreenshot();
         });
       }
 
@@ -2789,7 +2921,7 @@
       const fireCreamAtTap = (ev) => {
         // Ignore taps on UI elements (panels/buttons)
         const t = ev.target;
-        if (t && (t.closest?.(".control-panel") || t.closest?.(".icon-buttons") || t.closest?.(".panel") || t.id === "auto-cream-toggle-btn" || t.closest?.("#auto-cream-toggle-btn") || t.id === "ui-dim-toggle-btn" || t.closest?.("#ui-dim-toggle-btn") || t.id === "tracking-pause-btn" || t.closest?.("#tracking-pause-btn") || t.id === "vrm-hide-btn" || t.closest?.("#vrm-hide-btn"))) return;
+        if (t && (t.closest?.(".control-panel") || t.closest?.(".icon-buttons") || t.closest?.(".panel") || t.id === "auto-cream-toggle-btn" || t.closest?.("#auto-cream-toggle-btn") || t.id === "ui-dim-toggle-btn" || t.closest?.("#ui-dim-toggle-btn") || t.id === "tracking-pause-btn" || t.closest?.("#tracking-pause-btn") || t.id === "vrm-hide-btn" || t.closest?.("#vrm-hide-btn") || t.id === "screenshot-btn" || t.closest?.("#screenshot-btn") || t.id === "lock-pitch-btn" || t.closest?.("#lock-pitch-btn") || t.id === "lock-yaw-btn" || t.closest?.("#lock-yaw-btn"))) return;
         if (!creamOverlayCanvas) return;
         const rect = creamOverlayCanvas.getBoundingClientRect();
         let x = ev.clientX - rect.left;
@@ -6332,7 +6464,7 @@
           camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.01, 5000);
           camera.position.set(0, 0, 0);
 
-          renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+          renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
           renderer.outputColorSpace = THREE.SRGBColorSpace;
           renderer.toneMapping = THREE.LinearToneMapping;
           renderer.setSize(window.innerWidth, window.innerHeight);
