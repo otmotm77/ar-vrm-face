@@ -1360,8 +1360,8 @@
 
     <script type="module">
       // ===== App Version (single source of truth) =====
-      const APP_VERSION = "v6.01.66";
-      const APP_VERSION_NOTE = "chore: 未使用コード除去(3D吐息パーティクル・3D紅潮メッシュ・無効Zスライダー等) / fix: 吐息位置を口ランドマーク基準に修正 / feat: 横縦ロック時に紅潮・吐息の回転補正を凍結";
+      const APP_VERSION = "v6.01.78";
+      const APP_VERSION_NOTE = "feat: 着弾時間を射出位置からの距離に比例(遠い的ほど遅く着弾, 一定速度＋±10%ゆらぎ)";
 
       function getOverlayPixelRatio() {
         // Must match resizeCreamOverlayCanvas()/resizeBreathOverlayCanvas() DPR clamp for performance.
@@ -1549,11 +1549,22 @@
       var creamZAttach = 0.92; // pseudo "Z-stick" (0..1)
       let creamAutoElapsedSec = 0.0;
       let creamNextAutoIntervalSec = null;
+      let creamSalvoRemaining = 0; // 現在のサルボ（連射）で残っている「ぴゅ」の数
 
+      // 「ぴゅっぴゅっ…ぴゅ…ぴゅぴゅー……」のリズム:
+      // 1サルボ＝1〜3連射（短い間隔）、サルボ間は可変の休止。発射ごとに呼ぶ。
       function scheduleNextAutoCream() {
-        const base = Math.max(0.2, creamAutoIntervalSec || 1.5);
-        // Add ±20% randomness to the interval
-        creamNextAutoIntervalSec = base * (0.5 + Math.random() * 1.5);
+        if (creamSalvoRemaining > 0) {
+          // 同一サルボ内の次の「ぴゅ」：短い間隔（連射）
+          creamNextAutoIntervalSec = 0.09 + Math.random() * 0.16; // ~0.09-0.25s
+        } else {
+          // サルボ完了 → 可変の休止のあと新しいサルボを開始
+          const base = Math.max(0.2, creamAutoIntervalSec || 1.5);
+          creamNextAutoIntervalSec = base * (0.7 + Math.random() * 1.8); // 休止（ばらつき大）
+          // 次サルボの連射数（1〜3、たまに3）
+          const r = Math.random();
+          creamSalvoRemaining = r < 0.45 ? 1 : r < 0.82 ? 2 : 3;
+        }
         creamAutoElapsedSec = 0.0;
       }
 
@@ -2695,6 +2706,7 @@
       function setCreamAutoEnabled(v) {
         creamAutoEnabled = !!v;
         if (creamAutoEnabled) {
+          creamSalvoRemaining = 0; // クリーンに開始（休止→新サルボ）
           scheduleNextAutoCream();
         } else {
           creamNextAutoIntervalSec = null;
@@ -2792,10 +2804,15 @@
         creamLastShotMs = now;
 
         const shotCount = Math.max(1, Math.min(20, creamSimulCount | 0 || 1));
+        // 顔軸に沿って散らす：横(U軸)は控えめ、縦(V軸=顔の下方向)をメインに少し下バイアス
+        const _bTap = creamLastFaceBasis;
+        const _hx = _bTap ? _bTap.ux : 1, _hy = _bTap ? _bTap.uy : 0; // 横軸
+        const _vx = _bTap ? _bTap.vx : 0, _vy = _bTap ? _bTap.vy : 1; // 縦軸（顔の下）
         for (let i = 0; i < shotCount; i++) {
-          // Keep horizontal jitter tiny, vertical jitter a bit larger (slightly biased downward)
-          const dx = (Math.random() * 2 - 1) * 5.0; // ±5px
-          const dy = (Math.random() * 2 - 1) * 14.0 + 6.0; // mostly vertical, slight down-bias
+          const oh = (Math.random() * 2 - 1) * 5.0; // 横は小さく ±5px
+          const ov = (Math.random() * 2 - 1) * 14.0 + 6.0; // 縦メイン・やや下
+          const dx = _hx * oh + _vx * ov;
+          const dy = _hy * oh + _vy * ov;
           spawnCreamBurst(x + dx, y + dy, true);
         }
       };
@@ -5061,9 +5078,14 @@
         const centerX = basis.eyeMid.x * 0.55 + basis.mouthMid.x * 0.45;
         const centerY = basis.eyeMid.y * 0.55 + basis.mouthMid.y * 0.45;
 
-        // Shot start point: bottom-center relative to the face (screen space).
-        // Place the nozzle under the face center, clamped near the bottom of the viewport.
-        let start = { x: centerX, y: centerY + basis.faceW * 1.35 };
+        // Shot start point: 常に「顔の下側（顎の下）」。顔の下方向軸(vx,vy)に沿って配置し、
+        // 顔が傾いても横にずれず、顔の下から射出されるようにする。
+        const _downLen = basis.faceW * 1.35;
+        let start = {
+          x: centerX + basis.vx * _downLen,
+          y: centerY + basis.vy * _downLen,
+        };
+        start.x = Math.max(24, Math.min(cssW - 24, start.x));
         start.y = Math.max(24, Math.min(cssH - 24, start.y)); // If user tapped, aim at that screen point. Otherwise aim around face center.
         let tx = targetX !== null ? targetX : null;
         let ty = targetY !== null ? targetY : null;
@@ -5100,13 +5122,16 @@
           // User tap: keep the exact tapped point (no target jitter).
         }
 
-        const dur = 0.13 + Math.random() * 0.12;
         const size = (8 + Math.random() * 6) * (creamSizeMul || 1.0);
 
         const dx = tx - start.x;
         const dy = ty - start.y;
         const dist = Math.max(1.0, Math.hypot(dx, dy));
         const baseAng = Math.atan2(dy, dx);
+
+        // 着弾時間は射出位置からの距離に比例（≒一定速度）＝遠い的ほど遅く着弾。±10%のゆらぎ。
+        const CREAM_SHOT_SPEED_PX = 1500; // px/秒
+        const dur = Math.max(0.1, Math.min(0.5, dist / CREAM_SHOT_SPEED_PX)) * (0.9 + Math.random() * 0.2);
 
         // Add slight randomness to the shot angle (±5°) while keeping the endpoint fixed.
         const deltaAng = (Math.random() * 2 - 1) * ((5.0 * Math.PI) / 180.0);
@@ -5136,31 +5161,59 @@
         enforceCreamLimit();
       }
 
-      function drawCreamBlob(ctx, x, y, r, opacity, angleRad = 0, stretchY = 1.0, rxScale = 1.0, creamTint = false) {
+      // 付着液の輪郭点数（しずく形状＆ゆらぎ用。パッチの shapeSeed 長と一致させる）
+      const CREAM_BLOB_POINTS = 16;
+
+      function drawCreamBlob(ctx, x, y, r, opacity, angleRad = 0, stretchY = 1.0, rxScale = 1.0, creamTint = false, dripT = 0, shapeSeed = null, glossMul = 1.0) {
         ctx.save();
         ctx.translate(x, y);
         ctx.rotate(angleRad);
 
         const rx = r * 1.0 * rxScale;
         const ry = r * 1.18 * stretchY;
-        const W = rx * 2.4, H = ry * 2.4;
-        const lx = -rx * 1.2, ly = -ry * 1.2;
+        // 塗り領域はしずく形状の最大張り出し（下端バルジ ~1.5*ry, 横 ~1.12*rx）を覆うよう余裕を持たせる
+        const W = rx * 2.6, H = ry * 3.1;
+        const lx = -rx * 1.3, ly = -ry * 1.3;
 
         // ブロブ全体でクリップ（内部レイヤーが外にはみ出さないように）
+        // 楕円ベースに「下膨らみ・上尾引き」の非対称(dripT)と縁のゆらぎ(shapeSeed)を加えた
+        // しずく形状の点列を生成し、中点経由の quadraticCurveTo で滑らかに閉じる。
+        const N = CREAM_BLOB_POINTS;
+        const dT = Math.max(0, Math.min(1, dripT));
+        const pts = [];
+        for (let i = 0; i < N; i++) {
+          const theta = (i / N) * Math.PI * 2;
+          const dx = Math.sin(theta);      // 横成分
+          const dy = Math.cos(theta);      // 縦成分（下=+Y が正）
+          const bulge = 1.0 + dT * 0.35 * Math.max(0, dy);     // 下半分を膨張
+          const taper = 1.0 - dT * 0.55 * Math.max(0, -dy);    // 上半分を細める（尾）
+          const wob = shapeSeed ? 1.0 + shapeSeed[i] * 0.12 : 1.0; // 縁のゆらぎ ±12%
+          const k = bulge * taper * wob;
+          pts.push({ x: dx * rx * k, y: dy * ry * k });
+        }
         ctx.beginPath();
-        ctx.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2);
+        const m0x = (pts[N - 1].x + pts[0].x) * 0.5;
+        const m0y = (pts[N - 1].y + pts[0].y) * 0.5;
+        ctx.moveTo(m0x, m0y);
+        for (let i = 0; i < N; i++) {
+          const next = (i + 1) % N;
+          const mx = (pts[i].x + pts[next].x) * 0.5;
+          const my = (pts[i].y + pts[next].y) * 0.5;
+          ctx.quadraticCurveTo(pts[i].x, pts[i].y, mx, my);
+        }
+        ctx.closePath();
         ctx.clip();
 
         // 1. ベース層：粘液の薄い部分の透け感、縁はすぱっと落ちる（表面張力）
         const base = ctx.createRadialGradient(-rx * 0.08, -ry * 0.08, 0, 0, 0, Math.max(rx, ry) * 1.05);
         if (creamTint) {
-          base.addColorStop(0.0,  `rgba(255, 252, 232, ${0.52 * opacity})`);
-          base.addColorStop(0.55, `rgba(255, 249, 222, ${0.26 * opacity})`);
-          base.addColorStop(0.82, `rgba(255, 246, 215, ${0.05 * opacity})`);
-          base.addColorStop(1.0,  `rgba(255, 246, 215, 0)`);
+          base.addColorStop(0.0,  `rgba(255, 253, 248, ${0.52 * opacity})`);
+          base.addColorStop(0.55, `rgba(255, 251, 240, ${0.26 * opacity})`);
+          base.addColorStop(0.82, `rgba(255, 250, 234, ${0.05 * opacity})`);
+          base.addColorStop(1.0,  `rgba(255, 250, 234, 0)`);
         } else {
-          base.addColorStop(0.0,  `rgba(238, 243, 255, ${0.58 * opacity})`);
-          base.addColorStop(0.55, `rgba(225, 235, 255, ${0.30 * opacity})`);
+          base.addColorStop(0.0,  `rgba(236, 242, 255, ${0.48 * opacity})`);
+          base.addColorStop(0.55, `rgba(225, 235, 255, ${0.24 * opacity})`);
           base.addColorStop(0.82, `rgba(210, 225, 255, ${0.06 * opacity})`);
           base.addColorStop(1.0,  `rgba(208, 222, 255, 0)`);
         }
@@ -5168,20 +5221,29 @@
         ctx.fillRect(lx, ly, W, H);
 
         // 2. 不透明白コア（粘液の厚い部分——どろっとした塊感）
+        // 流下に伴い密度の中心を下へ寄せる（上の尾が薄くなり、下の溜まりが濃くなる）
+        const coreDy = dT * ry * 0.62;
+        // 縦に伸びた雫では密集も縦長に（円形の「丸い濃い玉」を防ぐ）＋位置・幅に patch 固有のランダム性
+        const cjx = shapeSeed ? shapeSeed[3] : 0; // -1..1
+        const cjy = shapeSeed ? shapeSeed[7] : 0;
+        const cjw = shapeSeed ? shapeSeed[11] : 0;
+        const coreOX = rx * 0.5 * cjx;            // 幅方向の位置ランダム
+        const coreOY = coreDy + ry * 0.16 * cjy;  // 縦位置のランダム
+        const coreR = Math.max(r * 0.70, ry * 0.58) * (1 + 0.30 * cjw);
         const wg = ctx.createRadialGradient(
-          -rx * 0.12, -ry * 0.16, 0,
-          -rx * 0.05, -ry * 0.08, r * 0.70
+          -rx * 0.12 + coreOX, -ry * 0.16 + coreOY, 0,
+          -rx * 0.05 + coreOX, -ry * 0.08 + coreOY, coreR
         );
         if (creamTint) {
-          wg.addColorStop(0.0,  `rgba(255, 254, 240, ${0.90 * opacity})`);
-          wg.addColorStop(0.30, `rgba(255, 252, 234, ${0.68 * opacity})`);
-          wg.addColorStop(0.62, `rgba(255, 249, 222, ${0.28 * opacity})`);
-          wg.addColorStop(1.0,  `rgba(255, 247, 215, 0)`);
+          wg.addColorStop(0.0,  `rgba(253, 254, 252, ${0.82 * opacity})`);
+          wg.addColorStop(0.30, `rgba(252, 253, 248, ${0.60 * opacity})`);
+          wg.addColorStop(0.62, `rgba(250, 251, 242, ${0.24 * opacity})`);
+          wg.addColorStop(1.0,  `rgba(249, 250, 240, 0)`);
         } else {
-          wg.addColorStop(0.0,  `rgba(255, 255, 255, ${0.96 * opacity})`);
-          wg.addColorStop(0.30, `rgba(253, 254, 255, ${0.74 * opacity})`);
-          wg.addColorStop(0.62, `rgba(248, 251, 255, ${0.32 * opacity})`);
-          wg.addColorStop(1.0,  `rgba(245, 248, 255, 0)`);
+          wg.addColorStop(0.0,  `rgba(244, 248, 255, ${0.70 * opacity})`);
+          wg.addColorStop(0.32, `rgba(240, 246, 255, ${0.48 * opacity})`);
+          wg.addColorStop(0.66, `rgba(236, 244, 255, ${0.20 * opacity})`);
+          wg.addColorStop(1.0,  `rgba(234, 243, 255, 0)`);
         }
         ctx.fillStyle = wg;
         ctx.fillRect(lx, ly, W, H);
@@ -5192,13 +5254,13 @@
           rx * 0.18, ry * 0.22, r * 0.55
         );
         if (creamTint) {
-          cg.addColorStop(0.0,  `rgba(255, 248, 215, ${0.62 * opacity})`);
-          cg.addColorStop(0.42, `rgba(255, 245, 208, ${0.36 * opacity})`);
-          cg.addColorStop(1.0,  `rgba(255, 242, 200, 0)`);
+          cg.addColorStop(0.0,  `rgba(248, 249, 245, ${0.40 * opacity})`);
+          cg.addColorStop(0.42, `rgba(245, 247, 240, ${0.22 * opacity})`);
+          cg.addColorStop(1.0,  `rgba(244, 246, 238, 0)`);
         } else {
-          cg.addColorStop(0.0,  `rgba(255, 249, 222, ${0.78 * opacity})`);
-          cg.addColorStop(0.42, `rgba(255, 246, 212, ${0.44 * opacity})`);
-          cg.addColorStop(1.0,  `rgba(255, 243, 205, 0)`);
+          cg.addColorStop(0.0,  `rgba(228, 238, 255, ${0.30 * opacity})`);
+          cg.addColorStop(0.42, `rgba(220, 233, 255, ${0.16 * opacity})`);
+          cg.addColorStop(1.0,  `rgba(218, 232, 255, 0)`);
         }
         ctx.fillStyle = cg;
         ctx.fillRect(lx, ly, W, H);
@@ -5209,27 +5271,55 @@
           -rx * 0.22, ry * 0.06, r * 0.38
         );
         if (creamTint) {
-          cg2.addColorStop(0.0,  `rgba(255, 251, 225, ${0.40 * opacity})`);
-          cg2.addColorStop(1.0,  `rgba(255, 248, 218, 0)`);
+          cg2.addColorStop(0.0,  `rgba(250, 252, 246, ${0.24 * opacity})`);
+          cg2.addColorStop(1.0,  `rgba(249, 251, 244, 0)`);
         } else {
-          cg2.addColorStop(0.0,  `rgba(255, 251, 232, ${0.55 * opacity})`);
-          cg2.addColorStop(1.0,  `rgba(255, 249, 225, 0)`);
+          cg2.addColorStop(0.0,  `rgba(232, 240, 255, ${0.22 * opacity})`);
+          cg2.addColorStop(1.0,  `rgba(230, 239, 255, 0)`);
         }
         ctx.fillStyle = cg2;
         ctx.fillRect(lx, ly, W, H);
 
-        const gl = typeof creamGloss === "number" ? Math.max(0, Math.min(2, creamGloss)) : 1.0;
+        // 4.5 蓄積レイヤー（流下時、最下部へ濃い乳白を加算——下半分集中・先端が最濃）
+        if (dT > 0.01) {
+          const accColor = creamTint ? "250, 251, 246" : "243, 248, 255";
+          const acc = ctx.createLinearGradient(0, ry * 0.1, 0, ry * 1.25);
+          acc.addColorStop(0.0, `rgba(${accColor}, 0)`);
+          acc.addColorStop(0.6, `rgba(${accColor}, ${0.14 * dT * opacity})`);
+          acc.addColorStop(1.0, `rgba(${accColor}, ${0.58 * dT * opacity})`);
+          ctx.fillStyle = acc;
+          ctx.fillRect(lx, ly, W, H);
+        }
+
+        // 4.6 下端の濃い白バルブ（先端に最も濃い白い溜まり）
+        if (dT > 0.01) {
+          const bulbColor = creamTint ? "252, 253, 248" : "245, 249, 255";
+          const bjx = shapeSeed ? shapeSeed[5] : 0;
+          const bjy = shapeSeed ? shapeSeed[9] : 0;
+          const bjw = shapeSeed ? shapeSeed[13] : 0;
+          const bx = rx * 0.35 * bjx;
+          const by = ry * (1.08 + 0.12 * bjy);
+          const br = Math.max(rx, ry) * 0.60 * (1 + 0.25 * bjw);
+          const bulb = ctx.createRadialGradient(bx, by, 0, bx, by, br);
+          bulb.addColorStop(0.0, `rgba(${bulbColor}, ${0.50 * dT * opacity})`);
+          bulb.addColorStop(0.6, `rgba(${bulbColor}, ${0.20 * dT * opacity})`);
+          bulb.addColorStop(1.0, `rgba(${bulbColor}, 0)`);
+          ctx.fillStyle = bulb;
+          ctx.fillRect(lx, ly, W, H);
+        }
+
+        const gl = (typeof creamGloss === "number" ? Math.max(0, Math.min(2, creamGloss)) : 1.0) * glossMul;
 
         // 5. 内部散乱光（粘液の内側で光が拡散するミルキーな白濁感）
         ctx.globalCompositeOperation = "screen";
         const ig = ctx.createRadialGradient(0, 0, 0, 0, 0, Math.max(rx, ry) * 0.65);
         if (creamTint) {
-          ig.addColorStop(0.0, `rgba(255, 248, 225, ${0.22 * opacity})`);
-          ig.addColorStop(0.6, `rgba(255, 245, 215, ${0.08 * opacity})`);
-          ig.addColorStop(1.0, `rgba(255, 244, 210, 0)`);
+          ig.addColorStop(0.0, `rgba(248, 250, 248, ${0.24 * opacity})`);
+          ig.addColorStop(0.6, `rgba(245, 248, 242, ${0.09 * opacity})`);
+          ig.addColorStop(1.0, `rgba(244, 247, 240, 0)`);
         } else {
-          ig.addColorStop(0.0, `rgba(210, 225, 255, ${0.28 * opacity})`);
-          ig.addColorStop(0.6, `rgba(200, 218, 255, ${0.10 * opacity})`);
+          ig.addColorStop(0.0, `rgba(214, 228, 255, ${0.32 * opacity})`);
+          ig.addColorStop(0.6, `rgba(200, 218, 255, ${0.11 * opacity})`);
           ig.addColorStop(1.0, `rgba(195, 215, 255, 0)`);
         }
         ctx.fillStyle = ig;
@@ -5245,9 +5335,20 @@
         ctx.fillRect(lx, ly, W, H);
         ctx.globalCompositeOperation = "source-over";
 
+        // 5.7 下端の影（流下時、先端下縁に陰り——溜まった液の重量感・立体感）
+        if (dT > 0.01) {
+          const shadowColor = creamTint ? "150, 150, 140" : "120, 140, 180";
+          const shw = ctx.createLinearGradient(0, ry * 0.6, 0, ry * 1.25);
+          shw.addColorStop(0.0, `rgba(${shadowColor}, 0)`);
+          shw.addColorStop(1.0, `rgba(${shadowColor}, ${0.07 * dT * opacity})`);
+          ctx.fillStyle = shw;
+          ctx.fillRect(lx, ly, W, H);
+        }
+
         // 6. ブロードハイライト（濡れた表面の広い光沢）
-        const hg = ctx.createRadialGradient(-rx * 0.25, -ry * 0.28, 0, -rx * 0.25, -ry * 0.28, Math.max(2, r * 0.50));
-        hg.addColorStop(0.0, `rgba(255, 255, 255, ${0.70 * opacity * gl})`);
+        const hlDy = dT * ry * 0.72;
+        const hg = ctx.createRadialGradient(-rx * 0.25, -ry * 0.28 + hlDy, 0, -rx * 0.25, -ry * 0.28 + hlDy, Math.max(2, r * 0.50));
+        hg.addColorStop(0.0, `rgba(255, 255, 255, ${0.60 * opacity * gl})`);
         hg.addColorStop(0.5, `rgba(255, 255, 255, ${0.20 * opacity * gl})`);
         hg.addColorStop(1.0, `rgba(255, 255, 255, 0)`);
         ctx.fillStyle = hg;
@@ -5259,16 +5360,16 @@
           ctx.globalCompositeOperation = "screen";
           ctx.fillStyle = `rgba(255,255,255,${0.50 * opacity * gl2})`;
           ctx.beginPath();
-          ctx.ellipse(-rx * 0.10, -ry * 0.34, r * 0.16, r * 0.06, 0.35, 0, Math.PI * 2);
+          ctx.ellipse(-rx * 0.10, -ry * 0.34 + hlDy, r * 0.16, r * 0.06, 0.35, 0, Math.PI * 2);
           ctx.fill();
           ctx.fillStyle = `rgba(255,255,255,${0.28 * opacity * gl})`;
           ctx.beginPath();
-          ctx.ellipse(-rx * 0.05, -ry * 0.18, r * 0.048, r * 0.19, -0.15, 0, Math.PI * 2);
+          ctx.ellipse(-rx * 0.05, -ry * 0.18 + hlDy, r * 0.048, r * 0.19, -0.15, 0, Math.PI * 2);
           ctx.fill();
           // 二次ハイライト（二重反射感）
           ctx.fillStyle = `rgba(255,255,255,${0.18 * opacity * gl})`;
           ctx.beginPath();
-          ctx.ellipse(rx * 0.18, ry * 0.22, r * 0.06, r * 0.04, 0.8, 0, Math.PI * 2);
+          ctx.ellipse(rx * 0.18, ry * 0.22 + hlDy, r * 0.06, r * 0.04, 0.8, 0, Math.PI * 2);
           ctx.fill();
           ctx.globalCompositeOperation = "source-over";
         }
@@ -5298,8 +5399,8 @@
 
         // 1. ベース（粘液の薄い部分——縁で急速に透明に）
         const base = ctx.createRadialGradient(-w * 0.08, -h * 0.12, 0, 0, 0, Math.max(w, h) * 0.72);
-        base.addColorStop(0.0,  `rgba(238, 243, 255, ${0.60 * opacity})`);
-        base.addColorStop(0.55, `rgba(225, 235, 255, ${0.32 * opacity})`);
+        base.addColorStop(0.0,  `rgba(236, 242, 255, ${0.50 * opacity})`);
+        base.addColorStop(0.55, `rgba(225, 235, 255, ${0.26 * opacity})`);
         base.addColorStop(0.85, `rgba(212, 226, 255, ${0.06 * opacity})`);
         base.addColorStop(1.0,  `rgba(208, 222, 255, 0)`);
         ctx.fillStyle = base;
@@ -5307,25 +5408,25 @@
 
         // 2. 不透明白コア（飛翔中の粘液粒——密度の高い中心部）
         const wg = ctx.createRadialGradient(-w * 0.10, -h * 0.15, 0, -w * 0.05, -h * 0.08, Math.max(w, h) * 0.58);
-        wg.addColorStop(0.0,  `rgba(255, 255, 255, ${0.96 * opacity})`);
-        wg.addColorStop(0.32, `rgba(253, 254, 255, ${0.72 * opacity})`);
-        wg.addColorStop(0.68, `rgba(248, 251, 255, ${0.30 * opacity})`);
-        wg.addColorStop(1.0,  `rgba(245, 249, 255, 0)`);
+        wg.addColorStop(0.0,  `rgba(244, 248, 255, ${0.80 * opacity})`);
+        wg.addColorStop(0.32, `rgba(240, 246, 255, ${0.56 * opacity})`);
+        wg.addColorStop(0.68, `rgba(236, 244, 255, ${0.24 * opacity})`);
+        wg.addColorStop(1.0,  `rgba(234, 243, 255, 0)`);
         ctx.fillStyle = wg;
         ctx.fillRect(lx, ly, W, H);
 
         // 3. クリーム色パッチ（後方——引き延ばされた部分のアイボリー）
         const cg = ctx.createRadialGradient(w * 0.12, h * 0.20, 0, w * 0.08, h * 0.15, Math.max(w, h) * 0.42);
-        cg.addColorStop(0.0,  `rgba(255, 249, 222, ${0.70 * opacity})`);
-        cg.addColorStop(0.5,  `rgba(255, 246, 212, ${0.36 * opacity})`);
-        cg.addColorStop(1.0,  `rgba(255, 243, 205, 0)`);
+        cg.addColorStop(0.0,  `rgba(228, 238, 255, ${0.30 * opacity})`);
+        cg.addColorStop(0.5,  `rgba(220, 233, 255, ${0.16 * opacity})`);
+        cg.addColorStop(1.0,  `rgba(218, 232, 255, 0)`);
         ctx.fillStyle = cg;
         ctx.fillRect(lx, ly, W, H);
 
         // 4. 内部散乱（飛翔中でも白濁感を維持）
         ctx.globalCompositeOperation = "screen";
         const ig = ctx.createRadialGradient(0, 0, 0, 0, 0, Math.max(w, h) * 0.55);
-        ig.addColorStop(0.0, `rgba(205, 222, 255, ${0.26 * opacity})`);
+        ig.addColorStop(0.0, `rgba(210, 226, 255, ${0.30 * opacity})`);
         ig.addColorStop(1.0, `rgba(195, 215, 255, 0)`);
         ctx.fillStyle = ig;
         ctx.fillRect(lx, ly, W, H);
@@ -5334,7 +5435,7 @@
         const gl2 = gl * gl;
 
         // 5. シャープスペキュラー（粘液の濡れた表面反射）
-        ctx.fillStyle = `rgba(255,255,255,${0.62 * opacity * gl})`;
+        ctx.fillStyle = `rgba(255,255,255,${0.54 * opacity * gl})`;
         ctx.beginPath();
         ctx.ellipse(-w * 0.14, -h * 0.18, w * 0.11, h * 0.08, 0, 0, Math.PI * 2);
         ctx.fill();
@@ -5353,7 +5454,7 @@
           ctx.save();
           ctx.globalCompositeOperation = "lighter";
           const hg = ctx.createRadialGradient(-w * 0.18, -h * 0.25, 0, -w * 0.18, -h * 0.25, Math.max(w, h) * 0.65);
-          hg.addColorStop(0.0, `rgba(255, 255, 255, ${0.55 * opacity * _gl2})`);
+          hg.addColorStop(0.0, `rgba(255, 255, 255, ${0.46 * opacity * _gl2})`);
           hg.addColorStop(0.5, `rgba(255, 255, 255, ${0.15 * opacity * _gl2})`);
           hg.addColorStop(1.0, `rgba(255, 255, 255, 0)`);
           ctx.fillStyle = hg;
@@ -5390,7 +5491,8 @@
             if (creamAutoElapsedSec >= creamNextAutoIntervalSec) {
               // Fire "double" the current simultaneous count, but treat them as ONE cream count group.
               const baseCount = Math.max(1, Math.min(20, creamSimulCount | 0 || 1));
-              const shotCount = baseCount * 2;
+              // 1発(ぴゅ)ごとに強さをばらつかせる（弱い「ぴゅ」〜強い「ぴゅー」）
+              const shotCount = Math.max(1, Math.round(baseCount * (1.3 + Math.random() * 1.2)));
 
               const pr = getOverlayPixelRatio();
               const cssW = creamOverlayCanvas ? creamOverlayCanvas.width / pr : window.innerWidth;
@@ -5431,12 +5533,14 @@
                   const axYv = tgt.axY && Number.isFinite(tgt.axY.x) && Number.isFinite(tgt.axY.y) ? tgt.axY : { x: 0, y: 1 };
                   const fw = Number.isFinite(tgt.faceW) && tgt.faceW > 0 ? tgt.faceW : 120;
                   const fh = Number.isFinite(tgt.faceH) && tgt.faceH > 0 ? tgt.faceH : fw;
+                  // 縦方向メインの散らし：横は控えめ固定気味、縦は同時数で広げる
                   const baseR = 0.12 * Math.min(fw, fh);
-                  const R = Math.min(60, Math.max(8, baseR + Math.max(0, baseCount - 1) * 2.5));
-                  const rr = Math.sqrt(Math.random()) * R;
+                  const Ry = Math.min(90, Math.max(8, baseR + Math.max(0, baseCount - 1) * 4.5)); // 縦：数で増える
+                  const Rx = Math.min(22, Math.max(4, baseR * 0.35 + Math.max(0, baseCount - 1) * 0.5)); // 横：控えめ
                   const th = Math.random() * Math.PI * 2.0;
-                  const ox = Math.cos(th) * rr;
-                  const oy = Math.sin(th) * rr;
+                  const rr = Math.sqrt(Math.random());
+                  const ox = Math.cos(th) * rr * Rx; // 横方向成分（顔のU軸）
+                  const oy = Math.sin(th) * rr * Ry; // 縦方向成分（顔のV軸＝下方向）
 
                   const dx = axXv.x * ox + axYv.x * oy;
                   const dy = axXv.y * ox + axYv.y * oy;
@@ -5452,6 +5556,7 @@
                   ay = Math.min(Math.max(ay, 0), cssH);
                   spawnCreamBurst(ax, ay, true, gid);
                 }
+                creamSalvoRemaining = Math.max(0, creamSalvoRemaining - 1); // この「ぴゅ」を消費
                 scheduleNextAutoCream();
               } else {
                 scheduleNextAutoCream();
@@ -5498,12 +5603,10 @@
             if (useBasis) {
               const local = p.tapU !== null && p.tapU !== undefined && p.tapV !== null && p.tapV !== undefined ? { u: p.tapU, v: p.tapV } : screenPxToFaceLocal(p.x1, p.y1, useBasis);
               if (local) {
-                const patchSize = (0.12 + Math.random() * 0.16) * (creamSizeMul || 1.0); // patch size (face-local), random
-                // Smaller blobs should slide faster
-                const _flowBase = 0.09 + Math.random() * 0.05;
-                const _flowVelBySize = _flowBase * Math.pow(0.16 / Math.max(0.06, patchSize), 0.8);
-                const _flowVel = Math.max(0.03, Math.min(0.18, _flowVelBySize));
+                // 相A：粘性ボーラス（ドロっと・張り付いてゆっくり垂れる）×1
+                const bolusSize = (0.08 + Math.random() * 0.07) * (creamSizeMul || 1.0);
                 creamPatches.push({
+                  phase: "bolus",
                   isSplatter: false,
                   groupId: p.groupId,
                   groupBornMs: p.groupBornMs,
@@ -5511,52 +5614,57 @@
                   life: creamLifetimeSec,
                   fadeStart: getCreamFadeStartSec(),
                   u: local.u,
-                  v: local.v,
                   v0: local.v,
+                  flowDist: 0,
                   refW: useBasis && useBasis.faceW ? useBasis.faceW : null,
                   refH: useBasis && useBasis.faceH ? useBasis.faceH : null,
-                  sizeU: patchSize,
-                  sizeV: patchSize * (1.4 + Math.random() * 0.85), // more vertical (liquid-like)
-                  rotRad: (Math.random() * 2 - 1) * (Math.PI / 180) * 5,
-                  rxScale: 0.8 + Math.random() * 0.4,
+                  sizeU: bolusSize,
+                  sizeV: bolusSize * (1.4 + Math.random() * 0.6), // 縦長（垂れる雫の素）
+                  rotRad: (Math.random() * 2 - 1) * (Math.PI / 180) * 4,
+                  rxScale: 0.82 + Math.random() * 0.16,
                   spreadT: 0,
-                  dripDelay: 1.4 + Math.random() * 1.4,
-                  dripRate: 1.0 / (1.4 + Math.random() * 1.8),
-                  dripAcc: 0,
-                  rollBias: (Math.random() - 0.5) * 0.15,
-                  // face-local v units per second (scaled by faceW in projection). keep it subtle.
-                  flowVel: _flowVel,
+                  dripDelay: 0.5 + Math.random() * 0.8, // 早めに雫化して垂れる
+                  rollBias: (Math.random() - 0.5) * 0.14,
+                  flowVel: 0.07 + Math.random() * 0.05, // しっかり垂れる
+                  maxRun: 0.26 + Math.random() * 0.14, // 垂れ落ちる距離
+                  viscFactor: 0.9, // やや粘るが流れる（Bに寄せる）
+                  alphaMul: 0.85,
+                  glossMul: 1.0, // ツヤ（Bに寄せる）
+                  shapeSeed: Array.from({ length: CREAM_BLOB_POINTS }, () => Math.random() * 2 - 1),
                   frozenPx: null,
                 });
 
-                const n = 2 + Math.floor(Math.random() * 3);
+                // 相B：水っぽい筋（サラッと・速く流れ落ちる細い筋）×1〜3
+                const n = 1 + Math.floor(Math.random() * 2);
                 for (let i = 0; i < n; i++) {
-                  const su = (0.07 + Math.random() * 0.06) * (creamSizeMul || 1.0);
-                  const sv = su * (1.2 + Math.random() * 0.7); // vertical splashes
+                  const su = (0.055 + Math.random() * 0.05) * (creamSizeMul || 1.0);
                   creamPatches.push({
+                    phase: "rivulet",
                     isSplatter: true,
-                    creamTinted: Math.random() < 0.5,
+                    creamTinted: false,
                     groupId: p.groupId,
                     groupBornMs: p.groupBornMs,
                     age: 0,
-                    life: 3.2 + Math.random() * 2.0,
-                    fadeStart: 2.0,
-                    u: local.u + (Math.random() - 0.5) * 0.1,
-                    v: local.v + (Math.random() - 0.5) * 0.1,
-                    v0: local.v + (Math.random() - 0.5) * 0.1,
+                    life: 4.0 + Math.random() * 3.0,
+                    fadeStart: 2.5,
+                    u: local.u + (Math.random() - 0.5) * 0.12,
+                    v0: local.v,
+                    flowDist: 0,
                     refW: useBasis && useBasis.faceW ? useBasis.faceW : null,
                     refH: useBasis && useBasis.faceH ? useBasis.faceH : null,
                     sizeU: su,
-                    sizeV: sv,
-                    // Smaller splashes slide faster
-                    flowVel: Math.max(0.05, Math.min(0.25, (0.11 + Math.random() * 0.06) * Math.pow(0.1 / Math.max(0.04, su), 0.85))),
-                    rotRad: (Math.random() * 2 - 1) * (Math.PI / 180) * 5,
-                    rxScale: 0.8 + Math.random() * 0.4,
+                    sizeV: su * (1.6 + Math.random() * 0.7),
+                    rotRad: (Math.random() * 2 - 1) * (Math.PI / 180) * 4,
+                    rxScale: 0.72 + Math.random() * 0.18, // やや細い
                     spreadT: 0,
-                    dripDelay: 999,
-                    dripAcc: 0,
-                    rollBias: (Math.random() - 0.5) * 0.25,
-                    flowVel: 0.006 + Math.random() * 0.008,
+                    dripDelay: 0.35 + Math.random() * 0.6, // 早めに伸びる
+                    rollBias: (Math.random() - 0.5) * 0.16,
+                    flowVel: 0.10 + Math.random() * 0.07, // 速いが抑える（Aに寄せる）
+                    maxRun: 0.30 + Math.random() * 0.16, // 筋として走り切る距離
+                    viscFactor: 0.7, // 水っぽい（Aに寄せる）
+                    alphaMul: 0.72 + Math.random() * 0.12, // 半透明だが存在感（Aに寄せる）
+                    glossMul: 0.75, // ツヤ（Aに寄せる）
+                    shapeSeed: Array.from({ length: CREAM_BLOB_POINTS }, () => Math.random() * 2 - 1),
                     frozenPx: null,
                   });
                 }
@@ -5585,17 +5693,15 @@
           s.spreadT = Math.min(1, s.spreadT + delta / 0.18);
           const spread = 1.0 + 0.25 * s.spreadT;
 
-          // Let the attached cream itself slowly flow down along the face v-axis (no separate drip objects)
+          // 流下＝source(v0) を上端に固定し front を下へ伸ばす（粘度・相で速度差）
+          const _effVisc = (typeof creamViscosity === "number" ? Math.max(0.2, creamViscosity) : 1.0) * (s.viscFactor || 1.0);
           if (typeof s.flowVel === "number") {
-            const _visc = typeof creamViscosity === "number" ? Math.max(0.2, creamViscosity) : 1.0;
-            s.v += (s.flowVel * delta) / _visc;
+            s.flowDist = Math.min(s.maxRun || 0.4, (s.flowDist || 0) + (s.flowVel * delta) / _effVisc);
           }
-
-          // As the patch flows downward, gradually narrow its width (rx) for a tapered look
-          if (typeof s.v0 !== "number") s.v0 = s.v;
-          const flowDist = Math.max(0, s.v - s.v0); // face-local v units moved downward
-          const narrowT = Math.min(1, flowDist / 0.08);
-          const narrow = Math.max(0.62, 1.0 - 0.36 * narrowT);
+          const flowDist = s.flowDist || 0; // face-local v units the front has traveled
+          const frontV = s.v0 + flowDist;
+          // 流下に伴い幅を細める（テーパー）
+          const narrow = Math.max(0.55, 1.0 - 0.45 * Math.min(1, flowDist / 0.10));
           if (useBasis) {
             // Stabilize attached patch projection against yaw foreshortening:
             // keep horizontal scale based on the hit-time eye distance, but rescale uniformly by current faceH.
@@ -5612,31 +5718,55 @@
             const _vrmFaceThresh = Math.min(1.2, 0.62 * Math.max(0.6, getHeadOverlayScale()));
             // 範囲外は初回の画面座標に固定してトラッキングで動かさない
             const _isOuter = Math.abs(s.u) > _vrmFaceThresh;
-            let pxy;
+
+            // source / front / 下方向 を投影（投影・回転を自然に反映）
+            let pSrc, pFront, pDown;
             if (_isOuter) {
-              if (!s.frozenPx) {
-                const _fp = faceLocalToScreenPx(s.u, s.v, _bPatch);
-                s.frozenPx = _fp ? { x: _fp.x, y: _fp.y } : null;
+              if (!s.frozenBasis) {
+                s.frozenBasis = {
+                  src: faceLocalToScreenPx(s.u, s.v0, _bPatch),
+                  down: faceLocalToScreenPx(s.u, s.v0 + 0.05, _bPatch),
+                };
               }
-              pxy = s.frozenPx;
+              pSrc = s.frozenBasis.src;
+              pDown = s.frozenBasis.down;
+              // front は固定 source からローカル下方向へ flowDist 分だけ伸ばす
+              if (pSrc && pDown) {
+                const dl = Math.hypot(pDown.x - pSrc.x, pDown.y - pSrc.y) / 0.05; // px per v-unit
+                const ux = (pDown.x - pSrc.x) / Math.max(1e-3, 0.05 * dl);
+                const uy = (pDown.y - pSrc.y) / Math.max(1e-3, 0.05 * dl);
+                pFront = { x: pSrc.x + ux * flowDist * dl, y: pSrc.y + uy * flowDist * dl };
+              }
             } else {
-              pxy = faceLocalToScreenPx(s.u, s.v, _bPatch);
+              pSrc = faceLocalToScreenPx(s.u, s.v0, _bPatch);
+              pFront = faceLocalToScreenPx(s.u, frontV, _bPatch);
+              pDown = faceLocalToScreenPx(s.u, s.v0 + 0.05, _bPatch);
             }
 
-            if (pxy) {
+            if (pSrc && pFront && pDown) {
+              const cx = (pSrc.x + pFront.x) / 2;
+              const cy = (pSrc.y + pFront.y) / 2;
+              const travelPx = Math.hypot(pFront.x - pSrc.x, pFront.y - pSrc.y);
+              const dirAng = Math.atan2(pDown.y - pSrc.y, pDown.x - pSrc.x); // 顔の下方向
+
               const r = (_bPatch.faceW || useBasis.faceW) * 0.18 * s.sizeU * spread;
-              const ang = (useBasis.roll || 0) + (s.rollBias || 0) + (s.rotRad || 0);
               const baseStretch = s.sizeV && s.sizeU ? Math.min(3.0, Math.max(0.8, s.sizeV / Math.max(1e-6, s.sizeU))) : 1.0;
-              const stretchY = baseStretch * (1.0 + Math.max(0, (s.age - s.dripDelay) * (0.1 / (typeof creamViscosity === "number" ? Math.max(0.2, creamViscosity) : 1.0))));
+              const baseHeightPx = r * 1.18 * baseStretch; // 固有のドーム高
+              const halfLenPx = (baseHeightPx + travelPx) / 2; // source→front を覆う半長
+              const stretchY = Math.min(16, halfLenPx / Math.max(1e-3, r * 1.18));
               const rxScale = (s.rxScale || 1.0) * narrow;
+              const ang = dirAng - Math.PI * 0.5 + (s.rollBias || 0) + (s.rotRad || 0); // +Y(下/バルブ)を front 向きに
 
               // 奥に回り込む側のフェード（面の裏側に隠れる表現）
               const _yaw = typeof latestFaceYawRad !== "undefined" ? latestFaceYawRad || 0 : 0;
               const _uFar = s.u * Math.sign(_yaw);
               const _yawFade = (!_isOuter && _uFar > 0) ? Math.max(0, 1 - _uFar * Math.abs(_yaw) * 3.5) : 1.0;
 
-              creamOverlayCtx.globalAlpha = 0.75 * a * _yawFade;
-              drawCreamBlob(creamOverlayCtx, pxy.x, pxy.y, r, 1.0, ang, stretchY, rxScale, !!(s.isSplatter && s.creamTinted));
+              // 流下に伴いしずく形状へ
+              const dripT = Math.min(1, Math.max(0, s.age - (s.dripDelay || 0)) * 0.5);
+
+              creamOverlayCtx.globalAlpha = 0.75 * a * _yawFade * (s.alphaMul || 1.0);
+              drawCreamBlob(creamOverlayCtx, cx, cy, r, 1.0, ang, stretchY, rxScale, !!(s.isSplatter && s.creamTinted), dripT, s.shapeSeed, s.glossMul || 1.0);
               creamOverlayCtx.globalAlpha = 1.0;
             }
           }
