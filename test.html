@@ -1468,8 +1468,8 @@
 
     <script type="module">
       // ===== App Version (single source of truth) =====
-      const APP_VERSION = "v6.02.01";
-      const APP_VERSION_NOTE = "fix: よだれ 先端の塊がそのまま雫になって落下・筋に塊を残さない";
+      const APP_VERSION = "v6.02.02";
+      const APP_VERSION_NOTE = "fix: よだれ 雫の落下方向を顔の下方向(face-local)に（クリームと同様）";
 
       function getOverlayPixelRatio() {
         // Must match resizeCreamOverlayCanvas()/resizeBreathOverlayCanvas() DPR clamp for performance.
@@ -5896,7 +5896,7 @@
             droolDrops.push({
               x: ax + basis.vx * droolLen * basis.faceH,
               y: ay + basis.vy * droolLen * basis.faceH,
-              vy: gv * basis.faceH,        // 筋の降下速度を初速に引き継ぐ（重力で少し速くなる）
+              v: gv * basis.faceH,         // 顔下方向に沿った速度（初速＝筋の降下速度／重力で加速）
               w: beadSize,
               h: beadSize * 1.3,
               ang,
@@ -5951,14 +5951,18 @@
           droolLen = 0;
         }
 
-        // 落下滴の更新・描画。初速＝筋の降下速度、重力で少しだけ加速して筋より速くなる（すべて下向き）。
+        // 落下滴の更新・描画。クリーム射出と同様、落下方向は常に顔の下方向(face-local V軸)。
+        // 初速＝筋の降下速度、重力で少しだけ加速して筋より速くなる。
         const G = 300 * droolFall;
+        const dnx = basis ? basis.vx : 0;   // 顔の下方向（顔ロスト時は画面真下）
+        const dny = basis ? basis.vy : 1;
         for (let i = droolDrops.length - 1; i >= 0; i--) {
           const d = droolDrops[i];
           d.age += delta;
-          d.vy += G * delta;
-          d.y += d.vy * delta;
-          if (d.age >= d.life || d.y - d.h > cssH) {
+          d.v += G * delta;
+          d.x += dnx * d.v * delta;
+          d.y += dny * d.v * delta;
+          if (d.age >= d.life || d.y - d.h > cssH || d.x + d.h < 0 || d.x - d.h > cssW) {
             droolDrops.splice(i, 1);
             continue;
           }
