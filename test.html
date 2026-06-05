@@ -1360,8 +1360,8 @@
 
     <script type="module">
       // ===== App Version (single source of truth) =====
-      const APP_VERSION = "v6.01.72";
-      const APP_VERSION_NOTE = "fix: ボーラスをより垂れる雫に(A/B差を縮小) / fix: しずく下端の見切れ(塗り領域拡大)";
+      const APP_VERSION = "v6.01.73";
+      const APP_VERSION_NOTE = "fix: 濃い白コアを縦長化＋位置/幅をランダム化(中央の丸い白を解消, A/B両方) / fix: 下端の影を薄く";
 
       function getOverlayPixelRatio() {
         // Must match resizeCreamOverlayCanvas()/resizeBreathOverlayCanvas() DPR clamp for performance.
@@ -5198,9 +5198,16 @@
         // 2. 不透明白コア（粘液の厚い部分——どろっとした塊感）
         // 流下に伴い密度の中心を下へ寄せる（上の尾が薄くなり、下の溜まりが濃くなる）
         const coreDy = dT * ry * 0.62;
+        // 縦に伸びた雫では密集も縦長に（円形の「丸い濃い玉」を防ぐ）＋位置・幅に patch 固有のランダム性
+        const cjx = shapeSeed ? shapeSeed[3] : 0; // -1..1
+        const cjy = shapeSeed ? shapeSeed[7] : 0;
+        const cjw = shapeSeed ? shapeSeed[11] : 0;
+        const coreOX = rx * 0.5 * cjx;            // 幅方向の位置ランダム
+        const coreOY = coreDy + ry * 0.16 * cjy;  // 縦位置のランダム
+        const coreR = Math.max(r * 0.70, ry * 0.58) * (1 + 0.30 * cjw);
         const wg = ctx.createRadialGradient(
-          -rx * 0.12, -ry * 0.16 + coreDy, 0,
-          -rx * 0.05, -ry * 0.08 + coreDy, r * 0.70
+          -rx * 0.12 + coreOX, -ry * 0.16 + coreOY, 0,
+          -rx * 0.05 + coreOX, -ry * 0.08 + coreOY, coreR
         );
         if (creamTint) {
           wg.addColorStop(0.0,  `rgba(253, 254, 252, ${0.82 * opacity})`);
@@ -5208,9 +5215,9 @@
           wg.addColorStop(0.62, `rgba(250, 251, 242, ${0.24 * opacity})`);
           wg.addColorStop(1.0,  `rgba(249, 250, 240, 0)`);
         } else {
-          wg.addColorStop(0.0,  `rgba(244, 248, 255, ${0.78 * opacity})`);
-          wg.addColorStop(0.30, `rgba(240, 246, 255, ${0.56 * opacity})`);
-          wg.addColorStop(0.62, `rgba(236, 244, 255, ${0.24 * opacity})`);
+          wg.addColorStop(0.0,  `rgba(244, 248, 255, ${0.70 * opacity})`);
+          wg.addColorStop(0.32, `rgba(240, 246, 255, ${0.48 * opacity})`);
+          wg.addColorStop(0.66, `rgba(236, 244, 255, ${0.20 * opacity})`);
           wg.addColorStop(1.0,  `rgba(234, 243, 255, 0)`);
         }
         ctx.fillStyle = wg;
@@ -5262,9 +5269,13 @@
         // 4.6 下端の濃い白バルブ（先端に最も濃い白い溜まり）
         if (dT > 0.01) {
           const bulbColor = creamTint ? "252, 253, 248" : "245, 249, 255";
-          const by = ry * 1.08;
-          const br = Math.max(rx, ry) * 0.60;
-          const bulb = ctx.createRadialGradient(0, by, 0, 0, by, br);
+          const bjx = shapeSeed ? shapeSeed[5] : 0;
+          const bjy = shapeSeed ? shapeSeed[9] : 0;
+          const bjw = shapeSeed ? shapeSeed[13] : 0;
+          const bx = rx * 0.35 * bjx;
+          const by = ry * (1.08 + 0.12 * bjy);
+          const br = Math.max(rx, ry) * 0.60 * (1 + 0.25 * bjw);
+          const bulb = ctx.createRadialGradient(bx, by, 0, bx, by, br);
           bulb.addColorStop(0.0, `rgba(${bulbColor}, ${0.50 * dT * opacity})`);
           bulb.addColorStop(0.6, `rgba(${bulbColor}, ${0.20 * dT * opacity})`);
           bulb.addColorStop(1.0, `rgba(${bulbColor}, 0)`);
@@ -5304,7 +5315,7 @@
           const shadowColor = creamTint ? "150, 150, 140" : "120, 140, 180";
           const shw = ctx.createLinearGradient(0, ry * 0.6, 0, ry * 1.25);
           shw.addColorStop(0.0, `rgba(${shadowColor}, 0)`);
-          shw.addColorStop(1.0, `rgba(${shadowColor}, ${0.12 * dT * opacity})`);
+          shw.addColorStop(1.0, `rgba(${shadowColor}, ${0.07 * dT * opacity})`);
           ctx.fillStyle = shw;
           ctx.fillRect(lx, ly, W, H);
         }
