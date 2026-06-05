@@ -563,6 +563,7 @@
       }
       input[type="range"] {
         flex-grow: 1;
+        touch-action: pan-y; /* 縦ドラッグはパネルのスクロールに通す（横ドラッグのみ値変更）誤操作防止 */
       }
 
       /* スライダー値表示用スタイル */
@@ -611,10 +612,12 @@
         font-weight: bold;
         font-size: 12px;
         margin-bottom: 8px;
+        touch-action: manipulation;
       }
       .toggle-checkbox {
         margin-right: 10px;
         transform: scale(1.2);
+        touch-action: manipulation;
       }
 
       .restart-btn {
@@ -736,6 +739,7 @@
         justify-content: space-between;
         gap: 10px;
         color: #39338d;
+        touch-action: manipulation;
       }
       .acc-section > summary::-webkit-details-marker {
         display: none;
@@ -1405,8 +1409,8 @@
 
     <script type="module">
       // ===== App Version (single source of truth) =====
-      const APP_VERSION = "v6.01.80";
-      const APP_VERSION_NOTE = "feat: スクショボタン追加(映像+VRM+VFX合成をJPEG保存,UI除外,ファイル名VRMAR日時ms) / tune: ボトムボタン40pxに縮小し1行収め";
+      const APP_VERSION = "v6.01.81";
+      const APP_VERSION_NOTE = "fix: 設定パネルをスライダー上から縦スクロール可能に(touch-action:pan-y, 縦=スクロール/横=値変更)";
 
       function getOverlayPixelRatio() {
         // Must match resizeCreamOverlayCanvas()/resizeBreathOverlayCanvas() DPR clamp for performance.
