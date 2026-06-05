@@ -1103,6 +1103,25 @@
             </div>
           </div>
 
+          <div class="slider-container">
+            <label class="toggle-label">
+              <input type="checkbox" id="sweat-toggle" class="toggle-checkbox" />
+              汗エフェクト（額・こめかみ・頬）
+            </label>
+          </div>
+          <div id="sweat-controls" style="display: none">
+            <div class="slider-container">
+              <span class="slider-label">汗の量</span>
+              <input type="range" id="sweat-amount-slider" min="0.0" max="1.0" step="0.01" value="0.4" />
+              <span id="sweat-amount-slider-val" class="val-display">0.40</span>
+            </div>
+            <div class="slider-container">
+              <span class="slider-label">汗のサイズ</span>
+              <input type="range" id="sweat-size-slider" min="0.4" max="2.5" step="0.05" value="1.0" />
+              <span id="sweat-size-slider-val" class="val-display">1.00</span>
+            </div>
+          </div>
+
           <div class="slider-container" style="margin-top: 8px; border-top: 1px solid rgba(255,255,255,0.12); padding-top: 6px;">
             <span class="slider-label" style="font-size: 11px; opacity: 0.7">表情オフセット（カメラと重ねる）</span>
           </div>
@@ -1468,8 +1487,8 @@
 
     <script type="module">
       // ===== App Version (single source of truth) =====
-      const APP_VERSION = "v6.02.04";
-      const APP_VERSION_NOTE = "fix: 落下方向の「実下」を顔の向きから判定（軸スナップ）。画面横固定の縦持ちでも正しく落下";
+      const APP_VERSION = "v6.02.05";
+      const APP_VERSION_NOTE = "feat: 汗エフェクト追加（額・こめかみ・頬／量・サイズ調整／肌限定・目を回避）";
 
       function getOverlayPixelRatio() {
         // Must match resizeCreamOverlayCanvas()/resizeBreathOverlayCanvas() DPR clamp for performance.
@@ -1625,6 +1644,13 @@
       let breathOffY = 0.0;
       let breathDebugEnabled = false;
       let breathDebugEl = null;
+
+      // --- Sweat (汗) effect — per-VRM ---
+      let isSweatEnabled = false;
+      let sweatAmount = 0.4; // spawn rate scaler (0..1)
+      let sweatSize = 1.0; // bead radius multiplier
+      let sweatParticles2D = []; // {x, y, r, dx, dy, drift, maxDrift, age, life, peakA}
+      let sweatSpawnAccum = 0; // fractional spawn accumulator
 
       // 2D overlay breath particles (more robust than 3D sprites across devices)
       let breathOverlayCanvas = null;
@@ -2648,6 +2674,13 @@
       const droolOffYSliderVal = document.getElementById("drool-offy-slider-val");
       const droolControls = document.getElementById("drool-controls");
 
+      const sweatToggle = document.getElementById("sweat-toggle");
+      const sweatAmountSlider = document.getElementById("sweat-amount-slider");
+      const sweatAmountSliderVal = document.getElementById("sweat-amount-slider-val");
+      const sweatSizeSlider = document.getElementById("sweat-size-slider");
+      const sweatSizeSliderVal = document.getElementById("sweat-size-slider-val");
+      const sweatControls = document.getElementById("sweat-controls");
+
       const exprHappySlider     = document.getElementById("expr-happy-slider");
       const exprSadSlider       = document.getElementById("expr-sad-slider");
       const exprSurprisedSlider = document.getElementById("expr-surprised-slider");
@@ -2771,6 +2804,26 @@
         if (!skipSave && typeof saveSettings === "function") saveSettings();
       }
 
+      function updateSweatUI(skipSave = false) {
+        if (!sweatToggle) return;
+        const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+
+        isSweatEnabled = !!sweatToggle.checked;
+        if (sweatControls) sweatControls.style.display = isSweatEnabled ? "block" : "none";
+
+        sweatAmount = sweatAmountSlider ? parseFloat(sweatAmountSlider.value) : 0.4;
+        if (!Number.isFinite(sweatAmount)) sweatAmount = 0.4;
+        sweatAmount = clamp(sweatAmount, 0.0, 1.0);
+        if (sweatAmountSliderVal) sweatAmountSliderVal.textContent = sweatAmount.toFixed(2);
+
+        sweatSize = sweatSizeSlider ? parseFloat(sweatSizeSlider.value) : 1.0;
+        if (!Number.isFinite(sweatSize)) sweatSize = 1.0;
+        sweatSize = clamp(sweatSize, 0.4, 2.5);
+        if (sweatSizeSliderVal) sweatSizeSliderVal.textContent = sweatSize.toFixed(2);
+
+        if (!skipSave && typeof saveSettings === "function") saveSettings();
+      }
+
       if (blushToggle) blushToggle.addEventListener("change", () => updateBlushUI(false));
       if (blushStrengthSlider) blushStrengthSlider.addEventListener("input", () => updateBlushUI(false));
       if (blushOffXSlider) blushOffXSlider.addEventListener("input", () => updateBlushUI(false));
@@ -2796,6 +2849,11 @@
       if (droolOffXSlider) droolOffXSlider.addEventListener("input", () => updateDroolUI(false));
       if (droolOffYSlider) droolOffYSlider.addEventListener("input", () => updateDroolUI(false));
       updateDroolUI(true);
+
+      if (sweatToggle) sweatToggle.addEventListener("change", () => updateSweatUI(false));
+      if (sweatAmountSlider) sweatAmountSlider.addEventListener("input", () => updateSweatUI(false));
+      if (sweatSizeSlider) sweatSizeSlider.addEventListener("input", () => updateSweatUI(false));
+      updateSweatUI(true);
 
       [exprHappySlider, exprSadSlider, exprSurprisedSlider, exprRelaxedSlider, exprAngrySlider, exprBrowSorrowSlider, exprEyeSorrowSlider, gazeVertSlider, gazeConvergeSlider]
         .forEach((sl) => {
@@ -4052,6 +4110,10 @@
           droolInterval: typeof droolIntervalSlider !== "undefined" && droolIntervalSlider ? droolIntervalSlider.value : "1.0",
           droolOffX:     typeof droolOffXSlider !== "undefined" && droolOffXSlider ? droolOffXSlider.value : "0.0",
           droolOffY:     typeof droolOffYSlider !== "undefined" && droolOffYSlider ? droolOffYSlider.value : "0.0",
+          // Sweat (per-VRM)
+          sweatEnabled: typeof sweatToggle !== "undefined" && sweatToggle ? !!sweatToggle.checked : false,
+          sweatAmount:  typeof sweatAmountSlider !== "undefined" && sweatAmountSlider ? sweatAmountSlider.value : "0.4",
+          sweatSize:    typeof sweatSizeSlider !== "undefined" && sweatSizeSlider ? sweatSizeSlider.value : "1.0",
           // Blush (per-VRM)
           blushEnabled: typeof blushToggle !== "undefined" && blushToggle ? !!blushToggle.checked : false,
           blushStrength: typeof blushStrengthSlider !== "undefined" && blushStrengthSlider ? blushStrengthSlider.value : "0.70",
@@ -4304,6 +4366,12 @@
               if (Object.prototype.hasOwnProperty.call(s, "droolOffX") && droolOffXSlider) droolOffXSlider.value = s.droolOffX;
               if (Object.prototype.hasOwnProperty.call(s, "droolOffY") && droolOffYSlider) droolOffYSlider.value = s.droolOffY;
               if (typeof updateDroolUI === "function") updateDroolUI(true);
+
+              // Sweat (per-VRM)
+              if (Object.prototype.hasOwnProperty.call(s, "sweatEnabled") && sweatToggle) sweatToggle.checked = !!s.sweatEnabled;
+              if (Object.prototype.hasOwnProperty.call(s, "sweatAmount") && sweatAmountSlider) sweatAmountSlider.value = s.sweatAmount;
+              if (Object.prototype.hasOwnProperty.call(s, "sweatSize") && sweatSizeSlider) sweatSizeSlider.value = s.sweatSize;
+              if (typeof updateSweatUI === "function") updateSweatUI(true);
 
               // Blush (per-VRM)
               if (Object.prototype.hasOwnProperty.call(s, "blushEnabled") && blushToggle) blushToggle.checked = !!s.blushEnabled;
@@ -5991,6 +6059,129 @@
         }
       }
 
+      // 汗の水玉を1つ描く（半透明の青白い球＋鏡面ハイライト）
+      function drawSweatBead(ctx, x, y, r, alpha) {
+        if (alpha <= 0 || r <= 0) return;
+        ctx.save();
+        ctx.globalAlpha = Math.min(1, alpha);
+        const g = ctx.createRadialGradient(x - r * 0.3, y - r * 0.3, r * 0.1, x, y, r);
+        g.addColorStop(0.0, "rgba(255,255,255,0.85)");
+        g.addColorStop(0.35, "rgba(225,238,255,0.45)");
+        g.addColorStop(1.0, "rgba(200,225,255,0.10)");
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+        ctx.fill();
+        // 縁のハイライト
+        ctx.strokeStyle = "rgba(255,255,255,0.30)";
+        ctx.lineWidth = Math.max(0.5, r * 0.12);
+        ctx.beginPath();
+        ctx.arc(x, y, r * 0.9, 0, Math.PI * 2);
+        ctx.stroke();
+        // 鏡面ハイライト
+        ctx.fillStyle = "rgba(255,255,255,0.9)";
+        ctx.beginPath();
+        ctx.arc(x - r * 0.32, y - r * 0.34, r * 0.22, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+
+      // 汗：額・こめかみ・頬の肌アンカーにじんわり浮かび、実下へ少しだけ垂れて消える。
+      // 目領域を避けるため、目から離れた肌位置にのみ発生させ、垂れる距離も短く制限する。
+      function updateSweatEffect(delta) {
+        if (!creamOverlayCtx || !creamOverlayCanvas) return;
+        const ctx = creamOverlayCtx;
+        const pr = getOverlayPixelRatio();
+        const cssW = creamOverlayCanvas.width / pr;
+        const cssH = creamOverlayCanvas.height / pr;
+        if (cssW <= 0 || cssH <= 0) return;
+
+        ctx.setTransform(pr, 0, 0, pr, 0, 0);
+        ctx.globalCompositeOperation = "source-over";
+        ctx.filter = "none";
+
+        const basis = computeCreamFaceBasis(cssW, cssH);
+        const down = basis ? blendedDownDir(basis) : { x: 0, y: 1 };
+
+        // 既存の汗玉を更新・描画（無効化後も残った玉は消えるまで描く）
+        for (let i = sweatParticles2D.length - 1; i >= 0; i--) {
+          const p = sweatParticles2D[i];
+          p.age += delta;
+          const t = p.age / p.life;
+          if (t >= 1) {
+            sweatParticles2D.splice(i, 1);
+            continue;
+          }
+          // 実下へ少しだけ垂れる（総移動量は maxDrift で頭打ち）
+          if (p.drift < p.maxDrift) {
+            const adv = Math.min(p.driftSpeed * delta, p.maxDrift - p.drift);
+            p.drift += adv;
+            p.x += down.x * adv;
+            p.y += down.y * adv;
+          }
+          // alpha: 序盤20%でじんわり出現→保持→終盤40%でフェードアウト
+          let a;
+          if (t < 0.2) a = t / 0.2;
+          else if (t > 0.6) a = Math.max(0, (1 - t) / 0.4);
+          else a = 1;
+          drawSweatBead(ctx, p.x, p.y, p.r, p.peakA * a);
+        }
+
+        // スポーン
+        if (!isSweatEnabled || !latestFaceLandmarks0 || !lastFaceVisibleNow || vrmHidden || sweatAmount <= 0 || !basis) {
+          sweatSpawnAccum = 0;
+          return;
+        }
+
+        const lm = latestFaceLandmarks0;
+        const rect = basis.rect;
+        const pForehead = lm[10] ? mapMpLandmarkToScreenPx(lm[10], cssW, cssH, rect) : null;
+        const pCheekL = lm[234] ? mapMpLandmarkToScreenPx(lm[234], cssW, cssH, rect) : null;
+        const pCheekR = lm[454] ? mapMpLandmarkToScreenPx(lm[454], cssW, cssH, rect) : null;
+        if (!pForehead || !pCheekL || !pCheekR) return;
+
+        const eyeMid = basis.eyeMid;
+        const mouthMid = basis.mouthMid;
+        const pEyeL = basis.le;
+        const pEyeR = basis.re;
+        const fw = basis.faceW;
+        const lerp = (a, b, k) => ({ x: a.x + (b.x - a.x) * k, y: a.y + (b.y - a.y) * k });
+
+        // 額中央：生え際より下・眉より上の額バンド
+        const aForehead = lerp(eyeMid, pForehead, 0.55);
+        // こめかみ：眼外側を外へ押し出し、額方向(-V)へ少し持ち上げる
+        const temple = (e) => ({
+          x: e.x + (e.x - eyeMid.x) * 0.35 - basis.vx * fw * 0.1,
+          y: e.y + (e.y - eyeMid.y) * 0.35 - basis.vy * fw * 0.1,
+        });
+        // 頬：頬輪郭を口側へ寄せた上頬
+        const anchors = [aForehead, temple(pEyeL), temple(pEyeR), lerp(pCheekL, mouthMid, 0.35), lerp(pCheekR, mouthMid, 0.35)];
+
+        const cap = 60;
+        const rate = 6.0 * sweatAmount; // 毎秒の合計発生数
+        sweatSpawnAccum += rate * delta;
+        const eyeGuard = fw * 0.12; // 目中心から半径 fw*0.12 内には置かない
+        while (sweatSpawnAccum >= 1 && sweatParticles2D.length < cap) {
+          sweatSpawnAccum -= 1;
+          const base = anchors[(Math.random() * anchors.length) | 0];
+          const x = base.x + (Math.random() - 0.5) * fw * 0.08;
+          const y = base.y + (Math.random() - 0.5) * fw * 0.08;
+          if (Math.hypot(x - pEyeL.x, y - pEyeL.y) < eyeGuard) continue;
+          if (Math.hypot(x - pEyeR.x, y - pEyeR.y) < eyeGuard) continue;
+          sweatParticles2D.push({
+            x,
+            y,
+            r: fw * 0.01 * sweatSize * (0.8 + Math.random() * 0.4),
+            drift: 0,
+            maxDrift: fw * (0.1 + Math.random() * 0.04),
+            driftSpeed: fw * (0.06 + Math.random() * 0.05),
+            age: 0,
+            life: 1.6 + Math.random() * 1.0,
+            peakA: 0.7 + Math.random() * 0.2,
+          });
+        }
+      }
+
       function updateCreamVfx(delta) {
         if (!creamOverlayCanvas || !creamOverlayCtx) return;
 
@@ -7239,6 +7430,7 @@
             updateBreathEffect(delta);
             updateCreamVfx(delta);
             updateDroolEffect(delta);
+            updateSweatEffect(delta);
             updateBlushDebug();
             composer.render();
           });
