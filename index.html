@@ -1102,6 +1102,16 @@
             <input type="range" id="expr-eye-sorrow-slider" min="0" max="1" step="0.01" value="0" />
             <span id="expr-eye-sorrow-slider-val" class="val-display">0.00</span>
           </div>
+          <div class="slider-container">
+            <span class="slider-label">👀 視線上下</span>
+            <input type="range" id="gaze-vert-slider" min="-1" max="1" step="0.01" value="0" />
+            <span id="gaze-vert-slider-val" class="val-display">0.00</span>
+          </div>
+          <div class="slider-container">
+            <span class="slider-label">🥴 寄り目</span>
+            <input type="range" id="gaze-converge-slider" min="0" max="1" step="0.01" value="0" />
+            <span id="gaze-converge-slider-val" class="val-display">0.00</span>
+          </div>
         </details>
 
         <details class="acc-section" data-acc="cream">
@@ -1419,8 +1429,8 @@
 
     <script type="module">
       // ===== App Version (single source of truth) =====
-      const APP_VERSION = "v6.01.91";
-      const APP_VERSION_NOTE = "feat: 個別モーフスライダーを困り眉・たれ目に整理（つり目・口角上げを除去）";
+      const APP_VERSION = "v6.01.93";
+      const APP_VERSION_NOTE = "feat: 視線スライダー追加（上下・寄り目／eyeボーン回転） / fix: 寄り目の向きを修正";
 
       function getOverlayPixelRatio() {
         // Must match resizeCreamOverlayCanvas()/resizeBreathOverlayCanvas() DPR clamp for performance.
@@ -2578,6 +2588,8 @@
       const exprAngrySlider     = document.getElementById("expr-angry-slider");
       const exprBrowSorrowSlider = document.getElementById("expr-brow-sorrow-slider");
       const exprEyeSorrowSlider  = document.getElementById("expr-eye-sorrow-slider");
+      const gazeVertSlider     = document.getElementById("gaze-vert-slider");
+      const gazeConvergeSlider = document.getElementById("gaze-converge-slider");
 
       function updateBlushUI(skipSave = false) {
         if (!blushToggle || !blushStrengthSlider) return;
@@ -2672,7 +2684,7 @@
       if (typeof updateBlushUI === "function") updateBlushUI(true);
       updateBreathUI(true);
 
-      [exprHappySlider, exprSadSlider, exprSurprisedSlider, exprRelaxedSlider, exprAngrySlider, exprBrowSorrowSlider, exprEyeSorrowSlider]
+      [exprHappySlider, exprSadSlider, exprSurprisedSlider, exprRelaxedSlider, exprAngrySlider, exprBrowSorrowSlider, exprEyeSorrowSlider, gazeVertSlider, gazeConvergeSlider]
         .forEach((sl) => {
           if (!sl) return;
           updateSliderDisplay(sl);
@@ -3917,6 +3929,8 @@
           exprAngry:     typeof exprAngrySlider     !== "undefined" && exprAngrySlider     ? exprAngrySlider.value     : "0",
           exprBrowSorrow: typeof exprBrowSorrowSlider !== "undefined" && exprBrowSorrowSlider ? exprBrowSorrowSlider.value : "0",
           exprEyeSorrow:  typeof exprEyeSorrowSlider  !== "undefined" && exprEyeSorrowSlider  ? exprEyeSorrowSlider.value  : "0",
+          gazeVert:     typeof gazeVertSlider     !== "undefined" && gazeVertSlider     ? gazeVertSlider.value     : "0",
+          gazeConverge: typeof gazeConvergeSlider !== "undefined" && gazeConvergeSlider ? gazeConvergeSlider.value : "0",
           // Blush (per-VRM)
           blushEnabled: typeof blushToggle !== "undefined" && blushToggle ? !!blushToggle.checked : false,
           blushStrength: typeof blushStrengthSlider !== "undefined" && blushStrengthSlider ? blushStrengthSlider.value : "0.70",
@@ -4157,6 +4171,8 @@
               if (Object.prototype.hasOwnProperty.call(s, "exprAngry")     && exprAngrySlider)     { exprAngrySlider.value     = s.exprAngry;     updateSliderDisplay(exprAngrySlider); }
               if (Object.prototype.hasOwnProperty.call(s, "exprBrowSorrow") && exprBrowSorrowSlider) { exprBrowSorrowSlider.value = s.exprBrowSorrow; updateSliderDisplay(exprBrowSorrowSlider); }
               if (Object.prototype.hasOwnProperty.call(s, "exprEyeSorrow")  && exprEyeSorrowSlider)  { exprEyeSorrowSlider.value  = s.exprEyeSorrow;  updateSliderDisplay(exprEyeSorrowSlider); }
+              if (Object.prototype.hasOwnProperty.call(s, "gazeVert")     && gazeVertSlider)     { gazeVertSlider.value     = s.gazeVert;     updateSliderDisplay(gazeVertSlider); }
+              if (Object.prototype.hasOwnProperty.call(s, "gazeConverge") && gazeConvergeSlider) { gazeConvergeSlider.value = s.gazeConverge; updateSliderDisplay(gazeConvergeSlider); }
 
               // Blush (per-VRM)
               if (Object.prototype.hasOwnProperty.call(s, "blushEnabled") && blushToggle) blushToggle.checked = !!s.blushEnabled;
@@ -7094,6 +7110,24 @@
           const v = ms.slider ? Math.max(0, Math.min(1, parseFloat(ms.slider.value) || 0)) : 0;
           for (const t of ms.targets) {
             if (t.mesh.morphTargetInfluences) t.mesh.morphTargetInfluences[t.index] = v;
+          }
+        }
+
+        // 視線（eyeボーン直接回転：vrm.update後に上書き）
+        if (vrm.humanoid) {
+          const leftEye  = vrm.humanoid.getRawBoneNode("leftEye");
+          const rightEye = vrm.humanoid.getRawBoneNode("rightEye");
+          if (leftEye && rightEye) {
+            const MAX_PITCH = THREE.MathUtils.degToRad(30);
+            const MAX_YAW   = THREE.MathUtils.degToRad(30);
+            const vert = gazeVertSlider     ? Math.max(-1, Math.min(1, parseFloat(gazeVertSlider.value)     || 0)) : 0;
+            const conv = gazeConvergeSlider ? Math.max( 0, Math.min(1, parseFloat(gazeConvergeSlider.value) || 0)) : 0;
+            const pitch = vert * MAX_PITCH;       // +slider = 上向き（符号は実機で確認）
+            const yaw   = conv * MAX_YAW;          // 内向き量
+            leftEye.rotation.x  = pitch;
+            rightEye.rotation.x = pitch;
+            leftEye.rotation.y  = -yaw;            // +で寄り目（内向き）
+            rightEye.rotation.y =  yaw;
           }
         }
       }
