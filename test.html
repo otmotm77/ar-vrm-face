@@ -1360,8 +1360,8 @@
 
     <script type="module">
       // ===== App Version (single source of truth) =====
-      const APP_VERSION = "v6.01.66";
-      const APP_VERSION_NOTE = "chore: 未使用コード除去(3D吐息パーティクル・3D紅潮メッシュ・無効Zスライダー等) / fix: 吐息位置を口ランドマーク基準に修正 / feat: 横縦ロック時に紅潮・吐息の回転補正を凍結";
+      const APP_VERSION = "v6.01.67";
+      const APP_VERSION_NOTE = "feat: クリーム射出を青みがかった半透明乳白色へ刷新(しずく型ゆらぎ輪郭・白コア半透明化・アイボリー低減・飛翔粒も同調整)";
 
       function getOverlayPixelRatio() {
         // Must match resizeCreamOverlayCanvas()/resizeBreathOverlayCanvas() DPR clamp for performance.
@@ -5136,7 +5136,10 @@
         enforceCreamLimit();
       }
 
-      function drawCreamBlob(ctx, x, y, r, opacity, angleRad = 0, stretchY = 1.0, rxScale = 1.0, creamTint = false) {
+      // 付着液の輪郭点数（しずく形状＆ゆらぎ用。パッチの shapeSeed 長と一致させる）
+      const CREAM_BLOB_POINTS = 16;
+
+      function drawCreamBlob(ctx, x, y, r, opacity, angleRad = 0, stretchY = 1.0, rxScale = 1.0, creamTint = false, dripT = 0, shapeSeed = null) {
         ctx.save();
         ctx.translate(x, y);
         ctx.rotate(angleRad);
@@ -5147,20 +5150,44 @@
         const lx = -rx * 1.2, ly = -ry * 1.2;
 
         // ブロブ全体でクリップ（内部レイヤーが外にはみ出さないように）
+        // 楕円ベースに「下膨らみ・上尾引き」の非対称(dripT)と縁のゆらぎ(shapeSeed)を加えた
+        // しずく形状の点列を生成し、中点経由の quadraticCurveTo で滑らかに閉じる。
+        const N = CREAM_BLOB_POINTS;
+        const dT = Math.max(0, Math.min(1, dripT));
+        const pts = [];
+        for (let i = 0; i < N; i++) {
+          const theta = (i / N) * Math.PI * 2;
+          const dx = Math.sin(theta);      // 横成分
+          const dy = Math.cos(theta);      // 縦成分（下=+Y が正）
+          const bulge = 1.0 + dT * 0.35 * Math.max(0, dy);     // 下半分を膨張
+          const taper = 1.0 - dT * 0.55 * Math.max(0, -dy);    // 上半分を細める（尾）
+          const wob = shapeSeed ? 1.0 + shapeSeed[i] * 0.12 : 1.0; // 縁のゆらぎ ±12%
+          const k = bulge * taper * wob;
+          pts.push({ x: dx * rx * k, y: dy * ry * k });
+        }
         ctx.beginPath();
-        ctx.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2);
+        const m0x = (pts[N - 1].x + pts[0].x) * 0.5;
+        const m0y = (pts[N - 1].y + pts[0].y) * 0.5;
+        ctx.moveTo(m0x, m0y);
+        for (let i = 0; i < N; i++) {
+          const next = (i + 1) % N;
+          const mx = (pts[i].x + pts[next].x) * 0.5;
+          const my = (pts[i].y + pts[next].y) * 0.5;
+          ctx.quadraticCurveTo(pts[i].x, pts[i].y, mx, my);
+        }
+        ctx.closePath();
         ctx.clip();
 
         // 1. ベース層：粘液の薄い部分の透け感、縁はすぱっと落ちる（表面張力）
         const base = ctx.createRadialGradient(-rx * 0.08, -ry * 0.08, 0, 0, 0, Math.max(rx, ry) * 1.05);
         if (creamTint) {
-          base.addColorStop(0.0,  `rgba(255, 252, 232, ${0.52 * opacity})`);
-          base.addColorStop(0.55, `rgba(255, 249, 222, ${0.26 * opacity})`);
-          base.addColorStop(0.82, `rgba(255, 246, 215, ${0.05 * opacity})`);
-          base.addColorStop(1.0,  `rgba(255, 246, 215, 0)`);
+          base.addColorStop(0.0,  `rgba(255, 253, 248, ${0.52 * opacity})`);
+          base.addColorStop(0.55, `rgba(255, 251, 240, ${0.26 * opacity})`);
+          base.addColorStop(0.82, `rgba(255, 250, 234, ${0.05 * opacity})`);
+          base.addColorStop(1.0,  `rgba(255, 250, 234, 0)`);
         } else {
-          base.addColorStop(0.0,  `rgba(238, 243, 255, ${0.58 * opacity})`);
-          base.addColorStop(0.55, `rgba(225, 235, 255, ${0.30 * opacity})`);
+          base.addColorStop(0.0,  `rgba(236, 242, 255, ${0.48 * opacity})`);
+          base.addColorStop(0.55, `rgba(225, 235, 255, ${0.24 * opacity})`);
           base.addColorStop(0.82, `rgba(210, 225, 255, ${0.06 * opacity})`);
           base.addColorStop(1.0,  `rgba(208, 222, 255, 0)`);
         }
@@ -5173,15 +5200,15 @@
           -rx * 0.05, -ry * 0.08, r * 0.70
         );
         if (creamTint) {
-          wg.addColorStop(0.0,  `rgba(255, 254, 240, ${0.90 * opacity})`);
-          wg.addColorStop(0.30, `rgba(255, 252, 234, ${0.68 * opacity})`);
-          wg.addColorStop(0.62, `rgba(255, 249, 222, ${0.28 * opacity})`);
-          wg.addColorStop(1.0,  `rgba(255, 247, 215, 0)`);
+          wg.addColorStop(0.0,  `rgba(253, 254, 252, ${0.82 * opacity})`);
+          wg.addColorStop(0.30, `rgba(252, 253, 248, ${0.60 * opacity})`);
+          wg.addColorStop(0.62, `rgba(250, 251, 242, ${0.24 * opacity})`);
+          wg.addColorStop(1.0,  `rgba(249, 250, 240, 0)`);
         } else {
-          wg.addColorStop(0.0,  `rgba(255, 255, 255, ${0.96 * opacity})`);
-          wg.addColorStop(0.30, `rgba(253, 254, 255, ${0.74 * opacity})`);
-          wg.addColorStop(0.62, `rgba(248, 251, 255, ${0.32 * opacity})`);
-          wg.addColorStop(1.0,  `rgba(245, 248, 255, 0)`);
+          wg.addColorStop(0.0,  `rgba(244, 248, 255, ${0.78 * opacity})`);
+          wg.addColorStop(0.30, `rgba(240, 246, 255, ${0.56 * opacity})`);
+          wg.addColorStop(0.62, `rgba(236, 244, 255, ${0.24 * opacity})`);
+          wg.addColorStop(1.0,  `rgba(234, 243, 255, 0)`);
         }
         ctx.fillStyle = wg;
         ctx.fillRect(lx, ly, W, H);
@@ -5192,13 +5219,13 @@
           rx * 0.18, ry * 0.22, r * 0.55
         );
         if (creamTint) {
-          cg.addColorStop(0.0,  `rgba(255, 248, 215, ${0.62 * opacity})`);
-          cg.addColorStop(0.42, `rgba(255, 245, 208, ${0.36 * opacity})`);
-          cg.addColorStop(1.0,  `rgba(255, 242, 200, 0)`);
+          cg.addColorStop(0.0,  `rgba(248, 249, 245, ${0.40 * opacity})`);
+          cg.addColorStop(0.42, `rgba(245, 247, 240, ${0.22 * opacity})`);
+          cg.addColorStop(1.0,  `rgba(244, 246, 238, 0)`);
         } else {
-          cg.addColorStop(0.0,  `rgba(255, 249, 222, ${0.78 * opacity})`);
-          cg.addColorStop(0.42, `rgba(255, 246, 212, ${0.44 * opacity})`);
-          cg.addColorStop(1.0,  `rgba(255, 243, 205, 0)`);
+          cg.addColorStop(0.0,  `rgba(228, 238, 255, ${0.30 * opacity})`);
+          cg.addColorStop(0.42, `rgba(220, 233, 255, ${0.16 * opacity})`);
+          cg.addColorStop(1.0,  `rgba(218, 232, 255, 0)`);
         }
         ctx.fillStyle = cg;
         ctx.fillRect(lx, ly, W, H);
@@ -5209,11 +5236,11 @@
           -rx * 0.22, ry * 0.06, r * 0.38
         );
         if (creamTint) {
-          cg2.addColorStop(0.0,  `rgba(255, 251, 225, ${0.40 * opacity})`);
-          cg2.addColorStop(1.0,  `rgba(255, 248, 218, 0)`);
+          cg2.addColorStop(0.0,  `rgba(250, 252, 246, ${0.24 * opacity})`);
+          cg2.addColorStop(1.0,  `rgba(249, 251, 244, 0)`);
         } else {
-          cg2.addColorStop(0.0,  `rgba(255, 251, 232, ${0.55 * opacity})`);
-          cg2.addColorStop(1.0,  `rgba(255, 249, 225, 0)`);
+          cg2.addColorStop(0.0,  `rgba(232, 240, 255, ${0.22 * opacity})`);
+          cg2.addColorStop(1.0,  `rgba(230, 239, 255, 0)`);
         }
         ctx.fillStyle = cg2;
         ctx.fillRect(lx, ly, W, H);
@@ -5224,12 +5251,12 @@
         ctx.globalCompositeOperation = "screen";
         const ig = ctx.createRadialGradient(0, 0, 0, 0, 0, Math.max(rx, ry) * 0.65);
         if (creamTint) {
-          ig.addColorStop(0.0, `rgba(255, 248, 225, ${0.22 * opacity})`);
-          ig.addColorStop(0.6, `rgba(255, 245, 215, ${0.08 * opacity})`);
-          ig.addColorStop(1.0, `rgba(255, 244, 210, 0)`);
+          ig.addColorStop(0.0, `rgba(248, 250, 248, ${0.24 * opacity})`);
+          ig.addColorStop(0.6, `rgba(245, 248, 242, ${0.09 * opacity})`);
+          ig.addColorStop(1.0, `rgba(244, 247, 240, 0)`);
         } else {
-          ig.addColorStop(0.0, `rgba(210, 225, 255, ${0.28 * opacity})`);
-          ig.addColorStop(0.6, `rgba(200, 218, 255, ${0.10 * opacity})`);
+          ig.addColorStop(0.0, `rgba(214, 228, 255, ${0.32 * opacity})`);
+          ig.addColorStop(0.6, `rgba(200, 218, 255, ${0.11 * opacity})`);
           ig.addColorStop(1.0, `rgba(195, 215, 255, 0)`);
         }
         ctx.fillStyle = ig;
@@ -5247,7 +5274,7 @@
 
         // 6. ブロードハイライト（濡れた表面の広い光沢）
         const hg = ctx.createRadialGradient(-rx * 0.25, -ry * 0.28, 0, -rx * 0.25, -ry * 0.28, Math.max(2, r * 0.50));
-        hg.addColorStop(0.0, `rgba(255, 255, 255, ${0.70 * opacity * gl})`);
+        hg.addColorStop(0.0, `rgba(255, 255, 255, ${0.60 * opacity * gl})`);
         hg.addColorStop(0.5, `rgba(255, 255, 255, ${0.20 * opacity * gl})`);
         hg.addColorStop(1.0, `rgba(255, 255, 255, 0)`);
         ctx.fillStyle = hg;
@@ -5298,8 +5325,8 @@
 
         // 1. ベース（粘液の薄い部分——縁で急速に透明に）
         const base = ctx.createRadialGradient(-w * 0.08, -h * 0.12, 0, 0, 0, Math.max(w, h) * 0.72);
-        base.addColorStop(0.0,  `rgba(238, 243, 255, ${0.60 * opacity})`);
-        base.addColorStop(0.55, `rgba(225, 235, 255, ${0.32 * opacity})`);
+        base.addColorStop(0.0,  `rgba(236, 242, 255, ${0.50 * opacity})`);
+        base.addColorStop(0.55, `rgba(225, 235, 255, ${0.26 * opacity})`);
         base.addColorStop(0.85, `rgba(212, 226, 255, ${0.06 * opacity})`);
         base.addColorStop(1.0,  `rgba(208, 222, 255, 0)`);
         ctx.fillStyle = base;
@@ -5307,25 +5334,25 @@
 
         // 2. 不透明白コア（飛翔中の粘液粒——密度の高い中心部）
         const wg = ctx.createRadialGradient(-w * 0.10, -h * 0.15, 0, -w * 0.05, -h * 0.08, Math.max(w, h) * 0.58);
-        wg.addColorStop(0.0,  `rgba(255, 255, 255, ${0.96 * opacity})`);
-        wg.addColorStop(0.32, `rgba(253, 254, 255, ${0.72 * opacity})`);
-        wg.addColorStop(0.68, `rgba(248, 251, 255, ${0.30 * opacity})`);
-        wg.addColorStop(1.0,  `rgba(245, 249, 255, 0)`);
+        wg.addColorStop(0.0,  `rgba(244, 248, 255, ${0.80 * opacity})`);
+        wg.addColorStop(0.32, `rgba(240, 246, 255, ${0.56 * opacity})`);
+        wg.addColorStop(0.68, `rgba(236, 244, 255, ${0.24 * opacity})`);
+        wg.addColorStop(1.0,  `rgba(234, 243, 255, 0)`);
         ctx.fillStyle = wg;
         ctx.fillRect(lx, ly, W, H);
 
         // 3. クリーム色パッチ（後方——引き延ばされた部分のアイボリー）
         const cg = ctx.createRadialGradient(w * 0.12, h * 0.20, 0, w * 0.08, h * 0.15, Math.max(w, h) * 0.42);
-        cg.addColorStop(0.0,  `rgba(255, 249, 222, ${0.70 * opacity})`);
-        cg.addColorStop(0.5,  `rgba(255, 246, 212, ${0.36 * opacity})`);
-        cg.addColorStop(1.0,  `rgba(255, 243, 205, 0)`);
+        cg.addColorStop(0.0,  `rgba(228, 238, 255, ${0.30 * opacity})`);
+        cg.addColorStop(0.5,  `rgba(220, 233, 255, ${0.16 * opacity})`);
+        cg.addColorStop(1.0,  `rgba(218, 232, 255, 0)`);
         ctx.fillStyle = cg;
         ctx.fillRect(lx, ly, W, H);
 
         // 4. 内部散乱（飛翔中でも白濁感を維持）
         ctx.globalCompositeOperation = "screen";
         const ig = ctx.createRadialGradient(0, 0, 0, 0, 0, Math.max(w, h) * 0.55);
-        ig.addColorStop(0.0, `rgba(205, 222, 255, ${0.26 * opacity})`);
+        ig.addColorStop(0.0, `rgba(210, 226, 255, ${0.30 * opacity})`);
         ig.addColorStop(1.0, `rgba(195, 215, 255, 0)`);
         ctx.fillStyle = ig;
         ctx.fillRect(lx, ly, W, H);
@@ -5334,7 +5361,7 @@
         const gl2 = gl * gl;
 
         // 5. シャープスペキュラー（粘液の濡れた表面反射）
-        ctx.fillStyle = `rgba(255,255,255,${0.62 * opacity * gl})`;
+        ctx.fillStyle = `rgba(255,255,255,${0.54 * opacity * gl})`;
         ctx.beginPath();
         ctx.ellipse(-w * 0.14, -h * 0.18, w * 0.11, h * 0.08, 0, 0, Math.PI * 2);
         ctx.fill();
@@ -5353,7 +5380,7 @@
           ctx.save();
           ctx.globalCompositeOperation = "lighter";
           const hg = ctx.createRadialGradient(-w * 0.18, -h * 0.25, 0, -w * 0.18, -h * 0.25, Math.max(w, h) * 0.65);
-          hg.addColorStop(0.0, `rgba(255, 255, 255, ${0.55 * opacity * _gl2})`);
+          hg.addColorStop(0.0, `rgba(255, 255, 255, ${0.46 * opacity * _gl2})`);
           hg.addColorStop(0.5, `rgba(255, 255, 255, ${0.15 * opacity * _gl2})`);
           hg.addColorStop(1.0, `rgba(255, 255, 255, 0)`);
           ctx.fillStyle = hg;
@@ -5526,6 +5553,7 @@
                   rollBias: (Math.random() - 0.5) * 0.15,
                   // face-local v units per second (scaled by faceW in projection). keep it subtle.
                   flowVel: _flowVel,
+                  shapeSeed: Array.from({ length: CREAM_BLOB_POINTS }, () => Math.random() * 2 - 1),
                   frozenPx: null,
                 });
 
@@ -5557,6 +5585,7 @@
                     dripAcc: 0,
                     rollBias: (Math.random() - 0.5) * 0.25,
                     flowVel: 0.006 + Math.random() * 0.008,
+                    shapeSeed: Array.from({ length: CREAM_BLOB_POINTS }, () => Math.random() * 2 - 1),
                     frozenPx: null,
                   });
                 }
@@ -5635,8 +5664,12 @@
               const _uFar = s.u * Math.sign(_yaw);
               const _yawFade = (!_isOuter && _uFar > 0) ? Math.max(0, 1 - _uFar * Math.abs(_yaw) * 3.5) : 1.0;
 
+              // 流下に伴いしずく形状へ（splatterは dripDelay:999 のため丸い不定形のまま）
+              const dripElapsed = Math.max(0, s.age - (s.dripDelay || 0));
+              const dripT = Math.min(1, dripElapsed * 0.35);
+
               creamOverlayCtx.globalAlpha = 0.75 * a * _yawFade;
-              drawCreamBlob(creamOverlayCtx, pxy.x, pxy.y, r, 1.0, ang, stretchY, rxScale, !!(s.isSplatter && s.creamTinted));
+              drawCreamBlob(creamOverlayCtx, pxy.x, pxy.y, r, 1.0, ang, stretchY, rxScale, !!(s.isSplatter && s.creamTinted), dripT, s.shapeSeed);
               creamOverlayCtx.globalAlpha = 1.0;
             }
           }
