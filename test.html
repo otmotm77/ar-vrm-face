@@ -886,7 +886,7 @@
       <div class="control-panel" id="control-panel" style="display: none">
         <h1>全般オプション</h1>
         <details class="acc-section" data-acc="basic" open>
-          <summary>モデル（VRM毎保存）</summary>
+          <summary>モデル（VRM毎）</summary>
 
           <label for="vrm-upload" class="custom-file-upload">📂 VRMファイルを選択</label>
           <input type="file" id="vrm-upload" />
@@ -919,7 +919,7 @@
         </details>
 
         <details class="acc-section" data-acc="mask">
-          <summary>肩マスキング（VRM毎保存）</summary>
+          <summary>肩マスキング（VRM毎）</summary>
 
           <div class="slider-container">
             <label class="toggle-label">
@@ -982,70 +982,8 @@
           </div>
         </details>
 
-        <details class="acc-section" data-acc="cream">
-          <summary>白濁液射出（共通保存）</summary>
-
-          <div class="slider-container">
-            <label class="toggle-label">
-              <input type="checkbox" id="cream-auto-toggle" class="toggle-checkbox" />
-              自動射出（左下ボタンでも切替）
-            </label>
-          </div>
-          <div class="slider-container">
-            <span class="slider-label">射出間隔秒数</span>
-            <input type="range" id="cream-auto-interval-slider" min="0.2" max="10" step="0.1" value="1.5" />
-            <span id="cream-auto-interval-slider-val" class="val-display">1.5</span>
-          </div>
-          <div class="slider-container">
-            <span class="slider-label">顔への集中率</span>
-            <input type="range" id="cream-face-ratio-slider" min="0" max="1" step="0.05" value="1" />
-            <span id="cream-face-ratio-slider-val" class="val-display">1</span>
-          </div>
-
-          <div class="slider-container">
-            <span class="slider-label">サイズ</span>
-            <input type="range" id="cream-size-mul-slider" min="0.5" max="2.0" step="0.05" value="1.0" />
-            <span id="cream-size-mul-slider-val" class="val-display">1.0</span>
-          </div>
-
-          <div class="slider-container">
-            <span class="slider-label">光沢</span>
-            <input type="range" id="cream-gloss-slider" min="0" max="2.0" step="0.05" value="1.0" />
-            <span id="cream-gloss-slider-val" class="val-display">1.0</span>
-          </div>
-
-          <div class="slider-container">
-            <span class="slider-label">粘度</span>
-            <input type="range" id="cream-viscosity-slider" min="0.2" max="5.0" step="0.05" value="1.0" />
-            <span id="cream-viscosity-slider-val" class="val-display">1.0</span>
-          </div>
-
-          <div class="slider-container">
-            <span class="slider-label">貼り付き（擬似Z）</span>
-            <input type="range" id="cream-z-attach-slider" min="0" max="1" step="0.05" value="0.92" />
-            <span id="cream-z-attach-slider-val" class="val-display">0.6</span>
-          </div>
-
-          <div class="slider-container">
-            <span class="slider-label">同時射出数</span>
-            <input type="range" id="cream-simul-count-slider" min="1" max="20" step="1" value="3" />
-            <span id="cream-simul-count-slider-val" class="val-display">3</span>
-          </div>
-
-          <div class="slider-container">
-            <span class="slider-label">消滅時間</span>
-            <input type="range" id="cream-life-slider" min="1" max="30" step="1" value="10" />
-            <span id="cream-life-slider-val" class="val-display">10</span>
-          </div>
-          <div class="slider-container">
-            <span class="slider-label">最大数</span>
-            <input type="range" id="cream-max-count-slider" min="10" max="200" step="1" value="40" />
-            <span id="cream-max-count-slider-val" class="val-display">40</span>
-          </div>
-        </details>
-
         <details class="acc-section" data-acc="expression">
-          <summary>表情設定（VRM毎保存）</summary>
+          <summary>表情（VRM毎）</summary>
 
           <div class="slider-container">
             <label class="toggle-label">
@@ -1167,8 +1105,70 @@
           </div>
         </details>
 
+        <details class="acc-section" data-acc="cream">
+          <summary>白濁液射出（共通）</summary>
+
+          <div class="slider-container">
+            <label class="toggle-label">
+              <input type="checkbox" id="cream-auto-toggle" class="toggle-checkbox" />
+              自動射出（左下ボタンでも切替）
+            </label>
+          </div>
+          <div class="slider-container">
+            <span class="slider-label">射出間隔秒数</span>
+            <input type="range" id="cream-auto-interval-slider" min="0.2" max="10" step="0.1" value="1.5" />
+            <span id="cream-auto-interval-slider-val" class="val-display">1.5</span>
+          </div>
+          <div class="slider-container">
+            <span class="slider-label">顔への集中率</span>
+            <input type="range" id="cream-face-ratio-slider" min="0" max="1" step="0.05" value="1" />
+            <span id="cream-face-ratio-slider-val" class="val-display">1</span>
+          </div>
+
+          <div class="slider-container">
+            <span class="slider-label">サイズ</span>
+            <input type="range" id="cream-size-mul-slider" min="0.5" max="2.0" step="0.05" value="1.0" />
+            <span id="cream-size-mul-slider-val" class="val-display">1.0</span>
+          </div>
+
+          <div class="slider-container">
+            <span class="slider-label">光沢</span>
+            <input type="range" id="cream-gloss-slider" min="0" max="2.0" step="0.05" value="1.0" />
+            <span id="cream-gloss-slider-val" class="val-display">1.0</span>
+          </div>
+
+          <div class="slider-container">
+            <span class="slider-label">粘度</span>
+            <input type="range" id="cream-viscosity-slider" min="0.2" max="5.0" step="0.05" value="1.0" />
+            <span id="cream-viscosity-slider-val" class="val-display">1.0</span>
+          </div>
+
+          <div class="slider-container">
+            <span class="slider-label">貼り付き（擬似Z）</span>
+            <input type="range" id="cream-z-attach-slider" min="0" max="1" step="0.05" value="0.92" />
+            <span id="cream-z-attach-slider-val" class="val-display">0.6</span>
+          </div>
+
+          <div class="slider-container">
+            <span class="slider-label">同時射出数</span>
+            <input type="range" id="cream-simul-count-slider" min="1" max="20" step="1" value="3" />
+            <span id="cream-simul-count-slider-val" class="val-display">3</span>
+          </div>
+
+          <div class="slider-container">
+            <span class="slider-label">消滅時間</span>
+            <input type="range" id="cream-life-slider" min="1" max="30" step="1" value="10" />
+            <span id="cream-life-slider-val" class="val-display">10</span>
+          </div>
+          <div class="slider-container">
+            <span class="slider-label">最大数</span>
+            <input type="range" id="cream-max-count-slider" min="10" max="200" step="1" value="40" />
+            <span id="cream-max-count-slider-val" class="val-display">40</span>
+          </div>
+        </details>
+
         <details class="acc-section" data-acc="tracking">
-          <summary>トラッキング（共通保存）</summary>
+          <summary>トラッキング（共通）</summary>
 
           <div class="slider-container">
             <label class="toggle-label">
@@ -1274,7 +1274,7 @@
       <div class="control-panel" id="light-panel" style="display: none">
         <h1>照明・画質</h1>
         <details class="acc-section" data-acc="light_vrm">
-          <summary>VRM照明（VRM毎保存）</summary>
+          <summary>VRM照明（VRM毎）</summary>
           <div id="vrm-light-settings">
             <!-- 親コンテナのdisplayをblockにして改行を強制 -->
             <div class="slider-container" style="background: #e8f0fe; padding: 10px; border-radius: 8px; border: 1px solid #4a90e2; margin-bottom: 10px; display: block">
@@ -1343,7 +1343,7 @@
         </details>
 
         <details class="acc-section" data-acc="light_cam">
-          <summary>カメラ画質（共通保存）</summary>
+          <summary>カメラ照明（共通）</summary>
           <div id="camera-settings" style="display: block">
             <div class="slider-container">
               <span class="slider-label">美肌補正</span>
@@ -1409,8 +1409,8 @@
 
     <script type="module">
       // ===== App Version (single source of truth) =====
-      const APP_VERSION = "v6.01.85";
-      const APP_VERSION_NOTE = "feat: カメラ画質/トラッキング/クリームを共通保存に統一 / 見出しに保存スコープ(VRM毎/共通)明記";
+      const APP_VERSION = "v6.01.86";
+      const APP_VERSION_NOTE = "fix: 起動時グローバル復元のTDZエラー修正 / feat: per-VRMキーをVRMメタ由来に(旧ファイル名から移行) / 見出し整理(表情・カメラ照明・順入替・スコープ表記を(VRM毎)(共通)に)";
 
       function getOverlayPixelRatio() {
         // Must match resizeCreamOverlayCanvas()/resizeBreathOverlayCanvas() DPR clamp for performance.
@@ -1532,6 +1532,7 @@
       let appliedMinCF = 0.0005;
       let appliedBeta = 0.04;
       let currentFileName = "";
+      let currentVrmKey = ""; // VRMメタ由来の保存キー（ファイル名に依存しない・それなりにユニーク）
       let currentFacingMode = "user"; // カメラの向き (user / environment)
       const LS_CAMERA_DEVICE_ID = "camera_device_id";
       let cameraDeviceId = localStorage.getItem(LS_CAMERA_DEVICE_ID) || "";
@@ -2773,8 +2774,13 @@
           updateOccluder();
         });
       });
-      // ページロード時にグローバル設定(カメラ画質/トラッキング/クリーム)を復元
-      loadGlobalSettings();
+      // ページロード時にグローバル設定(カメラ画質/トラッキング/クリーム)を復元。
+      // クリーム系スライダー等の宣言(後述)が全て初期化された後に実行するため次タスクへ遅延。
+      setTimeout(() => {
+        try {
+          loadGlobalSettings();
+        } catch (_) {}
+      }, 0);
       // Cream lifetime slider (1-30s)
       const creamLifeSlider = document.getElementById("cream-life-slider");
       if (creamLifeSlider) {
@@ -3836,9 +3842,27 @@
         displayCanvas.style.objectFit = bgFitMode || "cover";
       }
 
+      // VRMメタデータから保存キーを生成（タイトル|作者|バージョン）。無ければファイル名にフォールバック。
+      // 確実なユニークではないが、ファイル名変更に強く、それなりにユニーク。
+      function deriveVrmKey(vrm, fallbackName) {
+        try {
+          const m = vrm && vrm.meta ? vrm.meta : null;
+          if (m) {
+            const name = m.name || m.title || "";
+            const author = Array.isArray(m.authors) ? m.authors.join(",") : m.author || "";
+            const version = m.version || "";
+            const parts = [name, author, version].map((x) => String(x || "").trim()).filter(Boolean);
+            if (parts.length) {
+              return "meta:" + parts.join("|").replace(/\s+/g, " ").slice(0, 120);
+            }
+          }
+        } catch (_) {}
+        return fallbackName ? "file:" + fallbackName : "";
+      }
+
       function saveSettings(forceName) {
         if (window.__suppressAutoSave) return;
-        const fname = forceName && String(forceName) ? String(forceName) : currentFileName || "default";
+        const fname = forceName && String(forceName) ? String(forceName) : currentVrmKey || currentFileName || "default";
         if (!fname) return;
         const settings = {
           scale: scaleSlider.value,
@@ -7067,7 +7091,7 @@
             return;
           }
           // Overwrite per-VRM save with the defaults we just loaded
-          saveSettings(currentFileName);
+          saveSettings(currentVrmKey || currentFileName);
           showToast("デフォルト設定をこのVRMに反映しました");
         });
       }
@@ -7114,6 +7138,7 @@
                   VRMUtils.deepDispose(currentVrm.scene);
                 }
                 currentVrm = vrm;
+                currentVrmKey = deriveVrmKey(vrm, currentFileName); // メタ由来の保存キー
 
                 if (applyDefaultToVrmBtn) applyDefaultToVrmBtn.disabled = false;
                 VRMUtils.rotateVRM0(vrm);
@@ -7153,7 +7178,17 @@
                   adjustmentGroup.add(vrm.scene);
                 }
 
-                const loaded = loadSettings(currentFileName, { silent: true, label: currentFileName });
+                let loaded = loadSettings(currentVrmKey, { silent: true, label: currentFileName });
+                if (!loaded && currentFileName) {
+                  // 旧形式（ファイル名キー）からの移行：あればメタキーへ保存し直す
+                  const legacy = loadSettings(currentFileName, { silent: true, label: currentFileName });
+                  if (legacy) {
+                    loaded = true;
+                    try {
+                      saveSettings(currentVrmKey);
+                    } catch (_) {}
+                  }
+                }
                 if (!loaded) {
                   loadSettings("default", { silent: true, label: "デフォルト" });
                   showToast("デフォルト設定を適用しました");
