@@ -983,7 +983,7 @@
         </details>
 
         <details class="acc-section" data-acc="cream">
-          <summary>クリーム射出</summary>
+          <summary>白濁液射出</summary>
 
           <div class="slider-container">
             <label class="toggle-label">
@@ -1003,7 +1003,7 @@
           </div>
 
           <div class="slider-container">
-            <span class="slider-label">クリームサイズ</span>
+            <span class="slider-label">サイズ</span>
             <input type="range" id="cream-size-mul-slider" min="0.5" max="2.0" step="0.05" value="1.0" />
             <span id="cream-size-mul-slider-val" class="val-display">1.0</span>
           </div>
@@ -1027,18 +1027,18 @@
           </div>
 
           <div class="slider-container">
-            <span class="slider-label">同時射出個数</span>
+            <span class="slider-label">同時射出数</span>
             <input type="range" id="cream-simul-count-slider" min="1" max="20" step="1" value="3" />
             <span id="cream-simul-count-slider-val" class="val-display">3</span>
           </div>
 
           <div class="slider-container">
-            <span class="slider-label">クリーム消滅時間</span>
+            <span class="slider-label">消滅時間</span>
             <input type="range" id="cream-life-slider" min="1" max="30" step="1" value="10" />
             <span id="cream-life-slider-val" class="val-display">10</span>
           </div>
           <div class="slider-container">
-            <span class="slider-label">最大クリーム数</span>
+            <span class="slider-label">最大数</span>
             <input type="range" id="cream-max-count-slider" min="10" max="200" step="1" value="40" />
             <span id="cream-max-count-slider-val" class="val-display">40</span>
           </div>
@@ -1409,8 +1409,8 @@
 
     <script type="module">
       // ===== App Version (single source of truth) =====
-      const APP_VERSION = "v6.01.81";
-      const APP_VERSION_NOTE = "fix: 設定パネルをスライダー上から縦スクロール可能に(touch-action:pan-y, 縦=スクロール/横=値変更)";
+      const APP_VERSION = "v6.01.82";
+      const APP_VERSION_NOTE = "fix: 設定パネルのスクロール誤操作を強力に防止(縦/未確定中はスライダー値変更を握りつぶし横ドラッグ確定時のみ反映)";
 
       function getOverlayPixelRatio() {
         // Must match resizeCreamOverlayCanvas()/resizeBreathOverlayCanvas() DPR clamp for performance.
@@ -1896,6 +1896,59 @@
       const uiContainer = document.getElementById("ui-container");
       const controlPanel = document.getElementById("control-panel");
       const lightPanel = document.getElementById("light-panel");
+
+      // --- 設定パネルのスクロール誤操作防止 ---
+      // タッチで縦スクロール（または方向未確定）の間はスライダー値変更を握りつぶし、
+      // 横ドラッグと確定した時だけ反映する。マウス操作は素通し（従来どおり）。
+      function installPanelScrollGuard(panel) {
+        if (!panel) return;
+        let active = null; // { slider, x, y, val, axis }
+        panel.addEventListener(
+          "pointerdown",
+          (e) => {
+            if (e.pointerType !== "touch") {
+              active = null;
+              return;
+            }
+            const slider = e.target && e.target.closest ? e.target.closest('input[type="range"]') : null;
+            active = slider ? { slider, x: e.clientX, y: e.clientY, val: slider.value, axis: null } : null;
+          },
+          true,
+        );
+        panel.addEventListener(
+          "pointermove",
+          (e) => {
+            if (!active || e.pointerType !== "touch") return;
+            if (active.axis === null) {
+              const dx = Math.abs(e.clientX - active.x);
+              const dy = Math.abs(e.clientY - active.y);
+              if (dx > 6 || dy > 6) active.axis = dx > dy ? "h" : "v";
+            }
+          },
+          { capture: true, passive: true },
+        );
+        // capture phase: スライダー個別の input ハンドラより先に実行してブロックする
+        panel.addEventListener(
+          "input",
+          (e) => {
+            if (!active || e.target !== active.slider) return;
+            if (active.axis !== "h") {
+              // 未確定 or 縦ドラッグ中：値変更を取り消し、アプリ側ハンドラも止める
+              active.slider.value = active.val;
+              e.stopImmediatePropagation();
+            }
+          },
+          true,
+        );
+        const _end = () => {
+          active = null;
+        };
+        panel.addEventListener("pointerup", _end, true);
+        panel.addEventListener("pointercancel", _end, true);
+        panel.addEventListener("lostpointercapture", _end, true);
+      }
+      installPanelScrollGuard(controlPanel);
+      installPanelScrollGuard(lightPanel);
 
       // --- UI Dim Toggle (temporary) ---
       const uiDimToggleBtn = document.getElementById("ui-dim-toggle-btn");
