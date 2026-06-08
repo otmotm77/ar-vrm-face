@@ -1291,21 +1291,19 @@
                 <strong>一切行いません</strong>
                 （端末内で処理されますので、貴方のプライバシーは守られています）。
               </li>
+              <li>設定名の <strong>VRM毎</strong> / <strong>共通</strong> が保存先を示します。</li>
+              <li><strong>VRM毎</strong>：読み込んだVRMファイル毎に個別に保存されます。</li>
+              <li><strong>共通</strong>：VRMに関係なく常に共通項目として保存されます。</li>
               <li>
-                VRM読み込み前に変更した設定値は、
-                <strong>デフォルト</strong>
-                として保存されます。
-              </li>
-              <li>
-                VRM読み込み後の設定は、読み込んだ
-                <strong>VRMごとに保存されます</strong>
-                。
-              </li>
-              <li>
-                「
                 <strong>デフォルトオプションとして保存</strong>
-                」を実行すると、現在のVRM設定がデフォルトに上書きされます。
+                を実行すると、現在のVRM毎設定をデフォルトオプションとして保存します。
               </li>
+              <li>
+                保存されたデフォルトオプションは
+                <strong>デフォルトオプションをこのVRMに反映</strong>
+                を実行する事で、読み込んだVRMへ反映できます。
+              </li>
+              <li>設定が保存されてない（読み込んだ事が無い）VRMを読み込み時にもデフォルトオプションが反映されます。</li>
             </ul>
             <div class="slider-container" style="margin-top: 10px">
               <label class="toggle-label">
@@ -1468,8 +1466,8 @@
 
     <script type="module">
       // ===== App Version (single source of truth) =====
-      const APP_VERSION = "v6.02.04";
-      const APP_VERSION_NOTE = "fix: 落下方向の「実下」を顔の向きから判定（軸スナップ）。画面横固定の縦持ちでも正しく落下";
+      const APP_VERSION = "v6.02.05";
+      const APP_VERSION_NOTE = "feat: ヘルプのVRM毎/共通の保存先説明を更新";
 
       function getOverlayPixelRatio() {
         // Must match resizeCreamOverlayCanvas()/resizeBreathOverlayCanvas() DPR clamp for performance.
