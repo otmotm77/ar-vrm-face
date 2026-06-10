@@ -1466,8 +1466,8 @@
 
     <script type="module">
       // ===== App Version (single source of truth) =====
-      const APP_VERSION = "v6.02.06";
-      const APP_VERSION_NOTE = "fix: クリーム系スライダーの値表示がグローバル設定ロード時に更新されずズレる問題を修正";
+      const APP_VERSION = "v6.02.07";
+      const APP_VERSION_NOTE = "fix: DPR>2端末で照り/吐息の描画がズレる問題を修正 / perf: 毎フレームのメモリ確保・無駄な再計算を削減 / refactor: 巨大関数の分割と重複コードの共通化";
 
       function getOverlayPixelRatio() {
         // Must match resizeCreamOverlayCanvas()/resizeBreathOverlayCanvas() DPR clamp for performance.
@@ -2061,7 +2061,7 @@
       // --- Screenshot (映像+VRM+VFX を1枚に合成して JPEG 保存。UIは含めない) ---
       function captureScreenshot() {
         try {
-          const scale = Math.min(window.devicePixelRatio || 1, 2);
+          const scale = getOverlayPixelRatio();
           const outW = Math.max(1, Math.round(window.innerWidth * scale));
           const outH = Math.max(1, Math.round(window.innerHeight * scale));
           const cv = document.createElement("canvas");
@@ -2916,115 +2916,93 @@
           loadGlobalSettings();
         } catch (_) {}
       }, 0);
-      // Cream lifetime slider (1-30s)
-      const creamLifeSlider = document.getElementById("cream-life-slider");
-      if (creamLifeSlider) {
-        updateSliderDisplay(creamLifeSlider);
-        creamLifetimeSec = parseFloat(creamLifeSlider.value) || creamLifetimeSec;
-        creamLifeSlider.addEventListener("input", () => {
-          updateSliderDisplay(creamLifeSlider);
-          creamLifetimeSec = parseFloat(creamLifeSlider.value) || creamLifetimeSec;
+      // クリーム系スライダーの共通結線: 表示更新→値適用→(追加処理)→保存。
+      // パース式・フォールバックは従来のまま各クロージャに温存する。
+      // applyInit: 初期適用時だけ式が異なるスライダー用（省略時は apply を使用）。
+      function bindCreamSlider(slider, apply, afterInput = null, applyInit = null) {
+        if (!slider) return;
+        updateSliderDisplay(slider);
+        (applyInit || apply)();
+        slider.addEventListener("input", () => {
+          updateSliderDisplay(slider);
+          apply();
+          if (afterInput) afterInput();
           saveSettings();
         });
       }
+
+      // Cream lifetime slider (1-30s)
+      const creamLifeSlider = document.getElementById("cream-life-slider");
+      bindCreamSlider(creamLifeSlider, () => {
+        creamLifetimeSec = parseFloat(creamLifeSlider.value) || creamLifetimeSec;
+      });
 
       // Cream auto shot interval slider (seconds)
       const creamAutoIntervalSlider = document.getElementById("cream-auto-interval-slider");
-      if (creamAutoIntervalSlider) {
-        updateSliderDisplay(creamAutoIntervalSlider);
-        creamAutoIntervalSec = parseFloat(creamAutoIntervalSlider.value) || creamAutoIntervalSec;
-        creamAutoIntervalSlider.addEventListener("input", () => {
-          updateSliderDisplay(creamAutoIntervalSlider);
+      bindCreamSlider(
+        creamAutoIntervalSlider,
+        () => {
           creamAutoIntervalSec = parseFloat(creamAutoIntervalSlider.value) || creamAutoIntervalSec;
+        },
+        () => {
           if (creamAutoEnabled) scheduleNextAutoCream(); // re-roll interval on change
-          saveSettings();
-        });
-      }
+        },
+      );
 
       // Cream face target ratio slider (0..1)
+      // NOTE: loadGlobalSettings 側はフォールバック挙動が異なる（値0のとき1になる）。意図的に統一しない。
       const creamFaceRatioSlider = document.getElementById("cream-face-ratio-slider");
-      if (creamFaceRatioSlider) {
-        updateSliderDisplay(creamFaceRatioSlider);
+      bindCreamSlider(creamFaceRatioSlider, () => {
         creamFaceTargetRatio = parseFloat(creamFaceRatioSlider.value);
-        creamFaceRatioSlider.addEventListener("input", () => {
-          updateSliderDisplay(creamFaceRatioSlider);
-          creamFaceTargetRatio = parseFloat(creamFaceRatioSlider.value);
-          saveSettings();
-        });
-      }
+      });
 
       // Cream size multiplier slider (0.5-2.0)
       const creamSizeMulSlider = document.getElementById("cream-size-mul-slider");
-      if (creamSizeMulSlider) {
-        updateSliderDisplay(creamSizeMulSlider);
+      bindCreamSlider(creamSizeMulSlider, () => {
         creamSizeMul = parseFloat(creamSizeMulSlider.value) || creamSizeMul;
-        creamSizeMulSlider.addEventListener("input", () => {
-          updateSliderDisplay(creamSizeMulSlider);
-          creamSizeMul = parseFloat(creamSizeMulSlider.value) || creamSizeMul;
-          saveSettings();
-        });
-      }
+      });
 
       // Cream gloss/highlight slider (0-2.0)
       const creamGlossSlider = document.getElementById("cream-gloss-slider");
-      if (creamGlossSlider) {
-        updateSliderDisplay(creamGlossSlider);
+      bindCreamSlider(creamGlossSlider, () => {
         creamGloss = parseFloat(creamGlossSlider.value) || creamGloss;
-        creamGlossSlider.addEventListener("input", () => {
-          updateSliderDisplay(creamGlossSlider);
-          creamGloss = parseFloat(creamGlossSlider.value) || creamGloss;
-          saveSettings();
-        });
-      }
+      });
 
       // Cream viscosity slider (0.2-3.0) higher = thicker (slower flow)
       const creamViscositySlider = document.getElementById("cream-viscosity-slider");
-      if (creamViscositySlider) {
-        updateSliderDisplay(creamViscositySlider);
+      bindCreamSlider(creamViscositySlider, () => {
         creamViscosity = parseFloat(creamViscositySlider.value) || creamViscosity;
-        creamViscositySlider.addEventListener("input", () => {
-          updateSliderDisplay(creamViscositySlider);
-          creamViscosity = parseFloat(creamViscositySlider.value) || creamViscosity;
-          saveSettings();
-        });
-      }
+      });
 
       // Cream pseudo-Z stick slider (0..1)
+      // NOTE: 初期適用はフォールバックが ||creamZAttach、入力時は ||0（従来挙動を維持）
       const creamZAttachSlider = document.getElementById("cream-z-attach-slider");
-      if (creamZAttachSlider) {
-        updateSliderDisplay(creamZAttachSlider);
-        creamZAttach = Math.max(0, Math.min(1, parseFloat(creamZAttachSlider.value) || creamZAttach));
-        creamZAttachSlider.addEventListener("input", () => {
-          updateSliderDisplay(creamZAttachSlider);
+      bindCreamSlider(
+        creamZAttachSlider,
+        () => {
           creamZAttach = Math.max(0, Math.min(1, parseFloat(creamZAttachSlider.value) || 0));
-          saveSettings();
-        });
-      }
+        },
+        null,
+        () => {
+          creamZAttach = Math.max(0, Math.min(1, parseFloat(creamZAttachSlider.value) || creamZAttach));
+        },
+      );
 
       // Cream simultaneous shot count slider (1-20)
       const creamSimulCountSlider = document.getElementById("cream-simul-count-slider");
-      if (creamSimulCountSlider) {
-        updateSliderDisplay(creamSimulCountSlider);
+      bindCreamSlider(creamSimulCountSlider, () => {
         creamSimulCount = parseInt(creamSimulCountSlider.value, 10) || creamSimulCount;
-        creamSimulCountSlider.addEventListener("input", () => {
-          updateSliderDisplay(creamSimulCountSlider);
-          creamSimulCount = parseInt(creamSimulCountSlider.value, 10) || creamSimulCount;
-          saveSettings();
-        });
-      }
+      });
 
       // Max cream count slider (10-200)
       const creamMaxCountSlider = document.getElementById("cream-max-count-slider");
-      if (creamMaxCountSlider) {
-        updateSliderDisplay(creamMaxCountSlider);
-        creamMaxCount = parseInt(creamMaxCountSlider.value, 10) || creamMaxCount;
-        creamMaxCountSlider.addEventListener("input", () => {
-          updateSliderDisplay(creamMaxCountSlider);
+      bindCreamSlider(
+        creamMaxCountSlider,
+        () => {
           creamMaxCount = parseInt(creamMaxCountSlider.value, 10) || creamMaxCount;
-          enforceCreamLimit();
-          saveSettings();
-        });
-      }
+        },
+        () => enforceCreamLimit(),
+      );
 
       // 全 range スライダーの値表示タップでデフォルト値リセット（blush/breath/cream含む全対象）
       document.querySelectorAll('input[type="range"]').forEach((el) => {
@@ -4404,7 +4382,10 @@
       function updateVRMFilter() {
         if (saturationPass) {
           // スライダー値 0-200（100=デフォルト）→ uniform -1〜1（0=変化なし）
-          saturationPass.uniforms["saturation"].value = (vrmSatSlider.value / 100) - 1;
+          const sat = (vrmSatSlider.value / 100) - 1;
+          saturationPass.uniforms["saturation"].value = sat;
+          // perf: 恒等変換（saturation=0, hueは常に0）のときはフルスクリーンパスをスキップ
+          saturationPass.enabled = sat !== 0;
         }
       }
 
@@ -4473,7 +4454,7 @@
 
       function resizeBreathOverlayCanvas() {
         if (!breathOverlayCanvas) return;
-        const pr = Math.min(window.devicePixelRatio || 1, 2);
+        const pr = getOverlayPixelRatio();
         const w = Math.max(1, Math.floor(window.innerWidth * pr));
         const h = Math.max(1, Math.floor(window.innerHeight * pr));
         if (breathOverlayCanvas.width !== w || breathOverlayCanvas.height !== h) {
@@ -4487,7 +4468,7 @@
 
       function resizeCreamOverlayCanvas() {
         if (!creamOverlayCanvas) return;
-        const pr = Math.min(window.devicePixelRatio || 1, 2);
+        const pr = getOverlayPixelRatio();
         const w = Math.max(1, Math.floor(window.innerWidth * pr));
         const h = Math.max(1, Math.floor(window.innerHeight * pr));
         if (creamOverlayCanvas.width !== w || creamOverlayCanvas.height !== h) {
@@ -4498,91 +4479,94 @@
         creamOverlayCanvas.style.height = "100%";
       }
 
-      function updateBreathEffect(delta) {
-        let shiftX = 0,
-          shiftY = 0;
-        // 2D overlay "breath" effect drawn on breathOverlayCanvas.
-        // Designed to be visible regardless of 3D depth/scale differences.
+      // breath デバッグ表示の共通部（3箇所で同一だったテンプレートを集約）
+      // includeOffsets: emit:off（無効時）のみ off 行を含む（従来出力の互換維持）
+      function _setBreathDebugText(w, h, lastLine, includeOffsets = false) {
+        if (!breathDebugEnabled || !breathDebugEl) return;
+        const offLine = includeOffsets ? `off:${breathOffX.toFixed(2)},${breathOffY.toFixed(2)}\n` : "";
+        breathDebugEl.textContent =
+          `mouth(smoothed): ${lastMouthOpenForEffects.toFixed(3)}\n` +
+          `mouth(landmark): ${latestMouthOpenFromLandmarks.toFixed(3)}\n` +
+          `faceVisible: ${lastFaceVisibleNow}\n` +
+          `mouthXY(px): ${lastMouthScreenX.toFixed(1)},${lastMouthScreenY.toFixed(1)}\n` +
+          `canvas(css): ${w.toFixed(0)}x${h.toFixed(0)} (pr:${(window.devicePixelRatio || 1).toFixed(2)})\n` +
+          offLine +
+          `particles: ${breathParticles2D.length}\n` +
+          lastLine;
+      }
 
-        if (!breathOverlayCanvas || !breathOverlayCtx || !breathTexture) return;
+      // 2Dブラッシュ（頬の紅潮）を解決済みスクリーン座標で描画する。
+      // （旧 updateBreathEffect 内クロージャ _drawBlush2D を関数化）
+      function drawBlush2DOverlay(L, R, roll, faceW, scaleL = 1.0, scaleR = 1.0) {
+        if (!L || !R || !Number.isFinite(faceW) || faceW <= 0) return;
+        // Size
+        const r = faceW * 0.2 * Math.max(0.5, Math.min(2.5, blushSize));
+        const rw = r * 1.25;
+        const rh = r * 0.9;
 
-        // Keep overlay canvas in sync with displayCanvas (same pixel space as video)
-        const pr = window.devicePixelRatio || 1;
-        const w = breathOverlayCanvas.width / pr;
-        const h = breathOverlayCanvas.height / pr;
-        if (w <= 0 || h <= 0) return;
-
-        breathOverlayCtx.setTransform(pr, 0, 0, pr, 0, 0);
-        breathOverlayCtx.clearRect(0, 0, w, h);
-        // Draw blush first (normal blend), then breath (screen blend)
+        // Composite: if "front" then normal overlay; else multiply for under-skin feel
+        breathOverlayCtx.save();
+        breathOverlayCtx.globalAlpha = Math.max(0, Math.min(1, blushStrength));
         breathOverlayCtx.globalCompositeOperation = "source-over";
-        breathOverlayCtx.filter = "none";
 
-        // Internal helper to draw the 2D blush overlay given resolved screen positions.
-        const _drawBlush2D = (L, R, roll, faceW, scaleL = 1.0, scaleR = 1.0) => {
-          if (!L || !R || !Number.isFinite(faceW) || faceW <= 0) return;
-          // Size
-          const r = faceW * 0.2 * Math.max(0.5, Math.min(2.5, blushSize));
-          const rw = r * 1.25;
-          const rh = r * 0.9;
+        const baseC = hexToRgbSafe(blushColor || "#ff5fa0");
+        const whiteC = { r: 255, g: 255, b: 255 };
+        const softC0 = mixRgb(baseC, whiteC, 0.55);
+        const softC1 = mixRgb(baseC, whiteC, 0.75);
 
-          // Composite: if "front" then normal overlay; else multiply for under-skin feel
+        // 改善案C: blush gradient cache — key on radius + color (position handled via translate)
+        const blushKey = `${Math.round(rw)},${blushColor}`;
+        if (!_blushGradCache || _blushGradKey !== blushKey) {
+          _blushGradCache = breathOverlayCtx.createRadialGradient(0, 0, 0, 0, 0, rw);
+          _blushGradCache.addColorStop(0.0, `rgba(${softC0.r}, ${softC0.g}, ${softC0.b}, 0.55)`);
+          _blushGradCache.addColorStop(0.55, `rgba(${softC1.r}, ${softC1.g}, ${softC1.b}, 0.22)`);
+          _blushGradCache.addColorStop(1.0, `rgba(${softC1.r}, ${softC1.g}, ${softC1.b}, 0.00)`);
+          _blushGradKey = blushKey;
+        }
+
+        const drawOne = (cx, cy, flip, scale) => {
           breathOverlayCtx.save();
-          breathOverlayCtx.globalAlpha = Math.max(0, Math.min(1, blushStrength));
-          breathOverlayCtx.globalCompositeOperation = "source-over";
+          breathOverlayCtx.translate(cx, cy);
+          breathOverlayCtx.rotate(roll);
+          if (scale !== 1.0) breathOverlayCtx.scale(scale, scale);
 
-          const baseC = hexToRgbSafe(blushColor || "#ff5fa0");
-          const whiteC = { r: 255, g: 255, b: 255 };
-          const softC0 = mixRgb(baseC, whiteC, 0.55);
-          const softC1 = mixRgb(baseC, whiteC, 0.75);
+          const grad = _blushGradCache;
+          breathOverlayCtx.fillStyle = grad;
+          breathOverlayCtx.beginPath();
+          breathOverlayCtx.ellipse(0, 0, rw, rh, 0, 0, Math.PI * 2);
+          breathOverlayCtx.fill();
 
-          // 改善案C: blush gradient cache — key on radius + color (position handled via translate)
-          const blushKey = `${Math.round(rw)},${blushColor}`;
-          if (!_blushGradCache || _blushGradKey !== blushKey) {
-            _blushGradCache = breathOverlayCtx.createRadialGradient(0, 0, 0, 0, 0, rw);
-            _blushGradCache.addColorStop(0.0, `rgba(${softC0.r}, ${softC0.g}, ${softC0.b}, 0.55)`);
-            _blushGradCache.addColorStop(0.55, `rgba(${softC1.r}, ${softC1.g}, ${softC1.b}, 0.22)`);
-            _blushGradCache.addColorStop(1.0, `rgba(${softC1.r}, ${softC1.g}, ${softC1.b}, 0.00)`);
-            _blushGradKey = blushKey;
+          // hatch stripes clipped to ellipse
+          breathOverlayCtx.beginPath();
+          breathOverlayCtx.ellipse(0, 0, rw, rh, 0, 0, Math.PI * 2);
+          breathOverlayCtx.clip();
+
+          breathOverlayCtx.rotate((Math.PI / 4) * (flip ? -1 : 1)); // diagonal
+          breathOverlayCtx.strokeStyle = `rgba(${baseC.r}, ${baseC.g}, ${baseC.b}, 0.45)`;
+          breathOverlayCtx.lineWidth = Math.max(1, r * 0.08);
+          const step = Math.max(6, r * 0.22);
+          for (let x = -rw * 2; x <= rw * 2; x += step) {
+            breathOverlayCtx.beginPath();
+            breathOverlayCtx.moveTo(x, -rh * 2);
+            breathOverlayCtx.lineTo(x, rh * 2);
+            breathOverlayCtx.stroke();
           }
 
-          const drawOne = (cx, cy, flip, scale) => {
-            breathOverlayCtx.save();
-            breathOverlayCtx.translate(cx, cy);
-            breathOverlayCtx.rotate(roll);
-            if (scale !== 1.0) breathOverlayCtx.scale(scale, scale);
-
-            const grad = _blushGradCache;
-            breathOverlayCtx.fillStyle = grad;
-            breathOverlayCtx.beginPath();
-            breathOverlayCtx.ellipse(0, 0, rw, rh, 0, 0, Math.PI * 2);
-            breathOverlayCtx.fill();
-
-            // hatch stripes clipped to ellipse
-            breathOverlayCtx.beginPath();
-            breathOverlayCtx.ellipse(0, 0, rw, rh, 0, 0, Math.PI * 2);
-            breathOverlayCtx.clip();
-
-            breathOverlayCtx.rotate((Math.PI / 4) * (flip ? -1 : 1)); // diagonal
-            breathOverlayCtx.strokeStyle = `rgba(${baseC.r}, ${baseC.g}, ${baseC.b}, 0.45)`;
-            breathOverlayCtx.lineWidth = Math.max(1, r * 0.08);
-            const step = Math.max(6, r * 0.22);
-            for (let x = -rw * 2; x <= rw * 2; x += step) {
-              breathOverlayCtx.beginPath();
-              breathOverlayCtx.moveTo(x, -rh * 2);
-              breathOverlayCtx.lineTo(x, rh * 2);
-              breathOverlayCtx.stroke();
-            }
-
-            breathOverlayCtx.restore();
-          };
-
-          drawOne(L.x, L.y, false, scaleL);
-          drawOne(R.x, R.y, true, scaleR);
-
           breathOverlayCtx.restore();
-        }; // --- Cheek blush (2D overlay; sticks to tracked face) ---
-        // When trackingPaused is ON, freeze blush position so it doesn't drift with live landmarks.
+        };
+
+        drawOne(L.x, L.y, false, scaleL);
+        drawOne(R.x, R.y, true, scaleR);
+
+        breathOverlayCtx.restore();
+      }
+
+      // --- Cheek blush (2D overlay; sticks to tracked face) ---
+      // 紅潮オーバーレイの位置解決＋描画（旧 updateBreathEffect から抽出）。
+      // 注意: shiftX/shiftY は旧実装でも blush 描画時点では常に 0 だった（VRMシフト計算が後段のため）。
+      // 挙動維持のため呼び出し側は 0,0 を渡すこと。
+      // When trackingPaused is ON, freeze blush position so it doesn't drift with live landmarks.
+      function updateBlushOverlay(w, h, shiftX, shiftY) {
         if (isBlushEnabled && blushStrength > 0.001 && !vrmHidden) {
           const hasPausedBlush = !!(trackingPaused && pausedBlushOverlayState && pausedBlushOverlayState.L && pausedBlushOverlayState.R);
 
@@ -4597,7 +4581,7 @@
               const roll = s.roll || 0;
               const scale = (sx + sy) * 0.5;
               const faceW = Math.max(10, (s.faceW || 10) * scale);
-              _drawBlush2D(L, R, roll, faceW, s.scaleL ?? 1.0, s.scaleR ?? 1.0);
+              drawBlush2DOverlay(L, R, roll, faceW, s.scaleL ?? 1.0, s.scaleR ?? 1.0);
             } catch (_) {}
           } else {
             // Live landmarks path
@@ -4773,13 +4757,17 @@
                     scaleR: yawScaleR,
                   };
 
-                  _drawBlush2D(L, R, roll, faceW, yawScaleL, yawScaleR);
+                  drawBlush2DOverlay(L, R, roll, faceW, yawScaleL, yawScaleR);
                 }
               }
             }
           }
         }
+      }
 
+      // 口のスクリーン座標を更新する（lastMouthScreenX/Y/Valid を更新。吐息の発生位置）。
+      // 旧 updateBreathEffect から抽出。2Dランドマーク経路のみ使用（3D投影は回転時に破綻するため不使用）。
+      function updateMouthScreenPosition(w, h) {
         // Update mouth screen position from faceLandmarks (2D) + VRM adjustment shift (follows height slider).
 
         const vw2 = videoEl ? videoEl.videoWidth || 0 : 0;
@@ -4797,46 +4785,10 @@
           baseValid = Number.isFinite(baseMouthX) && Number.isFinite(baseMouthY);
         }
 
-        // Convert VRM UI adjustments (pivot -> adjustment) into a screen-space delta.
-        // shiftX/Y は blush overlay が使うため引き続き計算する。
-        shiftX = 0;
-        shiftY = 0;
-        if (pivotGroup && adjustmentGroup && camera) {
-          breathTmpV2.setFromMatrixPosition(pivotGroup.matrixWorld).project(camera);
-          breathTmpV.setFromMatrixPosition(adjustmentGroup.matrixWorld).project(camera);
-          const ok = Number.isFinite(breathTmpV2.x) && Number.isFinite(breathTmpV2.y) && Number.isFinite(breathTmpV2.z) && Number.isFinite(breathTmpV.x) && Number.isFinite(breathTmpV.y) && Number.isFinite(breathTmpV.z);
-          if (ok) {
-            const px0 = (breathTmpV2.x * 0.5 + 0.5) * w;
-            const py0 = (-breathTmpV2.y * 0.5 + 0.5) * h;
-            const px1 = (breathTmpV.x * 0.5 + 0.5) * w;
-            const py1 = (-breathTmpV.y * 0.5 + 0.5) * h;
-            shiftX = px1 - px0;
-            shiftY = py1 - py0;
-
-            if (wrapperGroup && camera) {
-              const wx = wrapperGroup.position && Number.isFinite(wrapperGroup.position.x) ? wrapperGroup.position.x : 0;
-              if (wx !== 0) {
-                breathTmpV3.setFromMatrixPosition(pivotGroup.matrixWorld);
-                breathTmpV3.x -= wx;
-                breathTmpV3.project(camera);
-                const ok2 = Number.isFinite(breathTmpV3.x) && Number.isFinite(breathTmpV3.y) && Number.isFinite(breathTmpV3.z);
-                if (ok2) {
-                  shiftX += px0 - (breathTmpV3.x * 0.5 + 0.5) * w;
-                  shiftY += py0 - (-breathTmpV3.y * 0.5 + 0.5) * h;
-                }
-              }
-            }
-          }
-        }
-
         // Extra offsets (sliders) in "unit" relative to displayed video width
         const unitPx = rect2 ? rect2.w * 0.25 : Math.min(w, h) * 0.25;
         const offXpx = breathOffX * unitPx;
         const offYpx = breathOffY * unitPx;
-
-        // Breath rendering uses screen blend & blur for soft mist
-        breathOverlayCtx.globalCompositeOperation = "screen";
-        breathOverlayCtx.filter = "blur(1.6px)";
 
         // 吐息位置は MediaPipe 口ランドマーク由来の baseMouthX/Y（全回転で表示画面上の実口に一致）
         // ＋ 2D位置スライダーのみを使う。shiftX/Y（adjustmentGroup差分）や3D投影は
@@ -4880,9 +4832,53 @@
         } else {
           lastMouthScreenValid = !!(holdLastPoseOnLost && lastMouthScreenValid);
         }
+      }
 
+      // Convert VRM UI adjustments (pivot -> adjustment) into a screen-space delta.
+      // 旧 updateBreathEffect から抽出。注: 現状この結果はどこからも使われていない
+      // （blush は旧実装でも shift=0 で描画され、吐息は2Dランドマーク経路のため）。
+      // 挙動温存のため呼び出しは残している。
+      function computeVrmScreenShiftPx(w, h) {
+        let shiftX = 0;
+        let shiftY = 0;
+        if (pivotGroup && adjustmentGroup && camera) {
+          breathTmpV2.setFromMatrixPosition(pivotGroup.matrixWorld).project(camera);
+          breathTmpV.setFromMatrixPosition(adjustmentGroup.matrixWorld).project(camera);
+          const ok = Number.isFinite(breathTmpV2.x) && Number.isFinite(breathTmpV2.y) && Number.isFinite(breathTmpV2.z) && Number.isFinite(breathTmpV.x) && Number.isFinite(breathTmpV.y) && Number.isFinite(breathTmpV.z);
+          if (ok) {
+            const px0 = (breathTmpV2.x * 0.5 + 0.5) * w;
+            const py0 = (-breathTmpV2.y * 0.5 + 0.5) * h;
+            const px1 = (breathTmpV.x * 0.5 + 0.5) * w;
+            const py1 = (-breathTmpV.y * 0.5 + 0.5) * h;
+            shiftX = px1 - px0;
+            shiftY = py1 - py0;
+
+            if (wrapperGroup && camera) {
+              const wx = wrapperGroup.position && Number.isFinite(wrapperGroup.position.x) ? wrapperGroup.position.x : 0;
+              if (wx !== 0) {
+                breathTmpV3.setFromMatrixPosition(pivotGroup.matrixWorld);
+                breathTmpV3.x -= wx;
+                breathTmpV3.project(camera);
+                const ok2 = Number.isFinite(breathTmpV3.x) && Number.isFinite(breathTmpV3.y) && Number.isFinite(breathTmpV3.z);
+                if (ok2) {
+                  shiftX += px0 - (breathTmpV3.x * 0.5 + 0.5) * w;
+                  shiftY += py0 - (-breathTmpV3.y * 0.5 + 0.5) * h;
+                }
+              }
+            }
+          }
+        }
+        return { x: shiftX, y: shiftY };
+      }
+
+      // 既存の吐息パーティクルの更新と描画（旧 updateBreathEffect から抽出）
+      function updateBreathParticles(delta) {
         // Update + draw existing particles
-        const keep = [];
+        // perf: 減衰係数は delta がフレーム内不変なのでループ外で1回だけ計算
+        const dampX = Math.pow(0.95, delta * 60);
+        const dampY = Math.pow(0.96, delta * 60);
+        // perf: keep配列の毎フレーム生成を避け、生存粒子を前詰めする
+        let aliveCount = 0;
         for (const p of breathParticles2D) {
           p.age += delta;
           const t = p.age / p.life;
@@ -4897,8 +4893,8 @@
           p.vy += (Math.random() - 0.5) * turb * delta;
 
           // Gentle drift & damping
-          p.vx *= Math.pow(0.95, delta * 60);
-          p.vy *= Math.pow(0.96, delta * 60);
+          p.vx *= dampX;
+          p.vy *= dampY;
 
           const size = p.s0 + (p.s1 - p.s0) * t;
           const fadeIn = Math.min(1, t / 0.15);
@@ -4909,56 +4905,29 @@
           // breathTexture.image is the backing canvas (from makeBreathTexture)
           breathOverlayCtx.drawImage(breathTexture.image, p.x - size / 2, p.y - size / 2, size, size);
 
-          keep.push(p);
+          breathParticles2D[aliveCount++] = p;
         }
+        breathParticles2D.length = aliveCount;
         breathOverlayCtx.globalAlpha = 1.0;
-        breathParticles2D = keep;
+      }
 
+      // 吐息パーティクルの新規放出（旧 updateBreathEffect から抽出）。
+      // 放出経路まで到達したら true を返す（呼び出し側で描画状態をリセットする）。
+      // 早期終了時は false（旧実装の early return と同じく描画状態はリセットしない）。
+      function emitBreathParticles(delta, w, h) {
         // Emit new particles only when:
         // - option enabled
         // - mouth position is known
         // - face is currently visible (prevents "ghost breathing" when tracking is lost)
         if (!isBreathEnabled || !lastMouthScreenValid || !lastFaceVisibleNow || vrmHidden) {
-          if (breathDebugEnabled && breathDebugEl) {
-            breathDebugEl.textContent =
-              `mouth(smoothed): ${lastMouthOpenForEffects.toFixed(3)}
-` +
-              `mouth(landmark): ${latestMouthOpenFromLandmarks.toFixed(3)}
-` +
-              `faceVisible: ${lastFaceVisibleNow}
-` +
-              `mouthXY(px): ${lastMouthScreenX.toFixed(1)},${lastMouthScreenY.toFixed(1)}
-` +
-              `canvas(css): ${w.toFixed(0)}x${h.toFixed(0)} (pr:${(window.devicePixelRatio || 1).toFixed(2)})
-` +
-              `off:${breathOffX.toFixed(2)},${breathOffY.toFixed(2)}
-` +
-              `particles: ${breathParticles2D.length}
-` +
-              `emit: off`;
-          }
-          return;
+          _setBreathDebugText(w, h, `emit: off`, true);
+          return false;
         }
 
         const m = Math.max(0, lastMouthOpenForEffects - BREATH_THRESHOLD);
         if (m <= 0) {
-          if (breathDebugEnabled && breathDebugEl) {
-            breathDebugEl.textContent =
-              `mouth(smoothed): ${lastMouthOpenForEffects.toFixed(3)}
-` +
-              `mouth(landmark): ${latestMouthOpenFromLandmarks.toFixed(3)}
-` +
-              `faceVisible: ${lastFaceVisibleNow}
-` +
-              `mouthXY(px): ${lastMouthScreenX.toFixed(1)},${lastMouthScreenY.toFixed(1)}
-` +
-              `canvas(css): ${w.toFixed(0)}x${h.toFixed(0)} (pr:${(window.devicePixelRatio || 1).toFixed(2)})
-` +
-              `particles: ${breathParticles2D.length}
-` +
-              `emit: off (below threshold ${BREATH_THRESHOLD})`;
-          }
-          return;
+          _setBreathDebugText(w, h, `emit: off (below threshold ${BREATH_THRESHOLD})`);
+          return false;
         }
 
         const nowSec = performance.now() * 0.001;
@@ -5002,22 +4971,46 @@
           if (breathParticles2D.length > 140) breathParticles2D.shift();
         }
 
-        if (breathDebugEnabled && breathDebugEl) {
-          breathDebugEl.textContent =
-            `mouth(smoothed): ${lastMouthOpenForEffects.toFixed(3)}
-` +
-            `mouth(landmark): ${latestMouthOpenFromLandmarks.toFixed(3)}
-` +
-            `faceVisible: ${lastFaceVisibleNow}
-` +
-            `mouthXY(px): ${lastMouthScreenX.toFixed(1)},${lastMouthScreenY.toFixed(1)}
-` +
-            `canvas(css): ${w.toFixed(0)}x${h.toFixed(0)} (pr:${(window.devicePixelRatio || 1).toFixed(2)})
-` +
-            `particles: ${breathParticles2D.length}
-` +
-            `emitRate: ${rate.toFixed(1)}/s`;
-        }
+        _setBreathDebugText(w, h, `emitRate: ${rate.toFixed(1)}/s`);
+        return true;
+      }
+
+      // 吐息＋紅潮エフェクトのオーケストレーション（分割した各関数を旧来と同じ順序で呼ぶ）
+      function updateBreathEffect(delta) {
+        // 2D overlay "breath" effect drawn on breathOverlayCanvas.
+        // Designed to be visible regardless of 3D depth/scale differences.
+        if (!breathOverlayCanvas || !breathOverlayCtx || !breathTexture) return;
+
+        // Keep overlay canvas in sync with displayCanvas (same pixel space as video)
+        // NOTE: resizeBreathOverlayCanvas() のクランプ(DPR<=2)と必ず一致させる。
+        // 以前はクランプなしで DPR>2 端末では描画変換とバッキングサイズが食い違っていた。
+        const pr = getOverlayPixelRatio();
+        const w = breathOverlayCanvas.width / pr;
+        const h = breathOverlayCanvas.height / pr;
+        if (w <= 0 || h <= 0) return;
+
+        breathOverlayCtx.setTransform(pr, 0, 0, pr, 0, 0);
+        breathOverlayCtx.clearRect(0, 0, w, h);
+        // Draw blush first (normal blend), then breath (screen blend)
+        breathOverlayCtx.globalCompositeOperation = "source-over";
+        breathOverlayCtx.filter = "none";
+
+        // 注意: shiftX/shiftY は旧実装でも blush 描画時点では常に 0（updateBlushOverlay のコメント参照）
+        updateBlushOverlay(w, h, 0, 0);
+
+        updateMouthScreenPosition(w, h);
+
+        // 旧実装の計算を温存（結果は現状未使用。computeVrmScreenShiftPx のコメント参照）
+        computeVrmScreenShiftPx(w, h);
+
+        // Breath rendering uses screen blend & blur for soft mist
+        breathOverlayCtx.globalCompositeOperation = "screen";
+        breathOverlayCtx.filter = "blur(1.6px)";
+
+        updateBreathParticles(delta);
+
+        if (!emitBreathParticles(delta, w, h)) return;
+
         // Reset draw state
         breathOverlayCtx.globalAlpha = 1.0;
         breathOverlayCtx.filter = "none";
@@ -5891,7 +5884,9 @@
         ctx.globalCompositeOperation = "source-over";
         ctx.filter = "none";
 
-        const basis = computeCreamFaceBasis(cssW, cssH) || creamLastFaceBasis;
+        // perf: 直前の updateCreamVfx が同一フレームで creamLastFaceBasis を更新済みのため再計算しない。
+        // 前提: メインループで updateCreamVfx → updateDroolEffect の順に呼ばれること。
+        const basis = creamLastFaceBasis;
         const open = Math.max(0, Math.min(1, smoothedMouthRatio || 0));
 
         if (isDroolEnabled && basis && basis.ml) {
@@ -5993,23 +5988,8 @@
         }
       }
 
-      function updateCreamVfx(delta) {
-        if (!creamOverlayCanvas || !creamOverlayCtx) return;
-
-        const pr = getOverlayPixelRatio();
-        const cssW = creamOverlayCanvas.width / pr;
-        const cssH = creamOverlayCanvas.height / pr;
-        if (cssW <= 0 || cssH <= 0) return;
-
-        const basis = computeCreamFaceBasis(cssW, cssH);
-        if (basis) {
-          creamLastFaceBasis = basis;
-          creamLastFaceValid = true;
-        } else {
-          creamLastFaceValid = !!creamLastFaceBasis;
-        }
-        const useBasis = basis || creamLastFaceBasis;
-
+      // クリーム自動発射（旧 updateCreamVfx から抽出。頭部/顔範囲へのランダム連射）
+      function updateAutoCreamFire(delta, useBasis) {
         // Auto cream shots (random targets within head/face)
         if (creamAutoEnabled) {
           if (creamNextAutoIntervalSec === null) scheduleNextAutoCream();
@@ -6093,13 +6073,13 @@
           }
         }
 
-        creamOverlayCtx.setTransform(pr, 0, 0, pr, 0, 0);
-        creamOverlayCtx.clearRect(0, 0, cssW, cssH);
-        creamOverlayCtx.globalCompositeOperation = "source-over";
-        creamOverlayCtx.filter = "none";
+      }
 
+      // クリーム発射体の更新＋着弾時のパッチ生成（旧 updateCreamVfx から抽出）
+      function updateCreamProjectiles(delta, useBasis) {
         // Projectiles
-        const keepProj = [];
+        // perf: keep配列の毎フレーム生成を避け、生存要素を前詰めする
+        let aliveProj = 0;
         for (const p of creamProjectiles) {
           p.t += delta;
           const tt = Math.min(1, p.t / Math.max(1e-3, p.dur));
@@ -6201,14 +6181,18 @@
               }
             }
           } else {
-            keepProj.push(p);
+            creamProjectiles[aliveProj++] = p;
           }
         }
-        creamProjectiles = keepProj;
+        creamProjectiles.length = aliveProj;
         enforceCreamLimit();
+      }
 
+      // クリームパッチ（着弾後の付着・流下・フェード）の更新と描画（旧 updateCreamVfx から抽出）
+      function updateCreamPatches(delta, useBasis) {
         // Patches
-        const keepP = [];
+        // perf: keep配列の毎フレーム生成を避け、生存要素を前詰めする
+        let aliveP = 0;
         for (const s of creamPatches) {
           s.age += delta;
           const t = s.age / Math.max(1e-3, s.life);
@@ -6300,9 +6284,38 @@
             }
           }
 
-          keepP.push(s);
+          creamPatches[aliveP++] = s;
         }
-        creamPatches = keepP;
+        creamPatches.length = aliveP;
+      }
+
+      // クリームVFXのオーケストレーション（分割した各処理を旧来と同じ順序で呼ぶ）
+      function updateCreamVfx(delta) {
+        if (!creamOverlayCanvas || !creamOverlayCtx) return;
+
+        const pr = getOverlayPixelRatio();
+        const cssW = creamOverlayCanvas.width / pr;
+        const cssH = creamOverlayCanvas.height / pr;
+        if (cssW <= 0 || cssH <= 0) return;
+
+        const basis = computeCreamFaceBasis(cssW, cssH);
+        if (basis) {
+          creamLastFaceBasis = basis;
+          creamLastFaceValid = true;
+        } else {
+          creamLastFaceValid = !!creamLastFaceBasis;
+        }
+        const useBasis = basis || creamLastFaceBasis;
+
+        updateAutoCreamFire(delta, useBasis);
+
+        creamOverlayCtx.setTransform(pr, 0, 0, pr, 0, 0);
+        creamOverlayCtx.clearRect(0, 0, cssW, cssH);
+        creamOverlayCtx.globalCompositeOperation = "source-over";
+        creamOverlayCtx.filter = "none";
+
+        updateCreamProjectiles(delta, useBasis);
+        updateCreamPatches(delta, useBasis);
 
         _updateDebugOverlayAutoCream({ cssW, cssH, pr });
       }
@@ -6784,6 +6797,8 @@
           }
 
           // Start camera (with a timeout)
+          // FIXME(既知の課題): setTimeout コールバック内の throw は外側の try/catch に届かないため、
+          // このタイムアウトは実質機能していない（未捕捉エラーになるだけでエラーUIは出ない）。修正は別タスク。
           startTimeout = setTimeout(() => {
             throw new Error("カメラの起動がタイムアウトしました。権限/他アプリ使用中/HTTPS を確認してください。");
           }, 20000);
@@ -7044,6 +7059,15 @@
             lastBaseInputRotDeg = baseRotDeg;
             inputRotationDeg = baseRotDeg;
 
+            // 改善案E: skip detection every other frame to halve MediaPipe cost
+            // (回転フレームのコピーも検出フレームのみ行うため、判定をここで先に行う)
+            const canDetect = faceLandmarker && videoEl.readyState >= 2;
+            let willDetect = false;
+            if (canDetect) {
+              _mpFrameSkipCounter = (_mpFrameSkipCounter + 1) | 0;
+              willDetect = _mpFrameSkipCounter % 2 === 1;
+            }
+
             // Draw rotated frame to offscreen canvas when needed
             let mpInput = videoEl;
             if (inputRotationDeg !== 0 && mpOffscreenCtx) {
@@ -7051,15 +7075,21 @@
               const vh = videoEl.videoHeight || 0;
               if (vw > 0 && vh > 0) {
                 const rot90 = Math.abs(inputRotationDeg) === 90;
-                mpOffscreenCanvas.width = rot90 ? vh : vw;
-                mpOffscreenCanvas.height = rot90 ? vw : vh;
+                const tw = rot90 ? vh : vw;
+                const th = rot90 ? vw : vh;
+                // perf: 同値でも width/height 代入はバッキングストアをクリアするためガード
+                // (スキップフレームでも下流の座標変換が寸法を参照するので、寸法だけは常に正しく保つ)
+                if (mpOffscreenCanvas.width !== tw) mpOffscreenCanvas.width = tw;
+                if (mpOffscreenCanvas.height !== th) mpOffscreenCanvas.height = th;
 
-                mpOffscreenCtx.save();
-                mpOffscreenCtx.clearRect(0, 0, mpOffscreenCanvas.width, mpOffscreenCanvas.height);
-                mpOffscreenCtx.translate(mpOffscreenCanvas.width / 2, mpOffscreenCanvas.height / 2);
-                mpOffscreenCtx.rotate(THREE.MathUtils.degToRad(inputRotationDeg));
-                mpOffscreenCtx.drawImage(videoEl, -vw / 2, -vh / 2, vw, vh);
-                mpOffscreenCtx.restore();
+                if (willDetect) {
+                  mpOffscreenCtx.save();
+                  mpOffscreenCtx.clearRect(0, 0, mpOffscreenCanvas.width, mpOffscreenCanvas.height);
+                  mpOffscreenCtx.translate(mpOffscreenCanvas.width / 2, mpOffscreenCanvas.height / 2);
+                  mpOffscreenCtx.rotate(THREE.MathUtils.degToRad(inputRotationDeg));
+                  mpOffscreenCtx.drawImage(videoEl, -vw / 2, -vh / 2, vw, vh);
+                  mpOffscreenCtx.restore();
+                }
 
                 mpInput = mpOffscreenCanvas;
               }
@@ -7069,10 +7099,8 @@
             isFaceVisible = false;
             // keep last blendshapes when tracking is lost
 
-            if (faceLandmarker && videoEl.readyState >= 2) {
-              // 改善案E: skip detection every other frame to halve MediaPipe cost
-              _mpFrameSkipCounter = (_mpFrameSkipCounter + 1) | 0;
-              if (_mpFrameSkipCounter % 2 === 1) {
+            if (canDetect) {
+              if (willDetect) {
                 _mpLastResult = faceLandmarker.detectForVideo(mpInput, performance.now());
               }
               const res = _mpLastResult;
@@ -7140,7 +7168,9 @@
                 } catch (_) {}
 
                 // Apply our own uniform scale
-                worldMatrix.scale(new THREE.Vector3(baseScale, baseScale, baseScale));
+                // 改善案D: tmpScaleVec を再利用して毎フレームの Vector3 生成を回避
+                // (decompose/compose での利用はこの行より前に終わっており、次フレームの decompose で上書きされる)
+                worldMatrix.scale(tmpScaleVec.set(baseScale, baseScale, baseScale));
 
                 if (inputRotationDeg !== 0) {
                   rotComp.makeRotationZ(THREE.MathUtils.degToRad(inputRotationDeg));
@@ -7280,6 +7310,9 @@
         }
       }
 
+      // perf: 表情スライダー対応表は毎フレーム生成せず初回のみ構築して再利用
+      let _exprSliderPairs = null;
+
       function updateExpressionsFromFaceMesh(vrm, delta, isFaceVisible) {
         // NOTE: この関数名は互換のため残しています（旧MindARのfaceMeshは使いません）
         if (!vrm.expressionManager) return;
@@ -7359,14 +7392,16 @@
         vrm.expressionManager.setValue("blink_r", finalBlinkR);
 
         // 表情オフセットスライダー（カメラ追従に重ねる）
-        const _exprSliders = {
-          happy:     typeof exprHappySlider     !== "undefined" ? exprHappySlider     : null,
-          sad:       typeof exprSadSlider       !== "undefined" ? exprSadSlider       : null,
-          surprised: typeof exprSurprisedSlider !== "undefined" ? exprSurprisedSlider : null,
-          relaxed:   typeof exprRelaxedSlider   !== "undefined" ? exprRelaxedSlider   : null,
-          angry:     typeof exprAngrySlider     !== "undefined" ? exprAngrySlider     : null,
-        };
-        for (const [name, sl] of Object.entries(_exprSliders)) {
+        if (!_exprSliderPairs) {
+          _exprSliderPairs = [
+            ["happy",     typeof exprHappySlider     !== "undefined" ? exprHappySlider     : null],
+            ["sad",       typeof exprSadSlider       !== "undefined" ? exprSadSlider       : null],
+            ["surprised", typeof exprSurprisedSlider !== "undefined" ? exprSurprisedSlider : null],
+            ["relaxed",   typeof exprRelaxedSlider   !== "undefined" ? exprRelaxedSlider   : null],
+            ["angry",     typeof exprAngrySlider     !== "undefined" ? exprAngrySlider     : null],
+          ];
+        }
+        for (const [name, sl] of _exprSliderPairs) {
           const v = sl ? Math.max(0, Math.min(1, parseFloat(sl.value) || 0)) : 0;
           vrm.expressionManager.setValue(name, v);
         }
