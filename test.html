@@ -1466,8 +1466,8 @@
 
     <script type="module">
       // ===== App Version (single source of truth) =====
-      const APP_VERSION = "v6.02.07";
-      const APP_VERSION_NOTE = "fix: DPR>2端末で照り/吐息の描画がズレる問題を修正 / perf: 毎フレームのメモリ確保・無駄な再計算を削減 / refactor: 巨大関数の分割と重複コードの共通化";
+      const APP_VERSION = "v6.02.09";
+      const APP_VERSION_NOTE = "tweak: クリーム自動射出の1発あたりの量を手動と同程度(1.0〜1.5倍)に調整";
 
       function getOverlayPixelRatio() {
         // Must match resizeCreamOverlayCanvas()/resizeBreathOverlayCanvas() DPR clamp for performance.
@@ -5765,6 +5765,41 @@
         ctx.restore();
       }
 
+      // 静止したクリームパッチをオフスクリーン canvas に焼き込む（スプライトキャッシュ）。
+      // 角度は焼き込まず（描画時に rotate）、定数αのみ opacity として焼き込む。
+      // 寸法式は drawCreamBlob と同一。大型ドリップは q で縮小レンダリングして上限を抑える。
+      function renderCreamBlobSprite(s, r, stretchY, rxScale, pr, alphaBase) {
+        const rx = r * 1.0 * rxScale;
+        const ry = r * 1.18 * stretchY;
+        const W = rx * 2.6,
+          H = ry * 3.1;
+        const lx = -rx * 1.3,
+          ly = -ry * 1.3;
+        // 縮小係数：長辺の実ピクセルが 1024 を超えないように落とす（柔らかい絵なので拡大しても不可視）
+        const q = Math.min(1, 1024 / Math.max(1e-3, Math.max(W, H) * pr));
+        const cw = Math.max(1, Math.ceil(W * pr * q));
+        const ch = Math.max(1, Math.ceil(H * pr * q));
+
+        let canvas = s._sprite && s._sprite.canvas ? s._sprite.canvas : null;
+        let sctx;
+        if (canvas && canvas.width === cw && canvas.height === ch) {
+          sctx = canvas.getContext("2d");
+          sctx.setTransform(1, 0, 0, 1, 0, 0);
+          sctx.clearRect(0, 0, cw, ch);
+        } else {
+          canvas = document.createElement("canvas");
+          canvas.width = cw;
+          canvas.height = ch;
+          sctx = canvas.getContext("2d");
+        }
+        // ローカル座標 (lx,ly) が canvas 原点に来るよう平行移動（pr*q でスケール）
+        sctx.setTransform(pr * q, 0, 0, pr * q, -lx * pr * q, -ly * pr * q);
+        const creamTint = !!(s.isSplatter && s.creamTinted);
+        drawCreamBlob(sctx, 0, 0, r, alphaBase, 0, stretchY, rxScale, creamTint, 1 /* dripT静止値 */, s.shapeSeed, s.glossMul || 1.0);
+
+        s._sprite = { canvas, r, stretchY, gloss: creamGloss, pr };
+      }
+
       // Teardrop-like droplet (slightly vertical), for more "liquid" look
       function drawCreamDroplet(ctx, x, y, w, h, opacity, angleRad) {
         ctx.save();
@@ -5997,10 +6032,10 @@
           if (useBasis) {
             creamAutoElapsedSec += delta;
             if (creamAutoElapsedSec >= creamNextAutoIntervalSec) {
-              // Fire "double" the current simultaneous count, but treat them as ONE cream count group.
+              // 1発(ぴゅ)あたりの数は手動タップとほぼ同程度（1.0〜1.5倍）にとどめる。
               const baseCount = Math.max(1, Math.min(20, creamSimulCount | 0 || 1));
               // 1発(ぴゅ)ごとに強さをばらつかせる（弱い「ぴゅ」〜強い「ぴゅー」）
-              const shotCount = Math.max(1, Math.round(baseCount * (1.3 + Math.random() * 1.2)));
+              const shotCount = Math.max(1, Math.round(baseCount * (1.0 + Math.random() * 0.5)));
 
               const pr = getOverlayPixelRatio();
               const cssW = creamOverlayCanvas ? creamOverlayCanvas.width / pr : window.innerWidth;
@@ -6140,6 +6175,7 @@
                   glossMul: 1.0, // ツヤ（Bに寄せる）
                   shapeSeed: Array.from({ length: CREAM_BLOB_POINTS }, () => Math.random() * 2 - 1),
                   frozenPx: null,
+                  _sprite: null, // perf: 静止後のスプライトキャッシュ
                 });
 
                 // 相B：水っぽい筋（サラッと・速く流れ落ちる細い筋）×1〜3
@@ -6176,6 +6212,7 @@
                     glossMul: 0.75, // ツヤ（Aに寄せる）
                     shapeSeed: Array.from({ length: CREAM_BLOB_POINTS }, () => Math.random() * 2 - 1),
                     frozenPx: null,
+                    _sprite: null, // perf: 静止後のスプライトキャッシュ
                   });
                 }
               }
@@ -6191,6 +6228,7 @@
       // クリームパッチ（着弾後の付着・流下・フェード）の更新と描画（旧 updateCreamVfx から抽出）
       function updateCreamPatches(delta, useBasis) {
         // Patches
+        const pr = getOverlayPixelRatio(); // perf: 静止パッチのスプライトキャッシュ解像度に使用
         // perf: keep配列の毎フレーム生成を避け、生存要素を前詰めする
         let aliveP = 0;
         for (const s of creamPatches) {
@@ -6278,9 +6316,37 @@
               // 流下に伴いしずく形状へ
               const dripT = Math.min(1, Math.max(0, s.age - (s.dripDelay || 0)) * 0.5);
 
-              creamOverlayCtx.globalAlpha = 0.75 * a * _yawFade * (s.alphaMul || 1.0);
-              drawCreamBlob(creamOverlayCtx, cx, cy, r, 1.0, ang, stretchY, rxScale, !!(s.isSplatter && s.creamTinted), dripT, s.shapeSeed, s.glossMul || 1.0);
-              creamOverlayCtx.globalAlpha = 1.0;
+              // perf: spread/flow/drip がすべて飽和して見た目が静止したらスプライトキャッシュ経由で描画。
+              // アニメーション中は従来どおり毎フレーム drawCreamBlob で直接描画する。
+              const _settled = s.spreadT >= 1 && flowDist >= (s.maxRun || 0.4) - 1e-6 && dripT >= 1;
+              if (_settled) {
+                // 定数α(0.75×alphaMul)はスプライトに焼き込み、変動α(フェード×ヨーフェード)は drawImage で適用。
+                const alphaBase = 0.75 * (s.alphaMul || 1.0);
+                const needRender =
+                  !s._sprite ||
+                  Math.abs(r / s._sprite.r - 1) > 0.025 ||
+                  Math.abs(stretchY / s._sprite.stretchY - 1) > 0.025 ||
+                  s._sprite.gloss !== creamGloss ||
+                  s._sprite.pr !== pr;
+                if (needRender) renderCreamBlobSprite(s, r, stretchY, rxScale, pr, alphaBase);
+                // drawImage 用の寸法（drawCreamBlob と同一式。当該フレームの連続値で滑らかに追従）
+                const rx = r * 1.0 * rxScale;
+                const ry = r * 1.18 * stretchY;
+                const W = rx * 2.6,
+                  H = ry * 3.1;
+                const lx = -rx * 1.3,
+                  ly = -ry * 1.3;
+                creamOverlayCtx.save();
+                creamOverlayCtx.globalAlpha = a * _yawFade;
+                creamOverlayCtx.translate(cx, cy);
+                creamOverlayCtx.rotate(ang);
+                creamOverlayCtx.drawImage(s._sprite.canvas, lx, ly, W, H);
+                creamOverlayCtx.restore();
+              } else {
+                creamOverlayCtx.globalAlpha = 0.75 * a * _yawFade * (s.alphaMul || 1.0);
+                drawCreamBlob(creamOverlayCtx, cx, cy, r, 1.0, ang, stretchY, rxScale, !!(s.isSplatter && s.creamTinted), dripT, s.shapeSeed, s.glossMul || 1.0);
+                creamOverlayCtx.globalAlpha = 1.0;
+              }
             }
           }
 
