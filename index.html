@@ -1466,8 +1466,8 @@
 
     <script type="module">
       // ===== App Version (single source of truth) =====
-      const APP_VERSION = "v6.02.05";
-      const APP_VERSION_NOTE = "feat: ヘルプのVRM毎/共通の保存先説明を更新";
+      const APP_VERSION = "v6.02.06";
+      const APP_VERSION_NOTE = "fix: クリーム系スライダーの値表示がグローバル設定ロード時に更新されずズレる問題を修正";
 
       function getOverlayPixelRatio() {
         // Must match resizeCreamOverlayCanvas()/resizeBreathOverlayCanvas() DPR clamp for performance.
@@ -4220,6 +4220,10 @@
           if (hasOwn("beta") && betaSlider) betaSlider.value = s.beta;
 
           allSliders.forEach((el) => updateSliderDisplay(el));
+          // クリーム系は allSliders に含まれないため個別に表示更新
+          [creamLifeSlider, creamAutoIntervalSlider, creamFaceRatioSlider, creamSizeMulSlider,
+           creamGlossSlider, creamViscositySlider, creamZAttachSlider, creamSimulCountSlider,
+           creamMaxCountSlider].forEach((el) => { if (el) updateSliderDisplay(el); });
           try { updateCameraFilter(); } catch (_) {}
           if (seeded) {
             try { saveGlobalSettings(); } catch (_) {} // シード値を以後グローバルに固定
