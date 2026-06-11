@@ -1402,10 +1402,38 @@
         <details class="acc-section" data-acc="light_cam">
           <summary>カメラ照明（共通）</summary>
           <div id="camera-settings" style="display: block">
-            <div class="slider-container">
-              <span class="slider-label">美肌補正</span>
-              <input type="range" id="skin-smooth-slider" min="0" max="100" step="1" value="0" />
-              <span id="skin-smooth-slider-val" class="val-display">0</span>
+            <div class="slider-container" style="background: #e8f0fe; padding: 10px; border-radius: 8px; border: 1px solid #4a90e2; margin-bottom: 10px; display: block">
+              <label class="toggle-label" style="color: #4a90e2; margin-bottom: 5px">
+                <input type="checkbox" id="skin-fx-toggle" class="toggle-checkbox" />
+                <strong>美肌補正（高負荷）</strong>
+              </label>
+              <div id="skin-fx-controls" style="display: none; border-top: 1px dashed #abc; padding-top: 8px; margin-top: 5px">
+                <div class="slider-container">
+                  <span class="slider-label" style="font-size: 10px; color: #333">スムージング</span>
+                  <input type="range" id="skin-smooth-slider" min="0" max="100" step="1" value="0" />
+                  <span id="skin-smooth-slider-val" class="val-display">0</span>
+                </div>
+                <div class="slider-container">
+                  <span class="slider-label" style="font-size: 10px; color: #333">明るさ(肌)</span>
+                  <input type="range" id="skin-bright-slider" min="50" max="150" step="1" value="100" />
+                  <span id="skin-bright-slider-val" class="val-display">100</span>
+                </div>
+                <div class="slider-container">
+                  <span class="slider-label" style="font-size: 10px; color: #333">彩度(肌)</span>
+                  <input type="range" id="skin-sat-slider" min="0" max="200" step="5" value="100" />
+                  <span id="skin-sat-slider-val" class="val-display">100</span>
+                </div>
+                <div class="slider-container">
+                  <span class="slider-label" style="font-size: 10px; color: #333">色温度(肌)</span>
+                  <input type="range" id="skin-temp-slider" min="0" max="100" step="1" value="50" />
+                  <span id="skin-temp-slider-val" class="val-display">50</span>
+                </div>
+                <div class="slider-container" style="margin-bottom: 0">
+                  <span class="slider-label" style="font-size: 10px; color: #333">赤み(肌)</span>
+                  <input type="range" id="skin-red-slider" min="0" max="150" step="1" value="0" />
+                  <span id="skin-red-slider-val" class="val-display">0</span>
+                </div>
+              </div>
             </div>
             <div class="slider-container">
               <span class="slider-label">明るさ</span>
@@ -1457,6 +1485,46 @@
               <input type="range" id="cam-sepia-slider" min="0" max="100" step="1" value="0" />
               <span id="cam-sepia-slider-val" class="val-display">0</span>
             </div>
+
+            <!-- ハードウェア制御（対応カメラのみ表示） -->
+            <div id="cam-hw-controls" style="display: none">
+              <div class="slider-container" style="margin-bottom: 5px">
+                <label class="toggle-label" style="color: #4a90e2">ハードウェア制御（カメラ依存）</label>
+              </div>
+              <div class="slider-container" id="hw-exposure-mode-row" style="display: none">
+                <label class="toggle-label">
+                  <input type="checkbox" id="hw-exposure-auto-toggle" class="toggle-checkbox" checked />
+                  露出 自動
+                </label>
+              </div>
+              <div class="slider-container" id="hw-exposure-time-row" style="display: none">
+                <span class="slider-label">露出時間</span>
+                <input type="range" id="hw-exposure-time-slider" min="0" max="100" step="1" value="0" />
+                <span id="hw-exposure-time-slider-val" class="val-display">0</span>
+              </div>
+              <div class="slider-container" id="hw-exposure-comp-row" style="display: none">
+                <span class="slider-label">露出補正</span>
+                <input type="range" id="hw-exposure-comp-slider" min="0" max="100" step="1" value="0" />
+                <span id="hw-exposure-comp-slider-val" class="val-display">0</span>
+              </div>
+              <div class="slider-container" id="hw-brightness-row" style="display: none">
+                <span class="slider-label">明るさ(HW)</span>
+                <input type="range" id="hw-brightness-slider" min="0" max="100" step="1" value="0" />
+                <span id="hw-brightness-slider-val" class="val-display">0</span>
+              </div>
+              <div class="slider-container" id="hw-wb-mode-row" style="display: none">
+                <label class="toggle-label">
+                  <input type="checkbox" id="hw-wb-auto-toggle" class="toggle-checkbox" checked />
+                  ホワイトバランス 自動
+                </label>
+              </div>
+              <div class="slider-container" id="hw-color-temp-row" style="display: none">
+                <span class="slider-label">色温度(HW)</span>
+                <input type="range" id="hw-color-temp-slider" min="2000" max="8000" step="100" value="4000" />
+                <span id="hw-color-temp-slider-val" class="val-display">4000</span>
+              </div>
+              <button id="hw-light-reset-btn" class="restart-btn" style="background: #5c6bc0; margin-top: 8px">自動に戻す</button>
+            </div>
           </div>
         </details>
       </div>
@@ -1466,8 +1534,8 @@
 
     <script type="module">
       // ===== App Version (single source of truth) =====
-      const APP_VERSION = "v6.02.09";
-      const APP_VERSION_NOTE = "tweak: クリーム自動射出の1発あたりの量を手動と同程度(1.0〜1.5倍)に調整";
+      const APP_VERSION = "v6.05.01";
+      const APP_VERSION_NOTE = "tweak: 美肌補正（高負荷）のUIを「影を強制的に出す」と同じ枠付きパネル形式に変更";
 
       function getOverlayPixelRatio() {
         // Must match resizeCreamOverlayCanvas()/resizeBreathOverlayCanvas() DPR clamp for performance.
@@ -1506,7 +1574,7 @@
       import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
       // MediaPipe Tasks Vision (vision_bundle.mjs, pinned to 0.10.33)
       const vision = await import("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.33/vision_bundle.mjs");
-      const { FaceLandmarker, FilesetResolver } = vision;
+      const { FaceLandmarker, FilesetResolver, ImageSegmenter } = vision;
 
       // Base scale factor used for tracked pose matrices.
       const MODEL_BASE_SCALE = 40;
@@ -1555,6 +1623,12 @@
       let camTempStrength = 0; // -1..1 (warm(+)/cool(-))
       let camRedStrength = 0; // 0..1
       let camSkinSmoothStrength = 0; // 0..1
+      // 美肌補正（高負荷）: 肌セグメンテーションマスク限定の個別調整
+      let camSkinFxEnabled = false;
+      let camSkinBright = 100; // %
+      let camSkinSat = 100; // %
+      let camSkinTempStrength = 0; // -1..1 (warm(+)/cool(-))
+      let camSkinRedStrength = 0; // 0..1.5
       // iOS/iPadOS WebKit は CanvasRenderingContext2D.filter 未サポートのため CSS filter にフォールバック
       const _ctxFilterSupported = (() => {
         try {
@@ -1567,12 +1641,110 @@
       const glowCtx = glowCanvas.getContext("2d", { willReadFrequently: false });
       const smoothCanvas = document.createElement("canvas");
       const smoothCtx = smoothCanvas.getContext("2d", { willReadFrequently: false });
+      // 肌限定の色調整用フル解像度canvas（半解像度だと上塗り時に肌のディテールが失われる）
+      const skinFxCanvas = document.createElement("canvas");
+      const skinFxCtx = skinFxCanvas.getContext("2d", { willReadFrequently: false });
       // Gradient caches (改善案B, C)
       let _vigGradCache = null;
       let _vigGradKey = "";
       let _blushGradCache = null;
       let _blushGradKey = "";
       let cameraFilterStr = "none";
+
+      // --- 肌セグメンテーション（美肌補正を人物の肌領域のみに限定） ---
+      // selfie_multiclass カテゴリ: 0=背景, 1=髪, 2=体肌, 3=顔肌, 4=服, 5=その他
+      const segMaskCanvas = document.createElement("canvas"); // セグメンター解像度の生マスク
+      const segMaskCtx = segMaskCanvas.getContext("2d", { willReadFrequently: false });
+      const skinMaskCanvas = document.createElement("canvas"); // smoothCanvas と同寸のソフトエッジマスク
+      const skinMaskCtx = skinMaskCanvas.getContext("2d", { willReadFrequently: false });
+      let _segMaskImageData = null;
+      let _skinMaskUpdatedMs = 0;
+      let imageSegmenter = null;
+      let _segmenterLoading = false;
+      let _segmenterFailed = false;
+      let _segBusy = false;
+
+      async function ensureImageSegmenter() {
+        if (imageSegmenter || _segmenterLoading || _segmenterFailed) return;
+        _segmenterLoading = true;
+        try {
+          const fr = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.33/wasm");
+          imageSegmenter = await ImageSegmenter.createFromOptions(fr, {
+            baseOptions: {
+              modelAssetPath: "https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_multiclass_256x256/float32/latest/selfie_multiclass_256x256.tflite",
+              delegate: "GPU",
+            },
+            runningMode: "VIDEO",
+            outputCategoryMask: true,
+            outputConfidenceMasks: false,
+          });
+        } catch (e) {
+          // ロード失敗時は美肌補正を無効化（全体適用はしない）
+          _segmenterFailed = true;
+          if (typeof showToast === "function") showToast("肌検出を初期化できないため美肌補正は利用できません");
+        } finally {
+          _segmenterLoading = false;
+        }
+      }
+
+      // セグメンター出力（回転入力の場合は回転空間）→ 映像空間の半解像度マスクへ転写
+      function _updateSkinMaskCanvas(rotDeg) {
+        const vw = videoEl ? videoEl.videoWidth || 0 : 0;
+        const vh = videoEl ? videoEl.videoHeight || 0 : 0;
+        if (!vw || !vh) return;
+        const SW = Math.ceil(vw / 2);
+        const SH = Math.ceil(vh / 2);
+        if (skinMaskCanvas.width !== SW || skinMaskCanvas.height !== SH) {
+          skinMaskCanvas.width = SW;
+          skinMaskCanvas.height = SH;
+        }
+        skinMaskCtx.save();
+        skinMaskCtx.clearRect(0, 0, SW, SH);
+        if (_ctxFilterSupported) skinMaskCtx.filter = "blur(3px)"; // ソフトエッジ
+        if (rotDeg !== 0) {
+          // mpOffscreenCanvas（正立化済み）への入力だったので逆回転で映像空間へ戻す
+          const rot90 = Math.abs(rotDeg) === 90;
+          const tw = (rot90 ? vh : vw) / 2;
+          const th = (rot90 ? vw : vh) / 2;
+          skinMaskCtx.translate(SW / 2, SH / 2);
+          skinMaskCtx.rotate((-rotDeg * Math.PI) / 180);
+          skinMaskCtx.drawImage(segMaskCanvas, -tw / 2, -th / 2, tw, th);
+        } else {
+          skinMaskCtx.drawImage(segMaskCanvas, 0, 0, SW, SH);
+        }
+        skinMaskCtx.restore();
+        _skinMaskUpdatedMs = performance.now();
+      }
+
+      function _onSegResult(result, rotDeg) {
+        const mask = result && result.categoryMask;
+        if (!mask) return;
+        const mw = mask.width;
+        const mh = mask.height;
+        if (!mw || !mh) return;
+        const data = mask.getAsUint8Array();
+        if (segMaskCanvas.width !== mw || segMaskCanvas.height !== mh) {
+          segMaskCanvas.width = mw;
+          segMaskCanvas.height = mh;
+          _segMaskImageData = null;
+        }
+        if (!_segMaskImageData) {
+          _segMaskImageData = segMaskCtx.createImageData(mw, mh);
+          const d = _segMaskImageData.data;
+          for (let i = 0; i < d.length; i += 4) {
+            d[i] = 255;
+            d[i + 1] = 255;
+            d[i + 2] = 255;
+          }
+        }
+        const px = _segMaskImageData.data;
+        for (let i = 0; i < data.length; i++) {
+          const c = data[i];
+          px[i * 4 + 3] = c === 2 || c === 3 ? 255 : 0; // 2=体肌, 3=顔肌
+        }
+        segMaskCtx.putImageData(_segMaskImageData, 0, 0);
+        _updateSkinMaskCanvas(rotDeg);
+      }
 
       let deviceGamma = 0;
       let deviceBeta = 0;
@@ -2348,6 +2520,296 @@
         );
       }
 
+      // --- Camera HW Lighting (global) ---
+      const camHwControlsEl = document.getElementById("cam-hw-controls");
+      const hwExposureModeRow = document.getElementById("hw-exposure-mode-row");
+      const hwExposureAutoToggle = document.getElementById("hw-exposure-auto-toggle");
+      const hwExposureTimeRow = document.getElementById("hw-exposure-time-row");
+      const hwExposureTimeSlider = document.getElementById("hw-exposure-time-slider");
+      const hwExposureCompRow = document.getElementById("hw-exposure-comp-row");
+      const hwExposureCompSlider = document.getElementById("hw-exposure-comp-slider");
+      const hwBrightnessRow = document.getElementById("hw-brightness-row");
+      const hwBrightnessSlider = document.getElementById("hw-brightness-slider");
+      const hwWbModeRow = document.getElementById("hw-wb-mode-row");
+      const hwWbAutoToggle = document.getElementById("hw-wb-auto-toggle");
+      const hwColorTempRow = document.getElementById("hw-color-temp-row");
+      const hwColorTempSlider = document.getElementById("hw-color-temp-slider");
+      const hwLightResetBtn = document.getElementById("hw-light-reset-btn");
+
+      const LS_CAM_HW_LIGHT = "camera_hw_light";
+      // null = ユーザー未変更（カメラのデフォルトに任せる）
+      const CAM_HW_LIGHT_DEFAULTS = { exposureAuto: true, exposureTime: null, exposureComp: null, brightness: null, wbAuto: true, colorTemp: null };
+      let camHwLight = { ...CAM_HW_LIGHT_DEFAULTS };
+      try {
+        const saved = JSON.parse(localStorage.getItem(LS_CAM_HW_LIGHT) || "null");
+        if (saved && typeof saved === "object") camHwLight = { ...camHwLight, ...saved };
+      } catch (_) {}
+
+      let __updatingHwUI = false;
+      let _hwCaps = null; // 現在のトラックの対応状況（非対応 or トラック無しは null）
+
+      const _saveCamHwLight = () => {
+        try {
+          localStorage.setItem(LS_CAM_HW_LIGHT, JSON.stringify(camHwLight));
+        } catch (_) {}
+      };
+
+      // caps の min/max にクランプし step に丸める（UVC は step 外の値を拒否することがある）
+      const _clampToCapRange = (v, range) => {
+        const mn = isFinite(range.min) ? range.min : v;
+        const mx = isFinite(range.max) ? range.max : v;
+        let x = _clamp(v, mn, mx);
+        if (isFinite(range.step) && range.step > 0) {
+          x = mn + Math.round((x - mn) / range.step) * range.step;
+          x = _clamp(x, mn, mx);
+        }
+        return x;
+      };
+
+      const _setHwSliderFromCaps = (slider, range, value, neutral) => {
+        slider.min = String(isFinite(range.min) ? range.min : 0);
+        slider.max = String(isFinite(range.max) ? range.max : 100);
+        slider.step = String(isFinite(range.step) && range.step > 0 ? range.step : 1);
+        // 値表示クリックのリセット先（defaultValue）をHTMLプレースホルダーではなく caps 由来のニュートラル値にする
+        const nv = _clampToCapRange(neutral, range);
+        slider.defaultValue = String(nv);
+        const disp = document.getElementById(slider.id + "-val");
+        if (disp) disp.title = `タップでデフォルト値 (${nv}) に戻す`;
+        slider.value = String(_clampToCapRange(value, range));
+        updateSliderDisplay(slider);
+      };
+
+      const _applyHwAdvanced = async (constraints) => {
+        if (!activeVideoTrack || !activeVideoTrack.applyConstraints) return;
+        try {
+          await activeVideoTrack.applyConstraints({ advanced: [constraints] });
+        } catch (e) {
+          // Some cameras/browsers reject hw constraints; ignore silently
+        }
+      };
+
+      const applyHwExposure = async () => {
+        if (!_hwCaps) return;
+        if (camHwLight.exposureAuto) {
+          if (_hwCaps.exposureManualOk) await _applyHwAdvanced({ exposureMode: "continuous" });
+          if (_hwCaps.exposureCompensation && camHwLight.exposureComp != null) {
+            await _applyHwAdvanced({ exposureCompensation: _clampToCapRange(camHwLight.exposureComp, _hwCaps.exposureCompensation) });
+          }
+        } else if (_hwCaps.exposureManualOk && camHwLight.exposureTime != null) {
+          // exposureMode と exposureTime は必ず同時に渡す（continuous のまま time を送ると拒否される）
+          await _applyHwAdvanced({ exposureMode: "manual", exposureTime: _clampToCapRange(camHwLight.exposureTime, _hwCaps.exposureTime) });
+        }
+      };
+
+      const applyHwWhiteBalance = async () => {
+        if (!_hwCaps || !_hwCaps.wbManualOk) return;
+        if (camHwLight.wbAuto) {
+          await _applyHwAdvanced({ whiteBalanceMode: "continuous" });
+        } else if (camHwLight.colorTemp != null) {
+          await _applyHwAdvanced({ whiteBalanceMode: "manual", colorTemperature: _clampToCapRange(camHwLight.colorTemp, _hwCaps.colorTemperature) });
+        }
+      };
+
+      const applyHwBrightness = async () => {
+        if (!_hwCaps || !_hwCaps.brightness || camHwLight.brightness == null) return;
+        await _applyHwAdvanced({ brightness: _clampToCapRange(camHwLight.brightness, _hwCaps.brightness) });
+      };
+
+      // 露出時間（手動時）と露出補正（自動時）は排他表示
+      const _updateHwExposureRows = () => {
+        if (hwExposureTimeRow) hwExposureTimeRow.style.display = _hwCaps && _hwCaps.exposureManualOk && !camHwLight.exposureAuto ? "" : "none";
+        if (hwExposureCompRow) hwExposureCompRow.style.display = _hwCaps && _hwCaps.exposureCompensation && camHwLight.exposureAuto ? "" : "none";
+      };
+
+      const _updateHwColorTempRow = () => {
+        if (hwColorTempRow) hwColorTempRow.style.display = _hwCaps && _hwCaps.wbManualOk && !camHwLight.wbAuto ? "" : "none";
+      };
+
+      const initCamHwLightFromTrack = async (track) => {
+        _hwCaps = null;
+        if (!camHwControlsEl) return;
+        const caps = track && track.getCapabilities ? track.getCapabilities() : null;
+        if (!caps) {
+          camHwControlsEl.style.display = "none";
+          return;
+        }
+
+        const expModes = Array.isArray(caps.exposureMode) ? caps.exposureMode : [];
+        const exposureManualOk = expModes.includes("manual") && expModes.includes("continuous") && !!caps.exposureTime;
+        const wbModes = Array.isArray(caps.whiteBalanceMode) ? caps.whiteBalanceMode : [];
+        const wbManualOk = wbModes.includes("manual") && wbModes.includes("continuous") && !!caps.colorTemperature;
+
+        _hwCaps = {
+          exposureManualOk,
+          exposureTime: exposureManualOk ? caps.exposureTime : null,
+          exposureCompensation: caps.exposureCompensation || null,
+          brightness: caps.brightness || null,
+          wbManualOk,
+          colorTemperature: wbManualOk ? caps.colorTemperature : null,
+        };
+
+        const anySupported = exposureManualOk || _hwCaps.exposureCompensation || _hwCaps.brightness || wbManualOk;
+        if (!anySupported) {
+          _hwCaps = null;
+          camHwControlsEl.style.display = "none";
+          return;
+        }
+        camHwControlsEl.style.display = "";
+
+        const sets = track.getSettings ? track.getSettings() : null;
+        const _midOf = (r) => ((isFinite(r.min) ? r.min : 0) + (isFinite(r.max) ? r.max : 100)) / 2;
+        // ニュートラル値 = カメラが現在使っている値（起動直後の自動値）→ 無ければ caps 中央値。
+        // 値表示クリックのリセット先と「自動に戻す」の brightness 復帰先に使う。
+        const _neutralOf = (range, current) => (current != null && isFinite(current) ? current : _midOf(range));
+
+        __updatingHwUI = true;
+        if (hwExposureModeRow) hwExposureModeRow.style.display = exposureManualOk ? "" : "none";
+        if (exposureManualOk) {
+          if (hwExposureAutoToggle) hwExposureAutoToggle.checked = !!camHwLight.exposureAuto;
+          const tn = _neutralOf(_hwCaps.exposureTime, sets && sets.exposureTime);
+          const t = camHwLight.exposureTime != null ? camHwLight.exposureTime : tn;
+          if (hwExposureTimeSlider) _setHwSliderFromCaps(hwExposureTimeSlider, _hwCaps.exposureTime, t, tn);
+        }
+        if (_hwCaps.exposureCompensation && hwExposureCompSlider) {
+          const cn = _neutralOf(_hwCaps.exposureCompensation, sets && sets.exposureCompensation);
+          const c = camHwLight.exposureComp != null ? camHwLight.exposureComp : cn;
+          _setHwSliderFromCaps(hwExposureCompSlider, _hwCaps.exposureCompensation, c, cn);
+        }
+        if (hwBrightnessRow) hwBrightnessRow.style.display = _hwCaps.brightness ? "" : "none";
+        if (_hwCaps.brightness && hwBrightnessSlider) {
+          const bn = _neutralOf(_hwCaps.brightness, sets && sets.brightness);
+          _hwCaps.brightnessNeutral = _clampToCapRange(bn, _hwCaps.brightness);
+          const b = camHwLight.brightness != null ? camHwLight.brightness : bn;
+          _setHwSliderFromCaps(hwBrightnessSlider, _hwCaps.brightness, b, bn);
+        }
+        if (hwWbModeRow) hwWbModeRow.style.display = wbManualOk ? "" : "none";
+        if (wbManualOk) {
+          if (hwWbAutoToggle) hwWbAutoToggle.checked = !!camHwLight.wbAuto;
+          const kn = _neutralOf(_hwCaps.colorTemperature, sets && sets.colorTemperature);
+          const k = camHwLight.colorTemp != null ? camHwLight.colorTemp : kn;
+          if (hwColorTempSlider) _setHwSliderFromCaps(hwColorTempSlider, _hwCaps.colorTemperature, k, kn);
+        }
+        _updateHwExposureRows();
+        _updateHwColorTempRow();
+        __updatingHwUI = false;
+
+        // 保存済みのユーザー変更分だけ再適用（未変更項目はカメラのデフォルトを尊重）
+        if (!camHwLight.exposureAuto || camHwLight.exposureComp != null) await applyHwExposure();
+        await applyHwBrightness();
+        if (!camHwLight.wbAuto) await applyHwWhiteBalance();
+      };
+
+      if (hwExposureAutoToggle) {
+        hwExposureAutoToggle.addEventListener("change", async () => {
+          if (__updatingHwUI) return;
+          camHwLight.exposureAuto = !!hwExposureAutoToggle.checked;
+          if (!camHwLight.exposureAuto && hwExposureTimeSlider) {
+            camHwLight.exposureTime = parseFloat(hwExposureTimeSlider.value);
+          }
+          _saveCamHwLight();
+          _updateHwExposureRows();
+          await applyHwExposure();
+        });
+      }
+      if (hwExposureTimeSlider) {
+        hwExposureTimeSlider.addEventListener(
+          "input",
+          async () => {
+            if (__updatingHwUI) return;
+            const v = parseFloat(hwExposureTimeSlider.value);
+            if (!isFinite(v)) return;
+            camHwLight.exposureTime = v;
+            _saveCamHwLight();
+            updateSliderDisplay(hwExposureTimeSlider);
+            await applyHwExposure();
+          },
+          { passive: true },
+        );
+      }
+      if (hwExposureCompSlider) {
+        hwExposureCompSlider.addEventListener(
+          "input",
+          async () => {
+            if (__updatingHwUI) return;
+            const v = parseFloat(hwExposureCompSlider.value);
+            if (!isFinite(v)) return;
+            camHwLight.exposureComp = v;
+            _saveCamHwLight();
+            updateSliderDisplay(hwExposureCompSlider);
+            await applyHwExposure();
+          },
+          { passive: true },
+        );
+      }
+      if (hwBrightnessSlider) {
+        hwBrightnessSlider.addEventListener(
+          "input",
+          async () => {
+            if (__updatingHwUI) return;
+            const v = parseFloat(hwBrightnessSlider.value);
+            if (!isFinite(v)) return;
+            camHwLight.brightness = v;
+            _saveCamHwLight();
+            updateSliderDisplay(hwBrightnessSlider);
+            await applyHwBrightness();
+          },
+          { passive: true },
+        );
+      }
+      if (hwWbAutoToggle) {
+        hwWbAutoToggle.addEventListener("change", async () => {
+          if (__updatingHwUI) return;
+          camHwLight.wbAuto = !!hwWbAutoToggle.checked;
+          if (!camHwLight.wbAuto && hwColorTempSlider) {
+            camHwLight.colorTemp = parseFloat(hwColorTempSlider.value);
+          }
+          _saveCamHwLight();
+          _updateHwColorTempRow();
+          await applyHwWhiteBalance();
+        });
+      }
+      if (hwColorTempSlider) {
+        hwColorTempSlider.addEventListener(
+          "input",
+          async () => {
+            if (__updatingHwUI) return;
+            const v = parseFloat(hwColorTempSlider.value);
+            if (!isFinite(v)) return;
+            camHwLight.colorTemp = v;
+            _saveCamHwLight();
+            updateSliderDisplay(hwColorTempSlider);
+            await applyHwWhiteBalance();
+          },
+          { passive: true },
+        );
+      }
+      if (hwLightResetBtn) {
+        hwLightResetBtn.addEventListener("click", async () => {
+          camHwLight = { ...CAM_HW_LIGHT_DEFAULTS };
+          _saveCamHwLight();
+          if (_hwCaps) {
+            if (_hwCaps.exposureManualOk) await _applyHwAdvanced({ exposureMode: "continuous" });
+            if (_hwCaps.wbManualOk) await _applyHwAdvanced({ whiteBalanceMode: "continuous" });
+            if (_hwCaps.brightness && hwBrightnessSlider) {
+              // 起動時に取得したニュートラル値（カメラの自動値 or caps 中央値）に戻す
+              const nv = isFinite(_hwCaps.brightnessNeutral) ? _hwCaps.brightnessNeutral : _clampToCapRange((_hwCaps.brightness.min + _hwCaps.brightness.max) / 2, _hwCaps.brightness);
+              await _applyHwAdvanced({ brightness: nv });
+              __updatingHwUI = true;
+              hwBrightnessSlider.value = String(nv);
+              updateSliderDisplay(hwBrightnessSlider);
+              __updatingHwUI = false;
+            }
+          }
+          __updatingHwUI = true;
+          if (hwExposureAutoToggle) hwExposureAutoToggle.checked = true;
+          if (hwWbAutoToggle) hwWbAutoToggle.checked = true;
+          __updatingHwUI = false;
+          _updateHwExposureRows();
+          _updateHwColorTempRow();
+          if (typeof showToast === "function") showToast("カメラのHW設定を自動に戻しました");
+        });
+      }
+
       // --- UI state helpers: accordion + scroll restore ---
       function _uiKey(suffix) {
         // UI state should be global (not per-VRM) so section open/close is consistent.
@@ -2832,7 +3294,13 @@
       const vrmSatSlider = document.getElementById("vrm-sat-slider");
       const vrmRedSlider = document.getElementById("vrm-red-slider");
 
+      const skinFxToggle = document.getElementById("skin-fx-toggle");
+      const skinFxControls = document.getElementById("skin-fx-controls");
       const skinSmoothSlider = document.getElementById("skin-smooth-slider");
+      const skinBrightSlider = document.getElementById("skin-bright-slider");
+      const skinSatSlider = document.getElementById("skin-sat-slider");
+      const skinTempSlider = document.getElementById("skin-temp-slider");
+      const skinRedSlider = document.getElementById("skin-red-slider");
       const camBrightSlider = document.getElementById("cam-bright-slider");
       const camSatSlider = document.getElementById("cam-sat-slider");
       const camContSlider = document.getElementById("cam-cont-slider");
@@ -2862,6 +3330,10 @@
         vrmSatSlider,
         vrmRedSlider,
         skinSmoothSlider,
+        skinBrightSlider,
+        skinSatSlider,
+        skinTempSlider,
+        skinRedSlider,
         camBrightSlider,
         camSatSlider,
         camContSlider,
@@ -3088,6 +3560,13 @@
         if (occlusionSliders) occlusionSliders.style.display = e.target.checked ? "block" : "none";
       });
       if (occlusionSliders) occlusionSliders.style.display = occlusionDebugToggle && occlusionDebugToggle.checked ? "block" : "none";
+
+      if (skinFxToggle) {
+        skinFxToggle.addEventListener("change", () => {
+          if (skinFxControls) skinFxControls.style.display = skinFxToggle.checked ? "block" : "none";
+          updateCameraFilter();
+        });
+      }
 
       forceShadowToggle.addEventListener("change", () => {
         shadowDetails.style.display = forceShadowToggle.checked ? "block" : "none";
@@ -3549,6 +4028,7 @@
               try {
                 const vt = stream && stream.getVideoTracks ? stream.getVideoTracks()[0] : null;
                 await initZoomControlFromTrack(vt);
+                await initCamHwLightFromTrack(vt);
               } catch (_) {}
             } catch (_) {}
 
@@ -4054,7 +4534,12 @@
       function saveGlobalSettings() {
         const s = {
           // カメラ画質
+          skinFxOn: !!(skinFxToggle && skinFxToggle.checked),
           skinSmooth: skinSmoothSlider.value,
+          skinBright: skinBrightSlider ? skinBrightSlider.value : "100",
+          skinSat: skinSatSlider ? skinSatSlider.value : "100",
+          skinTemp: skinTempSlider ? skinTempSlider.value : "50",
+          skinRed: skinRedSlider ? skinRedSlider.value : "0",
           camBright: camBrightSlider.value,
           camSat: camSatSlider.value,
           camCont: camContSlider.value,
@@ -4120,6 +4605,16 @@
 
           // --- カメラ画質 ---
           if (hasOwn("skinSmooth") && skinSmoothSlider) skinSmoothSlider.value = s.skinSmooth;
+          if (skinFxToggle) {
+            // 移行: 旧保存（skinFxOn無し）でも美肌補正>0ならトグルONにして従来の見た目を維持
+            if (hasOwn("skinFxOn")) skinFxToggle.checked = !!s.skinFxOn;
+            else if (hasOwn("skinSmooth") && parseFloat(s.skinSmooth) > 0) skinFxToggle.checked = true;
+            if (skinFxControls) skinFxControls.style.display = skinFxToggle.checked ? "block" : "none";
+          }
+          if (hasOwn("skinBright") && skinBrightSlider) skinBrightSlider.value = s.skinBright;
+          if (hasOwn("skinSat") && skinSatSlider) skinSatSlider.value = s.skinSat;
+          if (hasOwn("skinTemp") && skinTempSlider) skinTempSlider.value = s.skinTemp;
+          if (hasOwn("skinRed") && skinRedSlider) skinRedSlider.value = s.skinRed;
           if (hasOwn("camBright") && camBrightSlider) camBrightSlider.value = s.camBright;
           if (hasOwn("camSat") && camSatSlider) camSatSlider.value = s.camSat;
           if (hasOwn("camCont") && camContSlider) camContSlider.value = s.camCont;
@@ -4334,7 +4829,7 @@
         }
       }
 
-      [scaleSlider, xSlider, ySlider, zSlider, minCfSlider, betaSlider, mouthSensSlider, eyeSensSlider, lightIntSlider, ambIntSlider, lightYSlider, lightRotSlider, lightColorSlider, vrmSatSlider, vrmRedSlider, skinSmoothSlider, camBrightSlider, camSatSlider, camContSlider, camBlurSlider, camSepiaSlider, camBlackSlider, camTempSlider, camRedSlider, camVignetteSlider, camSoftGlowSlider, occlusionToggle, forceShadowToggle, shadowSoftnessSlider, shadowDarknessSlider, shadowColorPicker, occPosXSlider, occPosYSlider, occPosZSlider, occSizeXSlider, occSizeYSlider, occSizeZSlider].forEach((el) => {
+      [scaleSlider, xSlider, ySlider, zSlider, minCfSlider, betaSlider, mouthSensSlider, eyeSensSlider, lightIntSlider, ambIntSlider, lightYSlider, lightRotSlider, lightColorSlider, vrmSatSlider, vrmRedSlider, skinFxToggle, skinSmoothSlider, skinBrightSlider, skinSatSlider, skinTempSlider, skinRedSlider, camBrightSlider, camSatSlider, camContSlider, camBlurSlider, camSepiaSlider, camBlackSlider, camTempSlider, camRedSlider, camVignetteSlider, camSoftGlowSlider, occlusionToggle, forceShadowToggle, shadowSoftnessSlider, shadowDarknessSlider, shadowColorPicker, occPosXSlider, occPosYSlider, occPosZSlider, occSizeXSlider, occSizeYSlider, occSizeZSlider].forEach((el) => {
         el.addEventListener("change", () => {
           saveSettings();
         });
@@ -4414,12 +4909,14 @@
         const skin = skinSmoothSlider ? parseFloat(skinSmoothSlider.value) : 0;
         camSkinSmoothStrength = Math.max(0, Math.min(1, skin / 100));
 
-        // Mild tone tweak (keep subtle; main smoothing is a blur-blend pass in drawVideoToDisplayCanvas)
-        if (skin > 0) {
-          b += skin * 0.08; // slight brighten (reduced: Stage 3 screen glow adds luminance)
-          s += skin * 0.08; // slight saturate
-          c -= skin * 0.1; // soften contrast
-        }
+        // 美肌補正（高負荷）: 肌限定の個別調整
+        camSkinFxEnabled = !!(skinFxToggle && skinFxToggle.checked);
+        camSkinBright = skinBrightSlider ? parseFloat(skinBrightSlider.value) : 100;
+        camSkinSat = skinSatSlider ? parseFloat(skinSatSlider.value) : 100;
+        const skinTmp = skinTempSlider ? parseFloat(skinTempSlider.value) : 50;
+        camSkinTempStrength = Math.max(-1, Math.min(1, (skinTmp - 50) / 50));
+        const skinRed = skinRedSlider ? parseFloat(skinRedSlider.value) : 0;
+        camSkinRedStrength = Math.max(0, Math.min(1.5, skinRed / 100));
 
         const filterStr = `brightness(${b}%) saturate(${s}%) contrast(${c}%) blur(${bl}px) sepia(${sp}%)`;
         if (_ctxFilterSupported) {
@@ -6445,43 +6942,103 @@
         displayCtx.drawImage(videoEl, 0, 0, vw, vh);
         displayCtx.restore();
 
+        // 美肌補正（高負荷）: 肌マスクが新鮮なときのみ各効果を肌領域（顔+体）に適用。
+        // マスク未準備/セグメンター失敗時は何も掛けない（全体適用はしない）。
         const skinS = typeof camSkinSmoothStrength === "number" ? camSkinSmoothStrength : 0;
-        if (skinS > 0.001) {
-          // 改善案A: half-res blur — blur cost is proportional to area, 1/2 res = 1/4 cost
+        if (camSkinFxEnabled) {
           const SW = Math.ceil(vw / 2);
           const SH = Math.ceil(vh / 2);
-          if (smoothCanvas.width !== SW || smoothCanvas.height !== SH) {
-            smoothCanvas.width = SW;
-            smoothCanvas.height = SH;
+          const maskOk = !_segmenterFailed && _skinMaskUpdatedMs > 0 && performance.now() - _skinMaskUpdatedMs < 1500 && skinMaskCanvas.width === SW && skinMaskCanvas.height === SH;
+          if (maskOk) {
+            const applySkinMask = () => {
+              smoothCtx.save();
+              smoothCtx.globalCompositeOperation = "destination-in";
+              smoothCtx.drawImage(skinMaskCanvas, 0, 0, SW, SH);
+              smoothCtx.restore();
+            };
+            const ensureSkinFxSize = () => {
+              if (skinFxCanvas.width !== vw || skinFxCanvas.height !== vh) {
+                skinFxCanvas.width = vw;
+                skinFxCanvas.height = vh;
+              }
+            };
+            // 単色を肌マスク越しに合成する共通パス（色温度/赤み/グロー）
+            const skinTintPass = (fillStyle, op, alpha) => {
+              ensureSkinFxSize();
+              skinFxCtx.save();
+              skinFxCtx.clearRect(0, 0, vw, vh);
+              skinFxCtx.fillStyle = fillStyle;
+              skinFxCtx.fillRect(0, 0, vw, vh);
+              skinFxCtx.globalCompositeOperation = "destination-in";
+              skinFxCtx.drawImage(skinMaskCanvas, 0, 0, vw, vh);
+              skinFxCtx.restore();
+              displayCtx.save();
+              displayCtx.globalCompositeOperation = op;
+              if (displayCtx.globalCompositeOperation !== op) displayCtx.globalCompositeOperation = "overlay";
+              displayCtx.globalAlpha = alpha;
+              displayCtx.drawImage(skinFxCanvas, 0, 0);
+              displayCtx.restore();
+            };
+            if (skinS > 0.001) {
+              // 改善案A: half-res blur — blur cost is proportional to area, 1/2 res = 1/4 cost
+              if (smoothCanvas.width !== SW || smoothCanvas.height !== SH) {
+                smoothCanvas.width = SW;
+                smoothCanvas.height = SH;
+              }
+              // Stage 1: Macro smoothing (wrinkle/texture removal, large blur)
+              smoothCtx.save();
+              smoothCtx.clearRect(0, 0, SW, SH);
+              smoothCtx.filter = `blur(${2 + skinS * 14}px)`; // 2..16px
+              smoothCtx.drawImage(displayCanvas, 0, 0, SW, SH);
+              smoothCtx.restore();
+              applySkinMask();
+              displayCtx.save();
+              displayCtx.globalCompositeOperation = "source-over";
+              displayCtx.globalAlpha = Math.min(0.72, skinS * 0.65);
+              displayCtx.drawImage(smoothCanvas, 0, 0, vw, vh); // upscale via bilinear
+              displayCtx.restore();
+              // Stage 2: Micro texture removal (soft-light targets midtones = skin)
+              smoothCtx.save();
+              smoothCtx.clearRect(0, 0, SW, SH);
+              smoothCtx.filter = `blur(${0.5 + skinS * 2.5}px)`; // 0.5..3px
+              smoothCtx.drawImage(displayCanvas, 0, 0, SW, SH);
+              smoothCtx.restore();
+              applySkinMask();
+              displayCtx.save();
+              displayCtx.globalCompositeOperation = "soft-light";
+              displayCtx.globalAlpha = Math.min(0.35, skinS * 0.30);
+              displayCtx.drawImage(smoothCanvas, 0, 0, vw, vh); // upscale via bilinear
+              displayCtx.restore();
+            }
+            // 明るさ/彩度(肌): フル解像度で色調整した映像を肌だけ上書き（iOSはctx.filter非対応のためスキップ）
+            if (_ctxFilterSupported && (Math.abs(camSkinBright - 100) > 0.5 || Math.abs(camSkinSat - 100) > 0.5)) {
+              ensureSkinFxSize();
+              skinFxCtx.save();
+              skinFxCtx.clearRect(0, 0, vw, vh);
+              skinFxCtx.filter = `brightness(${camSkinBright}%) saturate(${camSkinSat}%)`;
+              skinFxCtx.drawImage(displayCanvas, 0, 0, vw, vh);
+              skinFxCtx.restore();
+              skinFxCtx.save();
+              skinFxCtx.globalCompositeOperation = "destination-in";
+              skinFxCtx.drawImage(skinMaskCanvas, 0, 0, vw, vh);
+              skinFxCtx.restore();
+              displayCtx.drawImage(skinFxCanvas, 0, 0);
+            }
+            // 色温度(肌)
+            if (Math.abs(camSkinTempStrength) > 0.001) {
+              const a = Math.min(0.35, Math.abs(camSkinTempStrength) * 0.28);
+              const tint = camSkinTempStrength > 0 ? "rgb(255, 180, 110)" : "rgb(120, 190, 255)";
+              skinTintPass(tint, "soft-light", a);
+            }
+            // 赤み(肌)
+            if (camSkinRedStrength > 0.001) {
+              skinTintPass("rgb(255, 60, 60)", "soft-light", Math.min(0.6, camSkinRedStrength * 0.35));
+            }
+            // Stage 3: Skin glow (beauty camera warm luminance)
+            if (skinS > 0.001) {
+              skinTintPass("rgb(255, 235, 210)", "screen", Math.min(0.12, skinS * 0.10));
+            }
           }
-          // Stage 1: Macro smoothing (wrinkle/texture removal, large blur)
-          smoothCtx.save();
-          smoothCtx.clearRect(0, 0, SW, SH);
-          smoothCtx.filter = `blur(${2 + skinS * 14}px)`; // 2..16px
-          smoothCtx.drawImage(displayCanvas, 0, 0, SW, SH);
-          smoothCtx.restore();
-          displayCtx.save();
-          displayCtx.globalCompositeOperation = "source-over";
-          displayCtx.globalAlpha = Math.min(0.72, skinS * 0.65);
-          displayCtx.drawImage(smoothCanvas, 0, 0, vw, vh); // upscale via bilinear
-          displayCtx.restore();
-          // Stage 2: Micro texture removal (soft-light targets midtones = skin)
-          smoothCtx.save();
-          smoothCtx.clearRect(0, 0, SW, SH);
-          smoothCtx.filter = `blur(${0.5 + skinS * 2.5}px)`; // 0.5..3px
-          smoothCtx.drawImage(displayCanvas, 0, 0, SW, SH);
-          smoothCtx.restore();
-          displayCtx.save();
-          displayCtx.globalCompositeOperation = "soft-light";
-          displayCtx.globalAlpha = Math.min(0.35, skinS * 0.30);
-          displayCtx.drawImage(smoothCanvas, 0, 0, vw, vh); // upscale via bilinear
-          displayCtx.restore();
-          // Stage 3: Skin glow (beauty camera warm luminance)
-          displayCtx.save();
-          displayCtx.globalCompositeOperation = "screen";
-          displayCtx.fillStyle = `rgba(255, 235, 210, ${Math.min(0.12, skinS * 0.10)})`;
-          displayCtx.fillRect(0, 0, vw, vh);
-          displayCtx.restore();
         }
 
         // Color Temperature (warm/cool) - subtle tint
@@ -6924,6 +7481,7 @@
           try {
             const vt = stream && stream.getVideoTracks ? stream.getVideoTracks()[0] : null;
             await initZoomControlFromTrack(vt);
+            await initCamHwLightFromTrack(vt);
           } catch (_) {}
 
           // Populate camera list after permission is granted
@@ -7158,6 +7716,28 @@
                 }
 
                 mpInput = mpOffscreenCanvas;
+              }
+            }
+
+            // 肌セグメンテーション（美肌補正(高負荷)トグルONのときのみ・顔検出と同じ1フレームおき）
+            if (camSkinFxEnabled && videoEl.readyState >= 2) {
+              if (!imageSegmenter) {
+                ensureImageSegmenter();
+              } else if (willDetect && !_segBusy) {
+                _segBusy = true;
+                const segRotDeg = inputRotationDeg || 0;
+                try {
+                  // コールバック形式: マスクはコールバック中のみ有効（解放はライブラリ側が行う）
+                  imageSegmenter.segmentForVideo(mpInput, performance.now(), (segResult) => {
+                    try {
+                      _onSegResult(segResult, segRotDeg);
+                    } finally {
+                      _segBusy = false;
+                    }
+                  });
+                } catch (e) {
+                  _segBusy = false;
+                }
               }
             }
 
