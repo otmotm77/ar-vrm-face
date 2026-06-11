@@ -905,11 +905,11 @@
         <details class="acc-section" data-acc="basic" open>
           <summary>モデル（VRM毎）</summary>
 
+          <button id="load-default-vrm-btn" class="restart-btn" style="margin-bottom: 4px">デフォルトVRMを表示</button>
+          <div style="font-size: 12px; opacity: 0.85; margin-bottom: 8px; line-height: 1.4">※初回25MBのダウンロードが発生します。</div>
           <label for="vrm-upload" class="custom-file-upload">📂 VRMファイルを選択</label>
           <input type="file" id="vrm-upload" />
 
-          <button id="apply-default-to-vrm-btn" class="restart-btn" style="background: #26a69a; margin-top: 10px" disabled>デフォルトオプションをこのVRMに反映</button>
-          <div style="font-size: 12px; opacity: 0.85; margin-top: 4px; line-height: 1.4">既に個別セーブがあるVRMに、保存済みデフォルトオプションを反映（上書き保存）します。</div>
           <div class="slider-container">
             <span class="slider-label">サイズ</span>
             <input type="range" id="scale-slider" min="2.0" max="8.0" step="0.05" value="3.0" />
@@ -1312,16 +1312,17 @@
               <li><strong>VRM毎</strong>：読み込んだVRMファイル毎に個別に保存されます。</li>
               <li><strong>共通</strong>：VRMに関係なく常に共通項目として保存されます。</li>
               <li>
-                <strong>デフォルトオプションとして保存</strong>
-                を実行すると、現在のVRM毎設定をデフォルトオプションとして保存します。
+                <strong>現在の設定をデフォルト設定として保存</strong>
+                を実行すると、現在のVRM毎設定をデフォルト設定として保存します。
               </li>
               <li>
-                保存されたデフォルトオプションは
-                <strong>デフォルトオプションをこのVRMに反映</strong>
+                保存されたデフォルト設定は
+                <strong>デフォルト設定を表示中のVRMに反映</strong>
                 を実行する事で、読み込んだVRMへ反映できます。
               </li>
               <li>設定が保存されてない（読み込んだ事が無い）VRMを読み込み時にもデフォルトオプションが反映されます。</li>
             </ul>
+            <p style="margin: 8px 0 0 0">デフォルトモデルは[<a href="https://hub.vroid.com/characters/1245908975744054638/models/6703365862776582786" target="_blank" rel="noopener noreferrer">白い白米様のAo/stylish</a>]を使用させていただいております。</p>
             <div class="slider-container" style="margin-top: 10px">
               <label class="toggle-label">
                 <input type="checkbox" id="debugtext-toggle" class="toggle-checkbox" />
@@ -1341,7 +1342,12 @@
           </div>
         </details>
 
-        <button id="save-default-btn" class="restart-btn" style="background: #5c6bc0; margin-top: 8px">デフォルトオプションとして保存</button>
+        <details class="acc-section" data-acc="default_settings">
+          <summary>デフォルト設定</summary>
+          <button id="save-default-btn" class="restart-btn" style="background: #5c6bc0">現在の設定をデフォルト設定として保存</button>
+          <button id="apply-default-to-vrm-btn" class="restart-btn" style="background: #26a69a; margin-top: 8px" disabled>デフォルト設定を表示中のVRMに反映</button>
+          <div style="font-size: 12px; opacity: 0.85; margin-top: 4px; line-height: 1.4">既に個別セーブがあるVRMに、保存済みデフォルト設定を反映（上書き保存）します。</div>
+        </details>
       </div>
 
       <!-- 照明・画質設定パネル -->
@@ -1556,8 +1562,8 @@
 
     <script type="module">
       // ===== App Version (single source of truth) =====
-      const APP_VERSION = "v6.05.05";
-      const APP_VERSION_NOTE = "fix: SVGスムージングが全体的にボケる問題を修正（除去帯域をシミのスケールに限定）";
+      const APP_VERSION = "v6.06.06";
+      const APP_VERSION_NOTE = "feat: ヘルプ下に「デフォルト設定」カテゴリを追加し関連ボタンを集約";
 
       function getOverlayPixelRatio() {
         // Must match resizeCreamOverlayCanvas()/resizeBreathOverlayCanvas() DPR clamp for performance.
@@ -1826,13 +1832,15 @@
       let appliedBeta = 0.04;
       let currentFileName = "";
       let currentVrmKey = ""; // VRMメタ由来の保存キー（ファイル名に依存しない・それなりにユニーク）
+      let vrmLoadGeneration = 0; // VRM読み込みの世代カウンタ（デフォルト読込とファイル選択の競合防止）
+      const DEFAULT_VRM_URL = "vrm/default.vrm";
       let currentFacingMode = "user"; // カメラの向き (user / environment)
       const LS_CAMERA_DEVICE_ID = "camera_device_id";
       let cameraDeviceId = localStorage.getItem(LS_CAMERA_DEVICE_ID) || "";
       const LS_CAMERA_RES = "camera_res";
-      const LS_BG_FIT = "bg_fit";
+      const LS_BG_FIT = "bg_fit2"; // v6.06.05: 旧"bg_fit"から改名し既存ユーザーも一旦レターボックス(contain)へ初期化
       let cameraRes = localStorage.getItem(LS_CAMERA_RES) || "__max__";
-      let bgFitMode = localStorage.getItem(LS_BG_FIT) || "cover";
+      let bgFitMode = localStorage.getItem(LS_BG_FIT) || "contain";
       let mirrorEnabled = true; // デフォルト: インカメはミラー
       let mirrorUserOverride = false; // 手動切替したら自動追従しない
 
@@ -8228,33 +8236,55 @@
         });
       }
 
-      fileInput.addEventListener("change", (event) => {
-        const file = event.target.files[0];
-        if (!file) return;
+      // デフォルトVRM用の初期プリセット（保存済み設定が無い場合のみ使用）
+      const DEFAULT_VRM_PRESET = {
+        scale: "2.85", y: "0.05", x: "0", z: "-0.1",
+        occPosX: "0", occPosY: "-0.362", occPosZ: "0.09",
+        occSizeX: "1", occSizeY: "0.15", occSizeZ: "0.7",
+        droolEnabled: false, droolStrength: "0.3", droolSize: "3",
+        droolFall: "0.10", droolInterval: "1", droolOffX: "0.54", droolOffY: "1.18",
+      };
+      function applyDefaultVrmPreset() {
+        const p = DEFAULT_VRM_PRESET;
+        if (scaleSlider) scaleSlider.value = p.scale;
+        if (ySlider) ySlider.value = p.y;
+        if (xSlider) xSlider.value = p.x;
+        if (zSlider) zSlider.value = p.z;
+        if (occPosXSlider) occPosXSlider.value = p.occPosX;
+        if (occPosYSlider) occPosYSlider.value = p.occPosY;
+        if (occPosZSlider) occPosZSlider.value = p.occPosZ;
+        if (occSizeXSlider) occSizeXSlider.value = p.occSizeX;
+        if (occSizeYSlider) occSizeYSlider.value = p.occSizeY;
+        if (occSizeZSlider) occSizeZSlider.value = p.occSizeZ;
+        if (droolToggle) droolToggle.checked = !!p.droolEnabled;
+        if (droolStrengthSlider) droolStrengthSlider.value = p.droolStrength;
+        if (droolSizeSlider) droolSizeSlider.value = p.droolSize;
+        if (droolFallSlider) droolFallSlider.value = p.droolFall;
+        if (droolIntervalSlider) droolIntervalSlider.value = p.droolInterval;
+        if (droolOffXSlider) droolOffXSlider.value = p.droolOffX;
+        if (droolOffYSlider) droolOffYSlider.value = p.droolOffY;
+        allSliders.forEach((el) => updateSliderDisplay(el));
+        if (typeof updateDroolUI === "function") updateDroolUI(true);
+        updateOccluder();
+      }
 
-        currentFileName = file.name;
-
-        if (applyDefaultToVrmBtn) applyDefaultToVrmBtn.disabled = true;
-        const fileSizeMB = file.size / (1024 * 1024);
-        if (fileSizeMB > 50) {
-          showToast(`ファイルサイズが大きいです (${fileSizeMB.toFixed(1)}MB)。動作が重くなる可能性があります。`);
-        }
-
-        loadingText.style.display = "block";
-        loadingText.textContent = "Loading VRM...";
-
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          const arrayBuffer = e.target.result;
-          if (!arrayBuffer || arrayBuffer.byteLength === 0) {
-            showToast("エラー: ファイルが空です。");
-            loadingText.style.display = "none";
-            return;
-          }
-          loader.parse(
-            arrayBuffer,
-            "",
-            (gltf) => {
+      // VRMのArrayBufferをパースしてシーンに反映（ファイル選択／デフォルトVRMボタンの共通経路）
+      function loadVrmFromArrayBuffer(arrayBuffer, fileName, opts = {}) {
+        const isDefaultVrm = !!opts.isDefault;
+        const myGen = ++vrmLoadGeneration;
+        currentFileName = fileName;
+        loader.parse(
+          arrayBuffer,
+          "",
+          (gltf) => {
+            // 競合制御: パース中に新しい読み込みが始まっていたら自分を破棄
+            if (myGen !== vrmLoadGeneration) {
+              try {
+                const v = gltf.userData && gltf.userData.vrm;
+                if (v && v.scene) VRMUtils.deepDispose(v.scene);
+              } catch (_) {}
+              return;
+            }
               try {
                 const vrm = gltf.userData.vrm;
                 if (currentVrm) {
@@ -8327,8 +8357,14 @@
                   }
                 }
                 if (!loaded) {
-                  loadSettings("default", { silent: true, label: "デフォルト" });
-                  showToast("デフォルト設定を適用しました");
+                  if (isDefaultVrm) {
+                    // デフォルトVRMは専用の初期プリセットを使用
+                    applyDefaultVrmPreset();
+                    showToast("デフォルト設定を適用しました");
+                  } else {
+                    loadSettings("default", { silent: true, label: "デフォルト" });
+                    showToast("デフォルト設定を適用しました");
+                  }
                 } else {
                   showToast(`設定を復元しました:\n${currentFileName}`);
                 }
@@ -8348,10 +8384,57 @@
               showToast("読み込みエラー: " + err.message);
               loadingText.style.display = "none";
             },
-          );
+        );
+      }
+
+      fileInput.addEventListener("change", (event) => {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        if (applyDefaultToVrmBtn) applyDefaultToVrmBtn.disabled = true;
+        const fileSizeMB = file.size / (1024 * 1024);
+        if (fileSizeMB > 50) {
+          showToast(`ファイルサイズが大きいです (${fileSizeMB.toFixed(1)}MB)。動作が重くなる可能性があります。`);
+        }
+
+        loadingText.style.display = "block";
+        loadingText.textContent = "Loading VRM...";
+
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const arrayBuffer = e.target.result;
+          if (!arrayBuffer || arrayBuffer.byteLength === 0) {
+            showToast("エラー: ファイルが空です。");
+            loadingText.style.display = "none";
+            return;
+          }
+          loadVrmFromArrayBuffer(arrayBuffer, file.name);
         };
         reader.readAsArrayBuffer(file);
       });
+
+      // デフォルトVRM（サービス同梱）の読み込みボタン
+      const loadDefaultVrmBtn = document.getElementById("load-default-vrm-btn");
+      if (loadDefaultVrmBtn) {
+        loadDefaultVrmBtn.addEventListener("click", async () => {
+          loadDefaultVrmBtn.disabled = true;
+          loadingText.style.display = "block";
+          loadingText.textContent = "Loading VRM...";
+          try {
+            const res = await fetch(DEFAULT_VRM_URL);
+            if (!res.ok) throw new Error("HTTP " + res.status);
+            const buf = await res.arrayBuffer();
+            if (!buf || buf.byteLength === 0) throw new Error("empty");
+            loadVrmFromArrayBuffer(buf, "default.vrm", { isDefault: true });
+          } catch (e) {
+            console.warn("デフォルトVRMの取得に失敗:", e);
+            showToast("デフォルトVRMを読み込めませんでした");
+            loadingText.style.display = "none";
+          } finally {
+            loadDefaultVrmBtn.disabled = false;
+          }
+        });
+      }
 
       // 個別モーフ直接制御スライダーの定義（slider参照は前方で取得済み）
       const morphSliderDefs = [
