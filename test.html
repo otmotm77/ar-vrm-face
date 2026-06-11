@@ -797,6 +797,23 @@
     </script>
   </head>
   <body>
+    <!-- SVGスムージング用フィルタ: 周波数分離 result = src - blur小 + blur大（中周波=シミのみ除去、キメ保持） -->
+    <svg width="0" height="0" style="position: absolute" aria-hidden="true">
+      <filter id="svg-skin-smooth" color-interpolation-filters="sRGB">
+        <!-- σ小=2.5: 毛穴・キメ(2〜4px)を保持帯域に入れる。小さくしすぎると実質ただのぼかしになる -->
+        <feGaussianBlur in="SourceGraphic" stdDeviation="2.5" result="bs" />
+        <feGaussianBlur id="svg-skin-blur-large" in="SourceGraphic" stdDeviation="8" result="bl" />
+        <!-- sum = 0.5*src + 0.5*bl → 中間値が[0,1]内に収まり負値クランプを回避 -->
+        <feComposite in="SourceGraphic" in2="bl" operator="arithmetic" k1="0" k2="0.5" k3="0.5" k4="0" result="sum" />
+        <!-- result = 2*sum - bs = src - bs + bl -->
+        <feComposite in="sum" in2="bs" operator="arithmetic" k1="0" k2="2" k3="-1" k4="0" />
+      </filter>
+      <!-- 機能検出用: グレー60を2倍≒120にする（url()解決 + arithmetic + sRGB を同時検査） -->
+      <filter id="svg-skin-smooth-test" color-interpolation-filters="sRGB">
+        <feGaussianBlur in="SourceGraphic" stdDeviation="1" result="b" />
+        <feComposite in="SourceGraphic" in2="b" operator="arithmetic" k1="0" k2="2" k3="0" k4="0" />
+      </filter>
+    </svg>
     <div id="toast">設定を適用しました</div>
 
     <!-- AR専用コンテナ -->
@@ -1413,6 +1430,11 @@
                   <input type="range" id="skin-smooth-slider" min="0" max="100" step="1" value="0" />
                   <span id="skin-smooth-slider-val" class="val-display">0</span>
                 </div>
+                <div class="slider-container" id="skin-svg-smooth-container">
+                  <span class="slider-label" style="font-size: 10px; color: #333">SVGスムージング</span>
+                  <input type="range" id="skin-svg-smooth-slider" min="0" max="100" step="1" value="0" />
+                  <span id="skin-svg-smooth-slider-val" class="val-display">0</span>
+                </div>
                 <div class="slider-container">
                   <span class="slider-label" style="font-size: 10px; color: #333">明るさ(肌)</span>
                   <input type="range" id="skin-bright-slider" min="50" max="150" step="1" value="100" />
@@ -1534,8 +1556,8 @@
 
     <script type="module">
       // ===== App Version (single source of truth) =====
-      const APP_VERSION = "v6.05.03";
-      const APP_VERSION_NOTE = "fix: 美肌スムージングのぼかしが強すぎたため全域で弱めた（半径半減・不透明度減）";
+      const APP_VERSION = "v6.05.05";
+      const APP_VERSION_NOTE = "fix: SVGスムージングが全体的にボケる問題を修正（除去帯域をシミのスケールに限定）";
 
       function getOverlayPixelRatio() {
         // Must match resizeCreamOverlayCanvas()/resizeBreathOverlayCanvas() DPR clamp for performance.
@@ -1629,12 +1651,28 @@
       let camSkinSat = 100; // %
       let camSkinTempStrength = 0; // -1..1 (warm(+)/cool(-))
       let camSkinRedStrength = 0; // 0..1.5
+      let camSkinSvgSmoothStrength = 0; // 0..1 (SVG周波数分離スムージング)
       // iOS/iPadOS WebKit は CanvasRenderingContext2D.filter 未サポートのため CSS filter にフォールバック
       const _ctxFilterSupported = (() => {
         try {
           const _tc = document.createElement("canvas").getContext("2d");
           _tc.filter = "brightness(200%)";
           return _tc.filter === "brightness(200%)";
+        } catch (_) { return false; }
+      })();
+      // SVGスムージング対応検出: url(#)参照 + feComposite arithmetic + sRGB が実際に効くかをピクセルで検査
+      const _svgSkinFilterSupported = (() => {
+        if (!_ctxFilterSupported) return false;
+        try {
+          const c = document.createElement("canvas");
+          c.width = c.height = 16;
+          const x = c.getContext("2d", { willReadFrequently: true });
+          x.filter = "url(#svg-skin-smooth-test)";
+          if (!x.filter || x.filter === "none") return false;
+          x.fillStyle = "rgb(60,60,60)";
+          x.fillRect(0, 0, 16, 16);
+          const v = x.getImageData(8, 8, 1, 1).data[0];
+          return v > 100 && v < 140; // 期待値≒120（60=フィルタ無視 / ≒89=linearRGB計算 を弾く）
         } catch (_) { return false; }
       })();
       const glowCanvas = document.createElement("canvas");
@@ -1645,6 +1683,11 @@
       const SKIN_FX_MAX_W = 1280; // perf: 処理解像度の上限（画質が気になる場合はここを上げる）
       const skinFxCanvas = document.createElement("canvas");
       const skinFxCtx = skinFxCanvas.getContext("2d", { willReadFrequently: false });
+      // SVGスムージング用canvas（テクスチャ保持が目的なので半解像度にせず上限キャップのみ）
+      const SVG_SMOOTH_MAX_W = 1280; // perf: 重い場合はここを下げる
+      const svgSmoothCanvas = document.createElement("canvas");
+      const svgSmoothCtx = svgSmoothCanvas.getContext("2d", { willReadFrequently: false });
+      const _svgSkinBlurLargeEl = document.getElementById("svg-skin-blur-large");
       // Gradient caches (改善案B, C)
       let _vigGradCache = null;
       let _vigGradKey = "";
@@ -3318,6 +3361,12 @@
       const skinFxToggle = document.getElementById("skin-fx-toggle");
       const skinFxControls = document.getElementById("skin-fx-controls");
       const skinSmoothSlider = document.getElementById("skin-smooth-slider");
+      const skinSvgSmoothSlider = document.getElementById("skin-svg-smooth-slider");
+      if (!_svgSkinFilterSupported) {
+        // 非対応環境（iOS Safari等）はUIごと隠す（要素自体は保存配列の都合で残す）
+        const _svgSmoothContainer = document.getElementById("skin-svg-smooth-container");
+        if (_svgSmoothContainer) _svgSmoothContainer.style.display = "none";
+      }
       const skinBrightSlider = document.getElementById("skin-bright-slider");
       const skinSatSlider = document.getElementById("skin-sat-slider");
       const skinTempSlider = document.getElementById("skin-temp-slider");
@@ -3351,6 +3400,7 @@
         vrmSatSlider,
         vrmRedSlider,
         skinSmoothSlider,
+        skinSvgSmoothSlider,
         skinBrightSlider,
         skinSatSlider,
         skinTempSlider,
@@ -4558,6 +4608,7 @@
           // カメラ画質
           skinFxOn: !!(skinFxToggle && skinFxToggle.checked),
           skinSmooth: skinSmoothSlider.value,
+          skinSvgSmooth: skinSvgSmoothSlider ? skinSvgSmoothSlider.value : "0",
           skinBright: skinBrightSlider ? skinBrightSlider.value : "100",
           skinSat: skinSatSlider ? skinSatSlider.value : "100",
           skinTemp: skinTempSlider ? skinTempSlider.value : "50",
@@ -4633,6 +4684,7 @@
             else if (hasOwn("skinSmooth") && parseFloat(s.skinSmooth) > 0) skinFxToggle.checked = true;
             if (skinFxControls) skinFxControls.style.display = skinFxToggle.checked ? "block" : "none";
           }
+          if (hasOwn("skinSvgSmooth") && skinSvgSmoothSlider) skinSvgSmoothSlider.value = s.skinSvgSmooth;
           if (hasOwn("skinBright") && skinBrightSlider) skinBrightSlider.value = s.skinBright;
           if (hasOwn("skinSat") && skinSatSlider) skinSatSlider.value = s.skinSat;
           if (hasOwn("skinTemp") && skinTempSlider) skinTempSlider.value = s.skinTemp;
@@ -4851,7 +4903,7 @@
         }
       }
 
-      [scaleSlider, xSlider, ySlider, zSlider, minCfSlider, betaSlider, mouthSensSlider, eyeSensSlider, lightIntSlider, ambIntSlider, lightYSlider, lightRotSlider, lightColorSlider, vrmSatSlider, vrmRedSlider, skinFxToggle, skinSmoothSlider, skinBrightSlider, skinSatSlider, skinTempSlider, skinRedSlider, camBrightSlider, camSatSlider, camContSlider, camBlurSlider, camSepiaSlider, camBlackSlider, camTempSlider, camRedSlider, camVignetteSlider, camSoftGlowSlider, occlusionToggle, forceShadowToggle, shadowSoftnessSlider, shadowDarknessSlider, shadowColorPicker, occPosXSlider, occPosYSlider, occPosZSlider, occSizeXSlider, occSizeYSlider, occSizeZSlider].forEach((el) => {
+      [scaleSlider, xSlider, ySlider, zSlider, minCfSlider, betaSlider, mouthSensSlider, eyeSensSlider, lightIntSlider, ambIntSlider, lightYSlider, lightRotSlider, lightColorSlider, vrmSatSlider, vrmRedSlider, skinFxToggle, skinSmoothSlider, skinSvgSmoothSlider, skinBrightSlider, skinSatSlider, skinTempSlider, skinRedSlider, camBrightSlider, camSatSlider, camContSlider, camBlurSlider, camSepiaSlider, camBlackSlider, camTempSlider, camRedSlider, camVignetteSlider, camSoftGlowSlider, occlusionToggle, forceShadowToggle, shadowSoftnessSlider, shadowDarknessSlider, shadowColorPicker, occPosXSlider, occPosYSlider, occPosZSlider, occSizeXSlider, occSizeYSlider, occSizeZSlider].forEach((el) => {
         el.addEventListener("change", () => {
           saveSettings();
         });
@@ -4930,6 +4982,14 @@
 
         const skin = skinSmoothSlider ? parseFloat(skinSmoothSlider.value) : 0;
         camSkinSmoothStrength = Math.max(0, Math.min(1, skin / 100));
+
+        // SVGスムージング: 強度0..1 と blur大のσ（4..8）を反映（σ大を上げすぎると眉・目元の構造まで除去帯域に入る）
+        const svgSk = skinSvgSmoothSlider ? parseFloat(skinSvgSmoothSlider.value) : 0;
+        camSkinSvgSmoothStrength = Math.max(0, Math.min(1, svgSk / 100));
+        if (_svgSkinFilterSupported && _svgSkinBlurLargeEl) {
+          const sd = (4 + camSkinSvgSmoothStrength * 4).toFixed(2);
+          if (_svgSkinBlurLargeEl.getAttribute("stdDeviation") !== sd) _svgSkinBlurLargeEl.setAttribute("stdDeviation", sd);
+        }
 
         // 美肌補正（高負荷）: 肌限定の個別調整
         camSkinFxEnabled = !!(skinFxToggle && skinFxToggle.checked);
@@ -7008,6 +7068,29 @@
               displayCtx.drawImage(smoothCanvas, 0, 0, vw, vh);
               displayCtx.restore();
             };
+            // SVGスムージング: 周波数分離（中周波=シミのみ除去、高周波キメ保持）。テクスチャ保持のため半解像度にしない
+            const svgS = typeof camSkinSvgSmoothStrength === "number" ? camSkinSvgSmoothStrength : 0;
+            if (_svgSkinFilterSupported && svgS > 0.001) {
+              const fw = Math.min(vw, SVG_SMOOTH_MAX_W);
+              const fh = Math.max(1, Math.round((vh * fw) / vw));
+              if (svgSmoothCanvas.width !== fw || svgSmoothCanvas.height !== fh) {
+                svgSmoothCanvas.width = fw;
+                svgSmoothCanvas.height = fh;
+              }
+              svgSmoothCtx.save();
+              svgSmoothCtx.clearRect(0, 0, fw, fh);
+              svgSmoothCtx.filter = "url(#svg-skin-smooth)";
+              svgSmoothCtx.drawImage(displayCanvas, 0, 0, fw, fh);
+              svgSmoothCtx.restore();
+              svgSmoothCtx.save();
+              svgSmoothCtx.globalCompositeOperation = "destination-in";
+              svgSmoothCtx.drawImage(skinMaskCanvas, 0, 0, fw, fh);
+              svgSmoothCtx.restore();
+              displayCtx.save();
+              displayCtx.globalAlpha = Math.min(0.7, svgS * 0.7);
+              displayCtx.drawImage(svgSmoothCanvas, 0, 0, vw, vh);
+              displayCtx.restore();
+            }
             if (skinS > 0.001) {
               // 改善案A: half-res blur — blur cost is proportional to area, 1/2 res = 1/4 cost
               // Stage 1: Macro smoothing (wrinkle/texture removal, large blur)
