@@ -1370,13 +1370,13 @@
               <div id="shadow-details" style="border-top: 1px dashed #abc; padding-top: 8px; margin-top: 5px">
                 <div class="slider-container">
                   <span class="slider-label" style="font-size: 10px; color: #333">影の柔らかさ</span>
-                  <input type="range" id="shadow-softness-slider" min="0.0" max="1.0" step="0.1" value="0.5" />
-                  <span id="shadow-softness-slider-val" class="val-display">0.5</span>
+                  <input type="range" id="shadow-softness-slider" min="0.0" max="1.0" step="0.1" value="0.6" />
+                  <span id="shadow-softness-slider-val" class="val-display">0.6</span>
                 </div>
                 <div class="slider-container" style="margin-bottom: 5px">
                   <span class="slider-label" style="font-size: 10px; color: #333">影の濃さ</span>
-                  <input type="range" id="shadow-darkness-slider" min="0.0" max="1.0" step="0.1" value="0.5" />
-                  <span id="shadow-darkness-slider-val" class="val-display">0.5</span>
+                  <input type="range" id="shadow-darkness-slider" min="0.0" max="1.0" step="0.1" value="0.4" />
+                  <span id="shadow-darkness-slider-val" class="val-display">0.4</span>
                 </div>
                 <div class="slider-container" style="margin-bottom: 0">
                   <span class="slider-label" style="font-size: 10px; color: #333">影の色</span>
@@ -1385,21 +1385,21 @@
 
                 <div class="slider-container">
                   <span class="slider-label" style="font-size: 10px; color: #333">光の高さ</span>
-                  <input type="range" id="light-y-slider" min="-10.0" max="10.0" step="0.1" value="2.0" />
-                  <span id="light-y-slider-val" class="val-display">2.0</span>
+                  <input type="range" id="light-y-slider" min="-10.0" max="10.0" step="0.1" value="-10" />
+                  <span id="light-y-slider-val" class="val-display">-10</span>
                 </div>
                 <div class="slider-container">
                   <span class="slider-label" style="font-size: 10px; color: #333">光の向き</span>
-                  <input type="range" id="light-rot-slider" min="0" max="360" step="10" value="45" />
-                  <span id="light-rot-slider-val" class="val-display">45</span>
+                  <input type="range" id="light-rot-slider" min="0" max="360" step="10" value="0" />
+                  <span id="light-rot-slider-val" class="val-display">0</span>
                 </div>
               </div>
             </div>
 
             <div class="slider-container">
               <span class="slider-label">メイン光強さ</span>
-              <input type="range" id="light-int-slider" min="0.0" max="5.0" step="0.1" value="2.0" />
-              <span id="light-int-slider-val" class="val-display">2.0</span>
+              <input type="range" id="light-int-slider" min="0.0" max="5.0" step="0.1" value="3.0" />
+              <span id="light-int-slider-val" class="val-display">3.0</span>
             </div>
             <div class="slider-container">
               <span class="slider-label">環境光強さ</span>
@@ -1567,8 +1567,8 @@
 
     <script type="module">
       // ===== App Version (single source of truth) =====
-      const APP_VERSION = "v6.07.01";
-      const APP_VERSION_NOTE = "feat: 読み込んだVRMの名前/作者を表示し、性的利用禁止モデルに警告を表示";
+      const APP_VERSION = "v6.07.02";
+      const APP_VERSION_NOTE = "feat: VRM照明・影の初期値を変更（影濃柔/光の高さ/向き/メイン光強さ）";
 
       function getOverlayPixelRatio() {
         // Must match resizeCreamOverlayCanvas()/resizeBreathOverlayCanvas() DPR clamp for performance.
