@@ -1343,10 +1343,14 @@
         </details>
 
         <details class="acc-section" data-acc="default_settings">
-          <summary>デフォルト設定</summary>
+          <summary>設定の管理</summary>
           <button id="save-default-btn" class="restart-btn" style="background: #5c6bc0">現在の設定をデフォルト設定として保存</button>
           <button id="apply-default-to-vrm-btn" class="restart-btn" style="background: #26a69a; margin-top: 8px" disabled>デフォルト設定を表示中のVRMに反映</button>
           <div style="font-size: 12px; opacity: 0.85; margin-top: 4px; line-height: 1.4">既に個別セーブがあるVRMに、保存済みデフォルト設定を反映（上書き保存）します。</div>
+          <button id="export-settings-btn" class="restart-btn" style="background: #455a64; margin-top: 14px">全設定をエクスポート（JSON）</button>
+          <button id="import-settings-btn" class="restart-btn" style="background: #455a64; margin-top: 8px">全設定をインポート（JSON）</button>
+          <input type="file" id="import-settings-file" accept="application/json,.json" style="display: none" />
+          <div style="font-size: 12px; opacity: 0.85; margin-top: 4px; line-height: 1.4">全設定（VRM毎・共通・カメラ・UI状態）をJSONで保存／復元します。インポートは現在の設定に上書きし、自動で再読み込みします。</div>
         </details>
       </div>
 
@@ -1562,8 +1566,8 @@
 
     <script type="module">
       // ===== App Version (single source of truth) =====
-      const APP_VERSION = "v6.06.07";
-      const APP_VERSION_NOTE = "feat: アクセス計測（Cloudflare Web Analytics）を導入";
+      const APP_VERSION = "v6.07.00";
+      const APP_VERSION_NOTE = "feat: 全設定のエクスポート/インポート（JSON）を追加。カテゴリ名を「設定の管理」に変更";
 
       function getOverlayPixelRatio() {
         // Must match resizeCreamOverlayCanvas()/resizeBreathOverlayCanvas() DPR clamp for performance.
@@ -8233,6 +8237,81 @@
           // Save current UI values as global defaults (used for VRMs without per-file save)
           saveSettings("default");
           showToast("デフォルト設定に保存しました");
+        });
+      }
+
+      // ===== 全設定のエクスポート/インポート（JSON） =====
+      // アプリ所有のlocalStorageキー（VRM毎/共通/カメラ/UI状態）だけを収集
+      function _collectAppSettings() {
+        const out = {};
+        const fixedKeys = [LS_CAM_GLOBAL, LS_BG_FIT, LS_CAMERA_RES, LS_CAMERA_ZOOM, LS_CAMERA_DEVICE_ID, LS_CAM_HW_LIGHT];
+        try {
+          const keys = [];
+          for (let i = 0; i < localStorage.length; i++) keys.push(localStorage.key(i));
+          keys.forEach((k) => {
+            if (!k) return;
+            if (k.startsWith("vrm_settings_") || k.startsWith("ui_") || fixedKeys.indexOf(k) !== -1) {
+              out[k] = localStorage.getItem(k);
+            }
+          });
+        } catch (_) {}
+        return out;
+      }
+      const exportSettingsBtn = document.getElementById("export-settings-btn");
+      if (exportSettingsBtn) {
+        exportSettingsBtn.addEventListener("click", () => {
+          try {
+            const payload = {
+              app: "ar-vrm-face",
+              version: APP_VERSION,
+              exportedAt: new Date().toISOString(),
+              data: _collectAppSettings(),
+            };
+            const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = "ar-vrm-face-settings-" + new Date().toISOString().slice(0, 10) + ".json";
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+            showToast("全設定をエクスポートしました");
+          } catch (e) {
+            showToast("エクスポートに失敗しました: " + e.message);
+          }
+        });
+      }
+      const importSettingsBtn = document.getElementById("import-settings-btn");
+      const importSettingsFile = document.getElementById("import-settings-file");
+      if (importSettingsBtn && importSettingsFile) {
+        importSettingsBtn.addEventListener("click", () => importSettingsFile.click());
+        importSettingsFile.addEventListener("change", (ev) => {
+          const file = ev.target.files && ev.target.files[0];
+          if (!file) return;
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            try {
+              const parsed = JSON.parse(e.target.result);
+              const data = parsed && parsed.data && typeof parsed.data === "object" ? parsed.data : null;
+              if (!data) throw new Error("形式が不正です");
+              if (parsed.app && parsed.app !== "ar-vrm-face" && !confirm("別アプリの設定ファイルの可能性があります。続行しますか？")) return;
+              const keys = Object.keys(data);
+              if (!keys.length) throw new Error("設定が空です");
+              if (!confirm("現在の設定に上書きしてインポートします。よろしいですか？（自動で再読み込みします）")) return;
+              keys.forEach((k) => {
+                const v = data[k];
+                if (typeof v === "string") localStorage.setItem(k, v);
+              });
+              showToast("インポートしました。再読み込みします…");
+              setTimeout(() => location.reload(), 600);
+            } catch (err) {
+              showToast("インポートに失敗しました: " + err.message);
+            } finally {
+              importSettingsFile.value = "";
+            }
+          };
+          reader.readAsText(file);
         });
       }
 
