@@ -1534,8 +1534,8 @@
 
     <script type="module">
       // ===== App Version (single source of truth) =====
-      const APP_VERSION = "v6.05.01";
-      const APP_VERSION_NOTE = "tweak: 美肌補正（高負荷）のUIを「影を強制的に出す」と同じ枠付きパネル形式に変更";
+      const APP_VERSION = "v6.05.03";
+      const APP_VERSION_NOTE = "fix: 美肌スムージングのぼかしが強すぎたため全域で弱めた（半径半減・不透明度減）";
 
       function getOverlayPixelRatio() {
         // Must match resizeCreamOverlayCanvas()/resizeBreathOverlayCanvas() DPR clamp for performance.
@@ -1641,7 +1641,8 @@
       const glowCtx = glowCanvas.getContext("2d", { willReadFrequently: false });
       const smoothCanvas = document.createElement("canvas");
       const smoothCtx = smoothCanvas.getContext("2d", { willReadFrequently: false });
-      // 肌限定の色調整用フル解像度canvas（半解像度だと上塗り時に肌のディテールが失われる）
+      // 肌限定の明るさ/彩度調整用canvas（上塗りで肌のディテールを保つため高解像度、ただし上限あり）
+      const SKIN_FX_MAX_W = 1280; // perf: 処理解像度の上限（画質が気になる場合はここを上げる）
       const skinFxCanvas = document.createElement("canvas");
       const skinFxCtx = skinFxCanvas.getContext("2d", { willReadFrequently: false });
       // Gradient caches (改善案B, C)
@@ -1650,6 +1651,25 @@
       let _blushGradCache = null;
       let _blushGradKey = "";
       let cameraFilterStr = "none";
+      // perf: 新しい映像フレーム or 設定変更があったときだけ displayCanvas を再描画する
+      let _lastDrawnVideoTime = -1;
+      let _displayDirty = true;
+      let _videoFrameCbActive = false;
+      // 新フレーム到着を rVFC で検知して dirty を立てる（再描画をカメラfps基準にする）。
+      // rVFC はelement単位の登録なので srcObject 差し替え（カメラ切替）後も継続する。
+      function _startVideoFrameDirtyLoop() {
+        if (_videoFrameCbActive || !videoEl || typeof videoEl.requestVideoFrameCallback !== "function") return;
+        _videoFrameCbActive = true;
+        const tick = () => {
+          _displayDirty = true;
+          try {
+            videoEl.requestVideoFrameCallback(tick);
+          } catch (_) {
+            _videoFrameCbActive = false;
+          }
+        };
+        videoEl.requestVideoFrameCallback(tick);
+      }
 
       // --- 肌セグメンテーション（美肌補正を人物の肌領域のみに限定） ---
       // selfie_multiclass カテゴリ: 0=背景, 1=髪, 2=体肌, 3=顔肌, 4=服, 5=その他
@@ -1714,6 +1734,7 @@
         }
         skinMaskCtx.restore();
         _skinMaskUpdatedMs = performance.now();
+        _displayDirty = true;
       }
 
       function _onSegResult(result, rotDeg) {
@@ -4124,6 +4145,7 @@
             // Force an immediate refresh of the background once after switching
             try {
               ensureDisplayCanvasSize();
+              _displayDirty = true;
               drawVideoToDisplayCanvas();
               refreshVideoTextureAfterCameraSwitch();
             } catch (_) {}
@@ -4928,6 +4950,7 @@
           cameraFilterStr = "none";
           if (displayCanvas) displayCanvas.style.filter = filterStr;
         }
+        _displayDirty = true;
       }
 
       function createBreathTexture() {
@@ -6916,6 +6939,7 @@
         if (displayCanvas.width !== vw || displayCanvas.height !== vh) {
           displayCanvas.width = vw;
           displayCanvas.height = vh;
+          _displayDirty = true;
           // When video size changes (e.g., camera switch), update letterbox plane
           updateBgPlaneSizeLetterbox();
         }
@@ -6937,6 +6961,12 @@
         const vh = displayCanvas.height;
         if (vw <= 0 || vh <= 0) return;
 
+        // perf: 同一映像フレームかつ設定変更なしなら再描画をスキップ（表示60Hz vs カメラ30fps対策）
+        // rVFC 利用時は dirty のみで判定。非対応環境は currentTime 比較（連続進行する場合は常に再描画=従来挙動）
+        if (!_displayDirty && (_videoFrameCbActive || videoEl.currentTime === _lastDrawnVideoTime)) return;
+        _displayDirty = false;
+        _lastDrawnVideoTime = videoEl.currentTime;
+
         displayCtx.save();
         displayCtx.filter = cameraFilterStr || "none";
         displayCtx.drawImage(videoEl, 0, 0, vw, vh);
@@ -6956,45 +6986,40 @@
               smoothCtx.drawImage(skinMaskCanvas, 0, 0, SW, SH);
               smoothCtx.restore();
             };
-            const ensureSkinFxSize = () => {
-              if (skinFxCanvas.width !== vw || skinFxCanvas.height !== vh) {
-                skinFxCanvas.width = vw;
-                skinFxCanvas.height = vh;
-              }
-            };
-            // 単色を肌マスク越しに合成する共通パス（色温度/赤み/グロー）
+            // smoothCanvas はスムージングとティントで共用する半解像度作業バッファ
+            if (smoothCanvas.width !== SW || smoothCanvas.height !== SH) {
+              smoothCanvas.width = SW;
+              smoothCanvas.height = SH;
+            }
+            // 単色を肌マスク越しに合成する共通パス（色温度/赤み/グロー）。
+            // perf: フラット色×ソフトマスクなので半解像度で生成し拡大合成（fill/マスクの面積1/4）
             const skinTintPass = (fillStyle, op, alpha) => {
-              ensureSkinFxSize();
-              skinFxCtx.save();
-              skinFxCtx.clearRect(0, 0, vw, vh);
-              skinFxCtx.fillStyle = fillStyle;
-              skinFxCtx.fillRect(0, 0, vw, vh);
-              skinFxCtx.globalCompositeOperation = "destination-in";
-              skinFxCtx.drawImage(skinMaskCanvas, 0, 0, vw, vh);
-              skinFxCtx.restore();
+              smoothCtx.save();
+              smoothCtx.clearRect(0, 0, SW, SH);
+              smoothCtx.fillStyle = fillStyle;
+              smoothCtx.fillRect(0, 0, SW, SH);
+              smoothCtx.globalCompositeOperation = "destination-in";
+              smoothCtx.drawImage(skinMaskCanvas, 0, 0, SW, SH);
+              smoothCtx.restore();
               displayCtx.save();
               displayCtx.globalCompositeOperation = op;
               if (displayCtx.globalCompositeOperation !== op) displayCtx.globalCompositeOperation = "overlay";
               displayCtx.globalAlpha = alpha;
-              displayCtx.drawImage(skinFxCanvas, 0, 0);
+              displayCtx.drawImage(smoothCanvas, 0, 0, vw, vh);
               displayCtx.restore();
             };
             if (skinS > 0.001) {
               // 改善案A: half-res blur — blur cost is proportional to area, 1/2 res = 1/4 cost
-              if (smoothCanvas.width !== SW || smoothCanvas.height !== SH) {
-                smoothCanvas.width = SW;
-                smoothCanvas.height = SH;
-              }
               // Stage 1: Macro smoothing (wrinkle/texture removal, large blur)
               smoothCtx.save();
               smoothCtx.clearRect(0, 0, SW, SH);
-              smoothCtx.filter = `blur(${2 + skinS * 14}px)`; // 2..16px
+              smoothCtx.filter = `blur(${1 + skinS * 7}px)`; // 1..8px
               smoothCtx.drawImage(displayCanvas, 0, 0, SW, SH);
               smoothCtx.restore();
               applySkinMask();
               displayCtx.save();
               displayCtx.globalCompositeOperation = "source-over";
-              displayCtx.globalAlpha = Math.min(0.72, skinS * 0.65);
+              displayCtx.globalAlpha = Math.min(0.45, skinS * 0.40);
               displayCtx.drawImage(smoothCanvas, 0, 0, vw, vh); // upscale via bilinear
               displayCtx.restore();
               // Stage 2: Micro texture removal (soft-light targets midtones = skin)
@@ -7006,23 +7031,29 @@
               applySkinMask();
               displayCtx.save();
               displayCtx.globalCompositeOperation = "soft-light";
-              displayCtx.globalAlpha = Math.min(0.35, skinS * 0.30);
+              displayCtx.globalAlpha = Math.min(0.30, skinS * 0.25);
               displayCtx.drawImage(smoothCanvas, 0, 0, vw, vh); // upscale via bilinear
               displayCtx.restore();
             }
-            // 明るさ/彩度(肌): フル解像度で色調整した映像を肌だけ上書き（iOSはctx.filter非対応のためスキップ）
+            // 明るさ/彩度(肌): 色調整した映像を肌だけ上書き（iOSはctx.filter非対応のためスキップ）
             if (_ctxFilterSupported && (Math.abs(camSkinBright - 100) > 0.5 || Math.abs(camSkinSat - 100) > 0.5)) {
-              ensureSkinFxSize();
+              // perf: 処理解像度を SKIN_FX_MAX_W にキャップして拡大合成
+              const fw = Math.min(vw, SKIN_FX_MAX_W);
+              const fh = Math.max(1, Math.round((vh * fw) / vw));
+              if (skinFxCanvas.width !== fw || skinFxCanvas.height !== fh) {
+                skinFxCanvas.width = fw;
+                skinFxCanvas.height = fh;
+              }
               skinFxCtx.save();
-              skinFxCtx.clearRect(0, 0, vw, vh);
+              skinFxCtx.clearRect(0, 0, fw, fh);
               skinFxCtx.filter = `brightness(${camSkinBright}%) saturate(${camSkinSat}%)`;
-              skinFxCtx.drawImage(displayCanvas, 0, 0, vw, vh);
+              skinFxCtx.drawImage(displayCanvas, 0, 0, fw, fh);
               skinFxCtx.restore();
               skinFxCtx.save();
               skinFxCtx.globalCompositeOperation = "destination-in";
-              skinFxCtx.drawImage(skinMaskCanvas, 0, 0, vw, vh);
+              skinFxCtx.drawImage(skinMaskCanvas, 0, 0, fw, fh);
               skinFxCtx.restore();
-              displayCtx.drawImage(skinFxCanvas, 0, 0);
+              displayCtx.drawImage(skinFxCanvas, 0, 0, vw, vh);
             }
             // 色温度(肌)
             if (Math.abs(camSkinTempStrength) > 0.001) {
@@ -7418,6 +7449,7 @@
           if (!videoEl) {
             throw new Error("video element (#video) not found");
           }
+          _startVideoFrameDirtyLoop();
 
           // Start camera (with a timeout)
           // FIXME(既知の課題): setTimeout コールバック内の throw は外側の try/catch に届かないため、
@@ -7691,6 +7723,8 @@
               _mpFrameSkipCounter = (_mpFrameSkipCounter + 1) | 0;
               willDetect = _mpFrameSkipCounter % 2 === 1;
             }
+            // perf: 肌セグは4フレームに1回・偶数フレーム（顔検出=奇数）に置いてGPU負荷を分散
+            const willSegment = canDetect && _mpFrameSkipCounter % 4 === 2;
 
             // Draw rotated frame to offscreen canvas when needed
             let mpInput = videoEl;
@@ -7719,11 +7753,11 @@
               }
             }
 
-            // 肌セグメンテーション（美肌補正(高負荷)トグルONのときのみ・顔検出と同じ1フレームおき）
+            // 肌セグメンテーション（美肌補正(高負荷)トグルONのときのみ・4フレームに1回）
             if (camSkinFxEnabled && videoEl.readyState >= 2) {
               if (!imageSegmenter) {
                 ensureImageSegmenter();
-              } else if (willDetect && !_segBusy) {
+              } else if (willSegment && !_segBusy) {
                 _segBusy = true;
                 const segRotDeg = inputRotationDeg || 0;
                 try {
