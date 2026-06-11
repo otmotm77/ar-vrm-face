@@ -904,6 +904,7 @@
         <h1>全般オプション</h1>
         <details class="acc-section" data-acc="basic" open>
           <summary>モデル（VRM毎）</summary>
+          <div id="vrm-license-info" style="display: none; font-size: 12px; line-height: 1.5; background: rgba(0, 0, 0, 0.04); border-radius: 6px; padding: 6px 8px; margin: 6px 0"></div>
 
           <button id="load-default-vrm-btn" class="restart-btn" style="margin-bottom: 4px">デフォルトVRMを表示</button>
           <div style="font-size: 12px; opacity: 0.85; margin-bottom: 8px; line-height: 1.4">※初回25MBのダウンロードが発生します。</div>
@@ -1566,8 +1567,8 @@
 
     <script type="module">
       // ===== App Version (single source of truth) =====
-      const APP_VERSION = "v6.07.00";
-      const APP_VERSION_NOTE = "feat: 全設定のエクスポート/インポート（JSON）を追加。カテゴリ名を「設定の管理」に変更";
+      const APP_VERSION = "v6.07.01";
+      const APP_VERSION_NOTE = "feat: 読み込んだVRMの名前/作者を表示し、性的利用禁止モデルに警告を表示";
 
       function getOverlayPixelRatio() {
         // Must match resizeCreamOverlayCanvas()/resizeBreathOverlayCanvas() DPR clamp for performance.
@@ -8347,6 +8348,40 @@
         updateOccluder();
       }
 
+      // 読み込んだVRMのライセンス情報（名前/作者）と性的利用禁止の警告を表示
+      // メタは信頼できない入力のため innerHTML を使わず textContent でDOM構築（XSS対策）
+      function updateVrmLicenseInfo(vrm) {
+        const el = document.getElementById("vrm-license-info");
+        if (!el) return;
+        const m = vrm && vrm.meta ? vrm.meta : null;
+        el.textContent = "";
+        if (!m) {
+          el.style.display = "none";
+          return;
+        }
+        const name = String(m.name || m.title || currentFileName || "不明").trim();
+        const author = Array.isArray(m.authors) ? m.authors.join(", ") : String(m.author || "").trim();
+        let sexualProhibited = false;
+        if (typeof m.sexualUssageName !== "undefined") sexualProhibited = m.sexualUssageName === "Disallow";
+        else if (typeof m.allowExcessivelySexualUsage !== "undefined") sexualProhibited = m.allowExcessivelySexualUsage === false;
+
+        const line1 = document.createElement("div");
+        const strong = document.createElement("strong");
+        strong.textContent = name;
+        line1.appendChild(strong);
+        if (author) line1.appendChild(document.createTextNode(" / " + author));
+        el.appendChild(line1);
+
+        if (sexualProhibited) {
+          const warn = document.createElement("div");
+          warn.style.color = "#c62828";
+          warn.style.marginTop = "4px";
+          warn.textContent = "⚠ このモデルは性的表現での利用が禁止されています。ご注意ください。";
+          el.appendChild(warn);
+        }
+        el.style.display = "block";
+      }
+
       // VRMのArrayBufferをパースしてシーンに反映（ファイル選択／デフォルトVRMボタンの共通経路）
       function loadVrmFromArrayBuffer(arrayBuffer, fileName, opts = {}) {
         const isDefaultVrm = !!opts.isDefault;
@@ -8372,6 +8407,7 @@
                 }
                 currentVrm = vrm;
                 currentVrmKey = deriveVrmKey(vrm, currentFileName); // メタ由来の保存キー
+                updateVrmLicenseInfo(vrm);
 
                 if (applyDefaultToVrmBtn) applyDefaultToVrmBtn.disabled = false;
                 VRMUtils.rotateVRM0(vrm);
