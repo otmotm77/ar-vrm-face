@@ -8602,8 +8602,26 @@
       // EOF guard
     </script>
     <div id="debug-text-overlay" style="position: fixed; left: 8px; top: 8px; z-index: 9999; background: rgba(0, 0, 0, 0.55); color: #fff; font: 12px/1.35 monospace; padding: 6px 8px; border-radius: 10px; white-space: pre; pointer-events: none; display: none; max-width: 92vw; box-sizing: border-box"></div>
-    <!-- Cloudflare Web Analytics -->
-    <script defer src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "bd5028f76c344e2384c7471bf9549489"}'></script>
+    <!-- Cloudflare Web Analytics（自己アクセスは ?cf-optout=1 でlocalStorageオプトアウト） -->
+    <script>
+      (function () {
+        try {
+          var p = new URLSearchParams(location.search);
+          if (p.has("cf-optout")) {
+            if (p.get("cf-optout") === "0") localStorage.removeItem("cf-optout");
+            else localStorage.setItem("cf-optout", "1");
+          }
+          if (localStorage.getItem("cf-optout") === "1") return; // 自分のアクセスは送信しない
+        } catch (e) {
+          /* localStorage不可環境では通常通り計測 */
+        }
+        var s = document.createElement("script");
+        s.defer = true;
+        s.src = "https://static.cloudflareinsights.com/beacon.min.js";
+        s.setAttribute("data-cf-beacon", '{"token": "bd5028f76c344e2384c7471bf9549489"}');
+        document.body.appendChild(s);
+      })();
+    </script>
     <!-- End Cloudflare Web Analytics -->
   </body>
 </html>
