@@ -1437,7 +1437,7 @@
               </label>
               <div id="skin-fx-controls" style="display: none; border-top: 1px dashed #abc; padding-top: 8px; margin-top: 5px">
                 <div class="slider-container">
-                  <span class="slider-label" style="font-size: 10px; color: #333">スムージング</span>
+                  <span class="slider-label" style="font-size: 10px; color: #333">ガウス</span>
                   <input type="range" id="skin-smooth-slider" min="0" max="100" step="1" value="0" />
                   <span id="skin-smooth-slider-val" class="val-display">0</span>
                 </div>
@@ -1508,10 +1508,10 @@
               <input type="range" id="cam-softglow-slider" min="0" max="100" step="1" value="0" />
               <span id="cam-softglow-slider-val" class="val-display">0</span>
             </div>
-            <div class="slider-container">
-              <span class="slider-label">ぼかし</span>
-              <input type="range" id="cam-blur-slider" min="0" max="5" step="0.5" value="0" />
-              <span id="cam-blur-slider-val" class="val-display">0</span>
+            <div class="slider-container" id="cam-svg-smooth-container">
+              <span class="slider-label">スムージング</span>
+              <input type="range" id="cam-svg-smooth-slider" min="0" max="100" step="1" value="0" />
+              <span id="cam-svg-smooth-slider-val" class="val-display">0</span>
             </div>
             <div class="slider-container">
               <span class="slider-label">セピア</span>
@@ -1567,8 +1567,8 @@
 
     <script type="module">
       // ===== App Version (single source of truth) =====
-      const APP_VERSION = "v6.07.02";
-      const APP_VERSION_NOTE = "feat: VRM照明・影の初期値を変更（影濃柔/光の高さ/向き/メイン光強さ）";
+      const APP_VERSION = "v6.07.03";
+      const APP_VERSION_NOTE = "feat: 全画面SVGスムージング追加 / fix: 肌スムージングを「ガウス」に改名・カメラ「ぼかし」削除";
 
       function getOverlayPixelRatio() {
         // Must match resizeCreamOverlayCanvas()/resizeBreathOverlayCanvas() DPR clamp for performance.
@@ -1663,6 +1663,7 @@
       let camSkinTempStrength = 0; // -1..1 (warm(+)/cool(-))
       let camSkinRedStrength = 0; // 0..1.5
       let camSkinSvgSmoothStrength = 0; // 0..1 (SVG周波数分離スムージング)
+      let camSvgSmoothFullStrength = 0; // 0..1 (全画面SVG周波数分離スムージング・肌マスクなし)
       // iOS/iPadOS WebKit は CanvasRenderingContext2D.filter 未サポートのため CSS filter にフォールバック
       const _ctxFilterSupported = (() => {
         try {
@@ -3387,7 +3388,11 @@
       const camBrightSlider = document.getElementById("cam-bright-slider");
       const camSatSlider = document.getElementById("cam-sat-slider");
       const camContSlider = document.getElementById("cam-cont-slider");
-      const camBlurSlider = document.getElementById("cam-blur-slider");
+      const camSvgSmoothFullSlider = document.getElementById("cam-svg-smooth-slider");
+      if (!_svgSkinFilterSupported) {
+        const _camSvgSmoothContainer = document.getElementById("cam-svg-smooth-container");
+        if (_camSvgSmoothContainer) _camSvgSmoothContainer.style.display = "none";
+      }
       const camSepiaSlider = document.getElementById("cam-sepia-slider");
       const camBlackSlider = document.getElementById("cam-black-slider");
       const camTempSlider = document.getElementById("cam-temp-slider");
@@ -3421,7 +3426,7 @@
         camBrightSlider,
         camSatSlider,
         camContSlider,
-        camBlurSlider,
+        camSvgSmoothFullSlider,
         camSepiaSlider,
         camBlackSlider,
         camTempSlider,
@@ -4629,7 +4634,7 @@
           camBright: camBrightSlider.value,
           camSat: camSatSlider.value,
           camCont: camContSlider.value,
-          camBlur: camBlurSlider.value,
+          camSvgSmoothFull: camSvgSmoothFullSlider ? camSvgSmoothFullSlider.value : "0",
           camSepia: camSepiaSlider.value,
           camBlack: camBlackSlider ? camBlackSlider.value : "0",
           camTemp: camTempSlider ? camTempSlider.value : "50",
@@ -4705,7 +4710,7 @@
           if (hasOwn("camBright") && camBrightSlider) camBrightSlider.value = s.camBright;
           if (hasOwn("camSat") && camSatSlider) camSatSlider.value = s.camSat;
           if (hasOwn("camCont") && camContSlider) camContSlider.value = s.camCont;
-          if (hasOwn("camBlur") && camBlurSlider) camBlurSlider.value = s.camBlur;
+          if (hasOwn("camSvgSmoothFull") && camSvgSmoothFullSlider) camSvgSmoothFullSlider.value = s.camSvgSmoothFull;
           if (hasOwn("camSepia") && camSepiaSlider) camSepiaSlider.value = s.camSepia;
           if (hasOwn("camBlack") && camBlackSlider) camBlackSlider.value = s.camBlack;
           if (hasOwn("camTemp") && camTempSlider) camTempSlider.value = s.camTemp;
@@ -4916,7 +4921,7 @@
         }
       }
 
-      [scaleSlider, xSlider, ySlider, zSlider, minCfSlider, betaSlider, mouthSensSlider, eyeSensSlider, lightIntSlider, ambIntSlider, lightYSlider, lightRotSlider, lightColorSlider, vrmSatSlider, vrmRedSlider, skinFxToggle, skinSmoothSlider, skinSvgSmoothSlider, skinBrightSlider, skinSatSlider, skinTempSlider, skinRedSlider, camBrightSlider, camSatSlider, camContSlider, camBlurSlider, camSepiaSlider, camBlackSlider, camTempSlider, camRedSlider, camVignetteSlider, camSoftGlowSlider, occlusionToggle, forceShadowToggle, shadowSoftnessSlider, shadowDarknessSlider, shadowColorPicker, occPosXSlider, occPosYSlider, occPosZSlider, occSizeXSlider, occSizeYSlider, occSizeZSlider].forEach((el) => {
+      [scaleSlider, xSlider, ySlider, zSlider, minCfSlider, betaSlider, mouthSensSlider, eyeSensSlider, lightIntSlider, ambIntSlider, lightYSlider, lightRotSlider, lightColorSlider, vrmSatSlider, vrmRedSlider, skinFxToggle, skinSmoothSlider, skinSvgSmoothSlider, skinBrightSlider, skinSatSlider, skinTempSlider, skinRedSlider, camBrightSlider, camSatSlider, camContSlider, camSvgSmoothFullSlider, camSepiaSlider, camBlackSlider, camTempSlider, camRedSlider, camVignetteSlider, camSoftGlowSlider, occlusionToggle, forceShadowToggle, shadowSoftnessSlider, shadowDarknessSlider, shadowColorPicker, occPosXSlider, occPosYSlider, occPosZSlider, occSizeXSlider, occSizeYSlider, occSizeZSlider].forEach((el) => {
         el.addEventListener("change", () => {
           saveSettings();
         });
@@ -4977,7 +4982,6 @@
         let b = parseFloat(camBrightSlider.value);
         let s = parseFloat(camSatSlider.value);
         let c = parseFloat(camContSlider.value);
-        let bl = parseFloat(camBlurSlider.value);
         const sp = parseFloat(camSepiaSlider.value);
 
         // Post effects (not part of ctx.filter)
@@ -4999,8 +5003,12 @@
         // SVGスムージング: 強度0..1 と blur大のσ（4..8）を反映（σ大を上げすぎると眉・目元の構造まで除去帯域に入る）
         const svgSk = skinSvgSmoothSlider ? parseFloat(skinSvgSmoothSlider.value) : 0;
         camSkinSvgSmoothStrength = Math.max(0, Math.min(1, svgSk / 100));
+        // 全画面SVGスムージング（肌マスクなし）。σ大は肌SVGと共用フィルタなので、両者の強い方に合わせる
+        const svgFull = camSvgSmoothFullSlider ? parseFloat(camSvgSmoothFullSlider.value) : 0;
+        camSvgSmoothFullStrength = Math.max(0, Math.min(1, svgFull / 100));
         if (_svgSkinFilterSupported && _svgSkinBlurLargeEl) {
-          const sd = (4 + camSkinSvgSmoothStrength * 4).toFixed(2);
+          const sStrength = Math.max(camSkinSvgSmoothStrength, camSvgSmoothFullStrength);
+          const sd = (4 + sStrength * 4).toFixed(2);
           if (_svgSkinBlurLargeEl.getAttribute("stdDeviation") !== sd) _svgSkinBlurLargeEl.setAttribute("stdDeviation", sd);
         }
 
@@ -5013,7 +5021,7 @@
         const skinRed = skinRedSlider ? parseFloat(skinRedSlider.value) : 0;
         camSkinRedStrength = Math.max(0, Math.min(1.5, skinRed / 100));
 
-        const filterStr = `brightness(${b}%) saturate(${s}%) contrast(${c}%) blur(${bl}px) sepia(${sp}%)`;
+        const filterStr = `brightness(${b}%) saturate(${s}%) contrast(${c}%) sepia(${sp}%)`;
         if (_ctxFilterSupported) {
           // ctx.filter で動作する環境（Chrome desktop, 最新Safari等）
           cameraFilterStr = filterStr;
@@ -7166,6 +7174,26 @@
               skinTintPass("rgb(255, 235, 210)", "screen", Math.min(0.12, skinS * 0.10));
             }
           }
+        }
+
+        // 全画面SVGスムージング: 肌マスクなしで映像全体に周波数分離を適用（0なら処理しない）
+        const svgFullS = typeof camSvgSmoothFullStrength === "number" ? camSvgSmoothFullStrength : 0;
+        if (_svgSkinFilterSupported && svgFullS > 0.001) {
+          const fw = Math.min(vw, SVG_SMOOTH_MAX_W);
+          const fh = Math.max(1, Math.round((vh * fw) / vw));
+          if (svgSmoothCanvas.width !== fw || svgSmoothCanvas.height !== fh) {
+            svgSmoothCanvas.width = fw;
+            svgSmoothCanvas.height = fh;
+          }
+          svgSmoothCtx.save();
+          svgSmoothCtx.clearRect(0, 0, fw, fh);
+          svgSmoothCtx.filter = "url(#svg-skin-smooth)";
+          svgSmoothCtx.drawImage(displayCanvas, 0, 0, fw, fh);
+          svgSmoothCtx.restore();
+          displayCtx.save();
+          displayCtx.globalAlpha = Math.min(0.7, svgFullS * 0.7);
+          displayCtx.drawImage(svgSmoothCanvas, 0, 0, vw, vh);
+          displayCtx.restore();
         }
 
         // Color Temperature (warm/cool) - subtle tint
