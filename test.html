@@ -1352,6 +1352,8 @@
           <button id="import-settings-btn" class="restart-btn" style="background: #455a64; margin-top: 8px">全設定をインポート（JSON）</button>
           <input type="file" id="import-settings-file" accept="application/json,.json" style="display: none" />
           <div style="font-size: 12px; opacity: 0.85; margin-top: 4px; line-height: 1.4">全設定（VRM毎・共通・カメラ・UI状態）をJSONで保存／復元します。インポートは現在の設定に上書きし、自動で再読み込みします。</div>
+          <button id="reset-all-settings-btn" class="restart-btn" style="background: #c62828; margin-top: 14px">全設定初期化</button>
+          <div style="font-size: 12px; opacity: 0.85; margin-top: 4px; line-height: 1.4">保存済みの全設定を消去して初期状態に戻します（アクセス解析オプトアウトは維持）。自動で再読み込みします。</div>
         </details>
       </div>
 
@@ -1567,8 +1569,8 @@
 
     <script type="module">
       // ===== App Version (single source of truth) =====
-      const APP_VERSION = "v6.07.03";
-      const APP_VERSION_NOTE = "feat: 全画面SVGスムージング追加 / fix: 肌スムージングを「ガウス」に改名・カメラ「ぼかし」削除";
+      const APP_VERSION = "v6.07.04";
+      const APP_VERSION_NOTE = "feat: 設定の管理に「全設定初期化」追加（オプトアウト維持）";
 
       function getOverlayPixelRatio() {
         // Must match resizeCreamOverlayCanvas()/resizeBreathOverlayCanvas() DPR clamp for performance.
@@ -8341,6 +8343,26 @@
             }
           };
           reader.readAsText(file);
+        });
+      }
+
+      // 全設定初期化: cf-optout（アクセス解析オプトアウト）以外のlocalStorageを全削除して再読み込み
+      const resetAllSettingsBtn = document.getElementById("reset-all-settings-btn");
+      if (resetAllSettingsBtn) {
+        resetAllSettingsBtn.addEventListener("click", () => {
+          if (!confirm("保存済みの全設定を消去して初期状態に戻します。よろしいですか？（自動で再読み込みします）")) return;
+          try {
+            const keep = "cf-optout";
+            const keys = [];
+            for (let i = 0; i < localStorage.length; i++) keys.push(localStorage.key(i));
+            keys.forEach((k) => {
+              if (k && k !== keep) localStorage.removeItem(k);
+            });
+            showToast("全設定を初期化しました。再読み込みします…");
+            setTimeout(() => location.reload(), 600);
+          } catch (e) {
+            showToast("初期化に失敗しました: " + e.message);
+          }
         });
       }
 
