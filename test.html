@@ -1296,6 +1296,11 @@
             <input type="range" id="mouth-sens-slider" min="0.5" max="5.0" step="0.1" value="1.5" />
             <span id="mouth-sens-slider-val" class="val-display">1.5</span>
           </div>
+          <div class="slider-container">
+            <span class="slider-label">表情シンク感度</span>
+            <input type="range" id="exprsync-sens-slider" min="0.2" max="3.0" step="0.05" value="1.0" />
+            <span id="exprsync-sens-slider-val" class="val-display">1.0</span>
+          </div>
 
           <div class="slider-container">
             <span class="slider-label">滑らかさ</span>
@@ -1581,8 +1586,8 @@
 
     <script type="module">
       // ===== App Version (single source of truth) =====
-      const APP_VERSION = "v6.08.00";
-      const APP_VERSION_NOTE = "feat: パーフェクトシンク/疑似パーフェクトシンク対応（対応モデル自動検出・VRM毎設定）";
+      const APP_VERSION = "v6.08.04";
+      const APP_VERSION_NOTE = "fix: 高さ等の調整時に髪(揺れもの)が浮くのを修正（spring bone reset）";
 
       function getOverlayPixelRatio() {
         // Must match resizeCreamOverlayCanvas()/resizeBreathOverlayCanvas() DPR clamp for performance.
@@ -2050,6 +2055,7 @@
       let smoothedMouthRatio = 0;
       let smoothedEyeL = 1;
       let smoothedEyeR = 1;
+      let springResetPending = false; // モデル位置を瞬間移動した際、次フレームで揺れものを静止位置へスナップ
 
       let isAutoBlink = true;
       let blinkTimer = 0;
@@ -2092,8 +2098,8 @@
         { morph: "Fcl_EYE_Joy",       sources: ["eyeSquintLeft", "eyeSquintRight"],     gain: 0.7, deadzone: 0.30 },
         { morph: "Fcl_MTH_Fun",       sources: ["mouthSmileLeft", "mouthSmileRight"],   gain: 1.0, deadzone: 0.20 },
         { morph: "Fcl_MTH_Sorrow",    sources: ["mouthFrownLeft", "mouthFrownRight"],   gain: 1.0, deadzone: 0.25 },
-        { morph: "Fcl_MTH_U",         sources: ["mouthPucker"],                         gain: 0.9, deadzone: 0.35 },
-        { morph: "Fcl_MTH_O",         sources: ["mouthFunnel"],                         gain: 1.0, deadzone: 0.25 },
+        { morph: "Fcl_MTH_U",         sources: ["mouthPucker"],                         gain: 0.6, deadzone: 0.55 },
+        { morph: "Fcl_MTH_O",         sources: ["mouthFunnel"],                         gain: 0.7, deadzone: 0.45 },
       ];
 
       // --- Blink timing helper ---
@@ -3182,6 +3188,7 @@
       const betaSlider = document.getElementById("beta-slider");
       const mouthSensSlider = document.getElementById("mouth-sens-slider");
       const eyeSensSlider = document.getElementById("eye-sens-slider");
+      const exprSyncSensSlider = document.getElementById("exprsync-sens-slider");
       const autoBlinkToggle = document.getElementById("autoblink-toggle");
       const perfectSyncToggle = document.getElementById("perfectsync-toggle");
       const perfectSyncLabel = document.getElementById("perfectsync-label");
@@ -3469,6 +3476,7 @@
         betaSlider,
         mouthSensSlider,
         eyeSensSlider,
+        exprSyncSensSlider,
         lightIntSlider,
         ambIntSlider,
         lightYSlider,
@@ -4741,6 +4749,7 @@
           trackingFacing: currentFacingMode,
           mouthSens: mouthSensSlider ? mouthSensSlider.value : "1.5",
           eyeSens: eyeSensSlider ? eyeSensSlider.value : "1.0",
+          exprSyncSens: exprSyncSensSlider ? exprSyncSensSlider.value : "1.0",
           minCF: minCfSlider ? minCfSlider.value : "0.0005",
           beta: betaSlider ? betaSlider.value : "0.04",
         };
@@ -4865,6 +4874,7 @@
           }
           if (hasOwn("mouthSens") && mouthSensSlider) mouthSensSlider.value = s.mouthSens;
           if (hasOwn("eyeSens") && eyeSensSlider) eyeSensSlider.value = s.eyeSens;
+          if (hasOwn("exprSyncSens") && exprSyncSensSlider) exprSyncSensSlider.value = s.exprSyncSens;
           if (hasOwn("minCF") && minCfSlider) minCfSlider.value = s.minCF;
           if (hasOwn("beta") && betaSlider) betaSlider.value = s.beta;
 
@@ -5015,7 +5025,7 @@
         }
       }
 
-      [scaleSlider, xSlider, ySlider, zSlider, minCfSlider, betaSlider, mouthSensSlider, eyeSensSlider, lightIntSlider, ambIntSlider, lightYSlider, lightRotSlider, lightColorSlider, vrmSatSlider, vrmRedSlider, skinFxToggle, skinSmoothSlider, skinSvgSmoothSlider, skinBrightSlider, skinSatSlider, skinTempSlider, skinRedSlider, camBrightSlider, camSatSlider, camContSlider, camSvgSmoothFullSlider, camSepiaSlider, camBlackSlider, camTempSlider, camRedSlider, camVignetteSlider, camSoftGlowSlider, occlusionToggle, forceShadowToggle, shadowSoftnessSlider, shadowDarknessSlider, shadowColorPicker, occPosXSlider, occPosYSlider, occPosZSlider, occSizeXSlider, occSizeYSlider, occSizeZSlider].forEach((el) => {
+      [scaleSlider, xSlider, ySlider, zSlider, minCfSlider, betaSlider, mouthSensSlider, eyeSensSlider, exprSyncSensSlider, lightIntSlider, ambIntSlider, lightYSlider, lightRotSlider, lightColorSlider, vrmSatSlider, vrmRedSlider, skinFxToggle, skinSmoothSlider, skinSvgSmoothSlider, skinBrightSlider, skinSatSlider, skinTempSlider, skinRedSlider, camBrightSlider, camSatSlider, camContSlider, camSvgSmoothFullSlider, camSepiaSlider, camBlackSlider, camTempSlider, camRedSlider, camVignetteSlider, camSoftGlowSlider, occlusionToggle, forceShadowToggle, shadowSoftnessSlider, shadowDarknessSlider, shadowColorPicker, occPosXSlider, occPosYSlider, occPosZSlider, occSizeXSlider, occSizeYSlider, occSizeZSlider].forEach((el) => {
         el.addEventListener("change", () => {
           saveSettings();
         });
@@ -8158,6 +8168,10 @@
             }
 
             if (currentVrm) {
+              if (springResetPending) {
+                if (currentVrm.springBoneManager) currentVrm.springBoneManager.reset();
+                springResetPending = false;
+              }
               currentVrm.update(delta);
               updateExpressionsFromFaceMesh(currentVrm, delta, isFaceVisible || holdLastPoseOnLost);
 
@@ -8256,6 +8270,7 @@
         let cameraBlinkR = 0;
         const mouthSens = parseFloat(mouthSensSlider.value);
         const eyeSens = parseFloat(eyeSensSlider.value);
+        const exprSyncSens = exprSyncSensSlider ? parseFloat(exprSyncSensSlider.value) : 1.0;
         let lmOpen = 0;
 
         if (isFaceVisible && latestBlendshapeMap && latestBlendshapeMap.size > 0) {
@@ -8301,6 +8316,9 @@
               raw = Math.max(Math.min(1, raw * mouthSens), lmOpen);
             } else if (bsName === "eyeBlinkLeft" || bsName === "eyeBlinkRight") {
               raw = Math.min(1, raw * eyeSens);
+            } else {
+              // 表情系キーは表情シンク感度で一括調整
+              raw = Math.min(1, raw * exprSyncSens);
             }
             let sm = perfectSyncSmoothed[bsName] ?? 0;
             sm += (raw - sm) * 15.0 * delta;
@@ -8347,7 +8365,7 @@
             let raw = 0;
             if (isFaceVisible) {
               for (const s of def.sources) raw = Math.max(raw, latestBlendshapeMap.get(s) ?? 0);
-              raw = Math.min(1, Math.max(0, (raw - def.deadzone) / (1 - def.deadzone)) * def.gain);
+              raw = Math.min(1, Math.max(0, (raw - def.deadzone) / (1 - def.deadzone)) * def.gain * exprSyncSens);
             }
             ps.smoothed += (raw - ps.smoothed) * 15.0 * delta;
             let v = ps.smoothed;
@@ -8888,24 +8906,65 @@
         }
       }
 
-      function makeHeadOnly(vrm) {
-        const hips = vrm.humanoid.getNormalizedBoneNode("hips");
-        const head = vrm.humanoid.getNormalizedBoneNode("head");
-        if (hips && head) {
-          hips.scale.setScalar(0.0001);
-          head.scale.setScalar(10000.0);
-          hips.updateMatrixWorld(true);
-          head.updateMatrixWorld(true);
+      const HEAD_WEIGHT_THRESHOLD = 0.5; // 1頂点が「head支配」とみなす head weight 合計の下限
+      const HEAD_MESH_FRACTION = 0.5; // メッシュを「頭部」とみなす head支配頂点の割合の下限
+
+      // メッシュ頂点のうち、head サブツリーのボーンに weight が支配的な頂点の割合を返す
+      function headVertexFraction(mesh, headSet) {
+        const geo = mesh.geometry;
+        const skinIndex = geo.attributes.skinIndex;
+        const skinWeight = geo.attributes.skinWeight;
+        const bones = mesh.skeleton.bones;
+        const idx = skinIndex.array; // Uint8Array / Uint16Array いずれも添字アクセス可
+        const w = skinWeight.array;
+        const itemSize = skinIndex.itemSize; // 通常4
+        const count = skinIndex.count;
+        if (count === 0) return 0;
+        let headDominant = 0;
+        for (let v = 0; v < count; v++) {
+          const base = v * itemSize;
+          let hw = 0;
+          for (let k = 0; k < itemSize; k++) {
+            const bone = bones[idx[base + k]];
+            if (bone && headSet.has(bone)) hw += w[base + k];
+          }
+          if (hw >= HEAD_WEIGHT_THRESHOLD) headDominant++;
         }
+        return headDominant / count;
+      }
+
+      // 頭部のみ表示。メッシュ名に依存せずスキニングの実weightで頭部/胴体を分離する。
+      function makeHeadOnly(vrm) {
+        // raw ボーンへ scale。three-vrm の update() は回転とhips位置のみ同期し scale は触らない
+        // ため raw に入れた scale は persist し、スキニング経由で頂点単位に作用する。hips を極小化
+        // → 胴体weightの頂点が原点付近に潰れ、head を逆数倍 → 頭部weightの頂点は world scale≈1。
+        const rawHips = vrm.humanoid && vrm.humanoid.getRawBoneNode("hips");
+        const rawHead = vrm.humanoid && vrm.humanoid.getRawBoneNode("head");
+        if (rawHips && rawHead) {
+          rawHips.scale.setScalar(0.0001);
+          rawHead.scale.setScalar(10000.0);
+          rawHips.updateMatrixWorld(true);
+          rawHead.updateMatrixWorld(true);
+        }
+        // head ボーンが取れない場合は分類できないので掃除をスキップ（顔を消さない安全側）
+        if (!rawHead) return;
+
+        const headSet = new Set();
+        rawHead.traverse((o) => headSet.add(o));
+
         vrm.scene.traverse((obj) => {
-          if (obj.isMesh || obj.isSkinnedMesh) {
-            const name = obj.name.toLowerCase();
-            const hideKeywords = ["body", "cloth", "top", "bottom", "skirt", "pants", "suit", "arm", "leg", "hand", "shoe"];
-            const keepKeywords = ["face", "head", "hair", "eye", "tooth", "teeth", "mouth", "tongue", "brow", "lash"];
-            if (hideKeywords.some((k) => name.includes(k)) && !keepKeywords.some((k) => name.includes(k))) {
-              obj.visible = false;
+          if (!obj.isMesh && !obj.isSkinnedMesh) return;
+          let keep;
+          if (obj.isSkinnedMesh && obj.skeleton && obj.geometry && obj.geometry.attributes.skinIndex && obj.geometry.attributes.skinWeight) {
+            keep = headVertexFraction(obj, headSet) >= HEAD_MESH_FRACTION;
+          } else {
+            // 非skinnedメッシュ: 親チェーンを辿り head サブツリー配下なら維持
+            keep = false;
+            for (let p = obj; p; p = p.parent) {
+              if (headSet.has(p)) { keep = true; break; }
             }
           }
+          obj.visible = keep;
         });
       }
 
@@ -8924,6 +8983,10 @@
 
         // Keep Y/Z (and any future offsets) on adjustmentGroup.
         adjustmentGroup.position.set(0, y, z);
+
+        // 位置を瞬間移動したので、揺れもの(spring bone)が旧位置に取り残されないよう次フレームでリセット
+        adjustmentGroup.updateMatrixWorld(true);
+        springResetPending = true;
       }
       scaleSlider.addEventListener("input", updateTransform);
       if (xSlider) xSlider.addEventListener("input", updateTransform);
