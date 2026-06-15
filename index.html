@@ -1362,6 +1362,14 @@
 
         <details class="acc-section" data-acc="default_settings">
           <summary>設定の管理</summary>
+          <div class="slider-container" style="margin-top: 4px">
+            <span class="slider-label">スクショのキー</span>
+            <span style="margin-left: auto; display: inline-flex; align-items: center; gap: 8px">
+              <span id="screenshot-key-display" style="min-width: 28px; text-align: center; padding: 4px 10px; border-radius: 6px; border: 1px solid #b0b0b0; background: #fff; color: #222; font: bold 13px monospace; box-shadow: 0 1px 0 rgba(0, 0, 0, 0.2)">S</span>
+              <button id="screenshot-key-rebind-btn" type="button" style="padding: 4px 12px; border-radius: 8px; border: none; background: #5c6bc0; color: #fff; cursor: pointer">変更</button>
+            </span>
+          </div>
+          <div style="font-size: 12px; opacity: 0.85; margin-bottom: 12px; line-height: 1.4">このキーでスクショを保存します（入力欄フォーカス中は無効）。「変更」を押して任意のキーを押すと再設定。Escでキャンセル。</div>
           <button id="save-default-btn" class="restart-btn" style="background: #5c6bc0">現在の設定をデフォルト設定として保存</button>
           <button id="apply-default-to-vrm-btn" class="restart-btn" style="background: #26a69a; margin-top: 8px" disabled>デフォルト設定を表示中のVRMに反映</button>
           <div style="font-size: 12px; opacity: 0.85; margin-top: 4px; line-height: 1.4">既に個別セーブがあるVRMに、保存済みデフォルト設定を反映（上書き保存）します。</div>
@@ -1586,8 +1594,8 @@
 
     <script type="module">
       // ===== App Version (single source of truth) =====
-      const APP_VERSION = "v6.08.04";
-      const APP_VERSION_NOTE = "fix: 高さ等の調整時に髪(揺れもの)が浮くのを修正（spring bone reset）";
+      const APP_VERSION = "v6.09.01";
+      const APP_VERSION_NOTE = "fix: スクショのキー表示を見やすく（ボタン横にキーキャップ風チップで表示）";
 
       function getOverlayPixelRatio() {
         // Must match resizeCreamOverlayCanvas()/resizeBreathOverlayCanvas() DPR clamp for performance.
@@ -2368,6 +2376,26 @@
       }
 
       // --- Screenshot (映像+VRM+VFX を1枚に合成して JPEG 保存。UIは含めない) ---
+      // スクショのキーボードショートカット（カスタマイズ可・グローバル設定で永続化）
+      let screenshotShortcut = { code: "KeyS", ctrl: false, shift: false, alt: false, meta: false };
+      let capturingShortcut = false;
+
+      // ショートカット定義 → 表示文字列
+      function formatShortcut(sc) {
+        if (!sc || !sc.code) return "なし";
+        let label = sc.code;
+        if (label.startsWith("Key")) label = label.slice(3);
+        else if (label.startsWith("Digit")) label = label.slice(5);
+        else if (label === "Space") label = "Space";
+        else if (label.startsWith("Arrow")) label = { ArrowUp: "↑", ArrowDown: "↓", ArrowLeft: "←", ArrowRight: "→" }[label] || label;
+        const mods = [];
+        if (sc.ctrl) mods.push("Ctrl");
+        if (sc.shift) mods.push("Shift");
+        if (sc.alt) mods.push("Alt");
+        if (sc.meta) mods.push("Meta");
+        return mods.length ? mods.join("+") + "+" + label : label;
+      }
+
       function captureScreenshot() {
         try {
           const scale = getOverlayPixelRatio();
@@ -2453,6 +2481,46 @@
           captureScreenshot();
         });
       }
+
+      // スクショのキーボードショートカット: グローバル keydown でキー一致時に撮影
+      window.addEventListener("keydown", (e) => {
+        if (capturingShortcut) return; // リバインド中はキャプチャ側が処理
+        const t = document.activeElement;
+        if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable)) return;
+        const sc = screenshotShortcut;
+        if (sc && sc.code && e.code === sc.code && e.ctrlKey === sc.ctrl && e.shiftKey === sc.shift && e.altKey === sc.alt && e.metaKey === sc.meta) {
+          e.preventDefault();
+          captureScreenshot();
+        }
+      });
+
+      // ショートカットのリバインドUI
+      const screenshotKeyDisplay = document.getElementById("screenshot-key-display");
+      const screenshotKeyRebindBtn = document.getElementById("screenshot-key-rebind-btn");
+      function updateShortcutDisplay() {
+        if (screenshotKeyDisplay) screenshotKeyDisplay.textContent = formatShortcut(screenshotShortcut);
+      }
+      if (screenshotKeyRebindBtn) {
+        screenshotKeyRebindBtn.addEventListener("click", () => {
+          capturingShortcut = true;
+          if (screenshotKeyDisplay) screenshotKeyDisplay.textContent = "キーを押す…";
+          const onKey = (ev) => {
+            ev.preventDefault();
+            ev.stopPropagation();
+            if (ev.key === "Escape") {
+              // キャンセル（変更なし）
+            } else if (!["Shift", "Control", "Alt", "Meta"].includes(ev.key)) {
+              screenshotShortcut = { code: ev.code, ctrl: ev.ctrlKey, shift: ev.shiftKey, alt: ev.altKey, meta: ev.metaKey };
+              saveGlobalSettings();
+            }
+            capturingShortcut = false;
+            updateShortcutDisplay();
+            window.removeEventListener("keydown", onKey, true);
+          };
+          window.addEventListener("keydown", onKey, true); // capture phase で先取り
+        });
+      }
+      updateShortcutDisplay();
 
       // --- Tracking Pause Toggle (pose lock) ---
       const trackingPauseBtn = document.getElementById("tracking-pause-btn");
@@ -4752,6 +4820,8 @@
           exprSyncSens: exprSyncSensSlider ? exprSyncSensSlider.value : "1.0",
           minCF: minCfSlider ? minCfSlider.value : "0.0005",
           beta: betaSlider ? betaSlider.value : "0.04",
+          // スクショのショートカットキー
+          screenshotKey: screenshotShortcut,
         };
         try {
           localStorage.setItem(LS_CAM_GLOBAL, JSON.stringify(s));
@@ -4810,6 +4880,12 @@
           if (hasOwn("camRed") && camRedSlider) camRedSlider.value = s.camRed;
           if (hasOwn("camVignette") && camVignetteSlider) camVignetteSlider.value = s.camVignette;
           if (hasOwn("camSoftGlow") && camSoftGlowSlider) camSoftGlowSlider.value = s.camSoftGlow;
+
+          // --- スクショのショートカットキー ---
+          if (hasOwn("screenshotKey") && s.screenshotKey && s.screenshotKey.code) {
+            screenshotShortcut = s.screenshotKey;
+            if (typeof updateShortcutDisplay === "function") updateShortcutDisplay();
+          }
 
           // --- クリーム射出 ---
           if (hasOwn("creamLife") && typeof creamLifeSlider !== "undefined" && creamLifeSlider) {
