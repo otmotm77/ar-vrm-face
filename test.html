@@ -1010,6 +1010,18 @@
             </label>
           </div>
           <div class="slider-container">
+            <label class="toggle-label" id="perfectsync-label">
+              <input type="checkbox" id="perfectsync-toggle" class="toggle-checkbox" />
+              パーフェクトシンク <span id="perfectsync-status" class="val-display"></span>
+            </label>
+          </div>
+          <div class="slider-container">
+            <label class="toggle-label" id="pseudosync-label">
+              <input type="checkbox" id="pseudosync-toggle" class="toggle-checkbox" />
+              疑似パーフェクトシンク <span id="pseudosync-status" class="val-display"></span>
+            </label>
+          </div>
+          <div class="slider-container">
             <label class="toggle-label">
               <input type="checkbox" id="blush-toggle" class="toggle-checkbox" />
               頬紅潮エフェクト
@@ -1569,8 +1581,8 @@
 
     <script type="module">
       // ===== App Version (single source of truth) =====
-      const APP_VERSION = "v6.07.04";
-      const APP_VERSION_NOTE = "feat: 設定の管理に「全設定初期化」追加（オプトアウト維持）";
+      const APP_VERSION = "v6.08.00";
+      const APP_VERSION_NOTE = "feat: パーフェクトシンク/疑似パーフェクトシンク対応（対応モデル自動検出・VRM毎設定）";
 
       function getOverlayPixelRatio() {
         // Must match resizeCreamOverlayCanvas()/resizeBreathOverlayCanvas() DPR clamp for performance.
@@ -2044,6 +2056,45 @@
       let nextBlinkTime = 0;
       let blinkState = 0;
       let blinkDuration = 0.15;
+
+      // --- Perfect Sync / Pseudo Perfect Sync ---
+      let isPerfectSync = false;
+      let isPseudoSync = false;
+      let perfectSyncSupport = null; // { count, entries: Map<arkitName,{type,name?,targets?}>, hasJaw, hasBlink }
+      let pseudoSyncTargets = [];    // [{ def, targets:[{mesh,index}], smoothed }]
+      let perfectSyncSmoothed = Object.create(null); // arkitName -> smoothed value
+      const PERFECT_SYNC_MIN_KEYS = 10; // これ未満の部分一致では有効化しない
+      const PSEUDO_SYNC_MIN_MORPHS = 4; // これ未満では疑似を有効化しない
+      // MediaPipe FaceLandmarker が出力する ARKit 互換 52 ブレンドシェイプ名（"_neutral" は除外）
+      const ARKIT_BLENDSHAPE_NAMES = [
+        "browDownLeft", "browDownRight", "browInnerUp", "browOuterUpLeft", "browOuterUpRight",
+        "cheekPuff", "cheekSquintLeft", "cheekSquintRight",
+        "eyeBlinkLeft", "eyeBlinkRight", "eyeLookDownLeft", "eyeLookDownRight",
+        "eyeLookInLeft", "eyeLookInRight", "eyeLookOutLeft", "eyeLookOutRight",
+        "eyeLookUpLeft", "eyeLookUpRight", "eyeSquintLeft", "eyeSquintRight",
+        "eyeWideLeft", "eyeWideRight",
+        "jawForward", "jawLeft", "jawOpen", "jawRight",
+        "mouthClose", "mouthDimpleLeft", "mouthDimpleRight", "mouthFrownLeft", "mouthFrownRight",
+        "mouthFunnel", "mouthLeft", "mouthLowerDownLeft", "mouthLowerDownRight",
+        "mouthPressLeft", "mouthPressRight", "mouthPucker", "mouthRight",
+        "mouthRollLower", "mouthRollUpper", "mouthShrugLower", "mouthShrugUpper",
+        "mouthSmileLeft", "mouthSmileRight", "mouthStretchLeft", "mouthStretchRight",
+        "mouthUpperUpLeft", "mouthUpperUpRight",
+        "noseSneerLeft", "noseSneerRight",
+      ];
+      // 疑似パーフェクトシンク: ARKit ブレンドシェイプ → VRoid Fcl_* モーフへの近似マッピング
+      // combine は常に max（左右ペアの加算飽和を避ける）。値 = clamp01((raw - deadzone)/(1-deadzone)) * gain
+      const PSEUDO_SYNC_MAP = [
+        { morph: "Fcl_BRW_Angry",     sources: ["browDownLeft", "browDownRight"],       gain: 1.2, deadzone: 0.25 },
+        { morph: "Fcl_BRW_Sorrow",    sources: ["browInnerUp"],                         gain: 1.0, deadzone: 0.30, overlap: "exprBrowSorrow" },
+        { morph: "Fcl_BRW_Surprised", sources: ["browOuterUpLeft", "browOuterUpRight"], gain: 1.2, deadzone: 0.25 },
+        { morph: "Fcl_EYE_Surprised", sources: ["eyeWideLeft", "eyeWideRight"],         gain: 1.0, deadzone: 0.20 },
+        { morph: "Fcl_EYE_Joy",       sources: ["eyeSquintLeft", "eyeSquintRight"],     gain: 0.7, deadzone: 0.30 },
+        { morph: "Fcl_MTH_Fun",       sources: ["mouthSmileLeft", "mouthSmileRight"],   gain: 1.0, deadzone: 0.20 },
+        { morph: "Fcl_MTH_Sorrow",    sources: ["mouthFrownLeft", "mouthFrownRight"],   gain: 1.0, deadzone: 0.25 },
+        { morph: "Fcl_MTH_U",         sources: ["mouthPucker"],                         gain: 0.9, deadzone: 0.35 },
+        { morph: "Fcl_MTH_O",         sources: ["mouthFunnel"],                         gain: 1.0, deadzone: 0.25 },
+      ];
 
       // --- Blink timing helper ---
       const BLINK_INTERVAL_MIN = 2.0; // seconds
@@ -3132,6 +3183,12 @@
       const mouthSensSlider = document.getElementById("mouth-sens-slider");
       const eyeSensSlider = document.getElementById("eye-sens-slider");
       const autoBlinkToggle = document.getElementById("autoblink-toggle");
+      const perfectSyncToggle = document.getElementById("perfectsync-toggle");
+      const perfectSyncLabel = document.getElementById("perfectsync-label");
+      const perfectSyncStatus = document.getElementById("perfectsync-status");
+      const pseudoSyncToggle = document.getElementById("pseudosync-toggle");
+      const pseudoSyncLabel = document.getElementById("pseudosync-label");
+      const pseudoSyncStatus = document.getElementById("pseudosync-status");
 
       const blushToggle = document.getElementById("blush-toggle");
       const blushControls = document.getElementById("blush-controls");
@@ -3641,6 +3698,29 @@
         isAutoBlink = e.target.checked;
         saveSettings();
       });
+
+      if (perfectSyncToggle) {
+        perfectSyncToggle.addEventListener("change", (e) => {
+          isPerfectSync = e.target.checked;
+          if (isPerfectSync && pseudoSyncToggle) {
+            pseudoSyncToggle.checked = false; // 排他
+            isPseudoSync = false;
+          }
+          clearSyncOutputs();
+          saveSettings();
+        });
+      }
+      if (pseudoSyncToggle) {
+        pseudoSyncToggle.addEventListener("change", (e) => {
+          isPseudoSync = e.target.checked;
+          if (isPseudoSync && perfectSyncToggle) {
+            perfectSyncToggle.checked = false; // 排他
+            isPerfectSync = false;
+          }
+          clearSyncOutputs();
+          saveSettings();
+        });
+      }
       occlusionToggle.addEventListener("change", (e) => {
         updateOccluder();
         saveSettings();
@@ -4556,6 +4636,8 @@
           z: zSlider.value,
           // 滑らかさ(minCF)/敏感さ(beta)/目/口の感度は共通保存(saveGlobalSettings)へ移行
           autoBlink: autoBlinkToggle.checked,
+          perfectSync: perfectSyncToggle ? perfectSyncToggle.checked : false,
+          pseudoSync: pseudoSyncToggle ? pseudoSyncToggle.checked : false,
           occlusion: occlusionToggle.checked,
           forceShadow: forceShadowToggle.checked,
           shadowSoft: shadowSoftnessSlider.value,
@@ -4818,6 +4900,16 @@
               if (s.autoBlink !== undefined) {
                 autoBlinkToggle.checked = s.autoBlink;
                 isAutoBlink = s.autoBlink;
+              }
+              // パーフェクトシンク系: 対応モデル(disabled=false)のときのみ復元。壊れデータは perfectSync 優先
+              if (s.perfectSync !== undefined && perfectSyncToggle && !perfectSyncToggle.disabled) {
+                perfectSyncToggle.checked = !!s.perfectSync;
+                isPerfectSync = !!s.perfectSync;
+              }
+              if (s.pseudoSync !== undefined && pseudoSyncToggle && !pseudoSyncToggle.disabled) {
+                const wantPseudo = !!s.pseudoSync && !isPerfectSync;
+                pseudoSyncToggle.checked = wantPseudo;
+                isPseudoSync = wantPseudo;
               }
               if (s.occlusion !== undefined) occlusionToggle.checked = s.occlusion;
               if (s.forceShadow !== undefined) {
@@ -8162,18 +8254,18 @@
         let mouthOpen = 0;
         let cameraBlinkL = 0;
         let cameraBlinkR = 0;
+        const mouthSens = parseFloat(mouthSensSlider.value);
+        const eyeSens = parseFloat(eyeSensSlider.value);
+        let lmOpen = 0;
 
         if (isFaceVisible && latestBlendshapeMap && latestBlendshapeMap.size > 0) {
-          const mouthSens = parseFloat(mouthSensSlider.value);
-          const eyeSens = parseFloat(eyeSensSlider.value);
-
           const jawOpen = latestBlendshapeMap.get("jawOpen") ?? latestBlendshapeMap.get("mouthOpen") ?? 0;
           const blinkL = latestBlendshapeMap.get("eyeBlinkLeft") ?? 0;
           const blinkR = latestBlendshapeMap.get("eyeBlinkRight") ?? 0;
 
           mouthOpen = Math.min(1, Math.max(0, jawOpen * mouthSens));
           // If blendshapes are weak, augment using landmarks-based mouth open
-          const lmOpen = Math.min(1, Math.max(0, (latestMouthOpenFromLandmarks - 0.02) * 12.0 * mouthSens));
+          lmOpen = Math.min(1, Math.max(0, (latestMouthOpenFromLandmarks - 0.02) * 12.0 * mouthSens));
           mouthOpen = Math.max(mouthOpen, lmOpen);
 
           cameraBlinkL = Math.min(1, Math.max(0, blinkL * eyeSens));
@@ -8190,12 +8282,40 @@
         const finalBlinkL = Math.max(autoBlinkValue, smoothedEyeL);
         const finalBlinkR = Math.max(autoBlinkValue, smoothedEyeR);
 
-        vrm.expressionManager.setValue("aa", smoothedMouthRatio);
+        // パーフェクトシンク時は jaw/blink を 52 キー側で駆動するため既存 aa/blink を抑制
+        const psJaw = isPerfectSync && perfectSyncSupport && perfectSyncSupport.hasJaw;
+        const psBlink = isPerfectSync && perfectSyncSupport && perfectSyncSupport.hasBlink;
+
+        vrm.expressionManager.setValue("aa", psJaw ? 0 : smoothedMouthRatio);
 
         const blinkMax = Math.max(finalBlinkL, finalBlinkR);
-        vrm.expressionManager.setValue("blink", blinkMax);
-        vrm.expressionManager.setValue("blink_l", finalBlinkL);
-        vrm.expressionManager.setValue("blink_r", finalBlinkR);
+        vrm.expressionManager.setValue("blink", psBlink ? 0 : blinkMax);
+        vrm.expressionManager.setValue("blink_l", psBlink ? 0 : finalBlinkL);
+        vrm.expressionManager.setValue("blink_r", psBlink ? 0 : finalBlinkR);
+
+        // --- パーフェクトシンク: ARKit 52 ブレンドシェイプを各表情/モーフへ適用 ---
+        if (isPerfectSync && perfectSyncSupport) {
+          for (const [bsName, entry] of perfectSyncSupport.entries) {
+            let raw = isFaceVisible ? (latestBlendshapeMap.get(bsName) ?? 0) : 0;
+            if (bsName === "jawOpen") {
+              raw = Math.max(Math.min(1, raw * mouthSens), lmOpen);
+            } else if (bsName === "eyeBlinkLeft" || bsName === "eyeBlinkRight") {
+              raw = Math.min(1, raw * eyeSens);
+            }
+            let sm = perfectSyncSmoothed[bsName] ?? 0;
+            sm += (raw - sm) * 15.0 * delta;
+            perfectSyncSmoothed[bsName] = sm;
+            let v = sm;
+            if (bsName === "eyeBlinkLeft" || bsName === "eyeBlinkRight") v = Math.max(v, autoBlinkValue);
+            if (entry.type === "expr") {
+              vrm.expressionManager.setValue(entry.name, v);
+            } else {
+              for (const t of entry.targets) {
+                if (t.mesh.morphTargetInfluences) t.mesh.morphTargetInfluences[t.index] = v;
+              }
+            }
+          }
+        }
 
         // 表情オフセットスライダー（カメラ追従に重ねる）
         if (!_exprSliderPairs) {
@@ -8217,6 +8337,27 @@
           const v = ms.slider ? Math.max(0, Math.min(1, parseFloat(ms.slider.value) || 0)) : 0;
           for (const t of ms.targets) {
             if (t.mesh.morphTargetInfluences) t.mesh.morphTargetInfluences[t.index] = v;
+          }
+        }
+
+        // --- 疑似パーフェクトシンク: ARKit 値を Fcl_* モーフへ近似適用 ---
+        if (isPseudoSync) {
+          for (const ps of pseudoSyncTargets) {
+            const def = ps.def;
+            let raw = 0;
+            if (isFaceVisible) {
+              for (const s of def.sources) raw = Math.max(raw, latestBlendshapeMap.get(s) ?? 0);
+              raw = Math.min(1, Math.max(0, (raw - def.deadzone) / (1 - def.deadzone)) * def.gain);
+            }
+            ps.smoothed += (raw - ps.smoothed) * 15.0 * delta;
+            let v = ps.smoothed;
+            // 既存個別モーフスライダーと重複する出力はスライダー値との max で競合解決
+            const ovSlider = def.overlap ? PSEUDO_OVERLAP_SLIDERS[def.overlap] : null;
+            if (ovSlider) v = Math.max(v, Math.min(1, parseFloat(ovSlider.value) || 0));
+            // 代入（=）。対象モーフは expression に未バインドのため max だと残留する
+            for (const t of ps.targets) {
+              if (t.mesh.morphTargetInfluences) t.mesh.morphTargetInfluences[t.index] = v;
+            }
           }
         }
 
@@ -8476,6 +8617,9 @@
                   return { slider: d.slider, targets };
                 });
 
+                // パーフェクトシンク/疑似パーフェクトシンクの対応可否を検出（loadSettings より前）
+                detectSyncSupport(vrm);
+
                 vrm.scene.rotation.y = Math.PI;
                 vrm.scene.updateMatrixWorld(true);
                 const box = new THREE.Box3();
@@ -8607,6 +8751,142 @@
         { slider: exprEyeSorrowSlider,  morph: "EYE_Sorrow" },
       ];
       let morphSliderTargets = []; // [{ slider, targets:[{mesh,index}] }]
+
+      // 疑似シンクの overlap キー → スライダー（既存個別モーフスライダーとの競合解決用）
+      const PSEUDO_OVERLAP_SLIDERS = {
+        exprBrowSorrow: typeof exprBrowSorrowSlider !== "undefined" ? exprBrowSorrowSlider : null,
+        exprEyeSorrow: typeof exprEyeSorrowSlider !== "undefined" ? exprEyeSorrowSlider : null,
+      };
+
+      // VRM 内の全モーフ名 → [{mesh,index}] を収集（小文字キーで正規化）
+      function collectMorphDictionary(vrm) {
+        const byLower = new Map(); // lowercaseName -> [{mesh,index}]
+        const byInclude = [];      // { lower, mesh, index } （includes 探索用）
+        vrm.scene.traverse((obj) => {
+          if ((obj.isMesh || obj.isSkinnedMesh) && obj.morphTargetDictionary) {
+            for (const key in obj.morphTargetDictionary) {
+              const index = obj.morphTargetDictionary[key];
+              const lower = key.toLowerCase();
+              if (!byLower.has(lower)) byLower.set(lower, []);
+              byLower.get(lower).push({ mesh: obj, index });
+              byInclude.push({ lower, mesh: obj, index });
+            }
+          }
+        });
+        return { byLower, byInclude };
+      }
+
+      // パーフェクトシンク/疑似パーフェクトシンクの対応可否を検出し、UI とグローバル状態を更新
+      function detectSyncSupport(vrm) {
+        // 状態リセット
+        clearSyncOutputs();
+        perfectSyncSupport = null;
+        pseudoSyncTargets = [];
+        perfectSyncSmoothed = Object.create(null);
+
+        const dict = vrm && vrm.scene ? collectMorphDictionary(vrm) : { byLower: new Map(), byInclude: [] };
+
+        // --- パーフェクトシンク検出 ---
+        // expressionManager のカスタム表情名を小文字正規化して照合
+        const exprByLower = new Map();
+        if (vrm && vrm.expressionManager && vrm.expressionManager.expressionMap) {
+          for (const name in vrm.expressionManager.expressionMap) {
+            exprByLower.set(name.toLowerCase(), name);
+          }
+        }
+        const entries = new Map();
+        let hasJaw = false, hasBlink = 0;
+        for (const bs of ARKIT_BLENDSHAPE_NAMES) {
+          const lower = bs.toLowerCase();
+          if (exprByLower.has(lower)) {
+            entries.set(bs, { type: "expr", name: exprByLower.get(lower) });
+          } else if (dict.byLower.has(lower)) {
+            // fallback: モーフ名の小文字完全一致（includes だと誤マッチするため ===）
+            entries.set(bs, { type: "morph", targets: dict.byLower.get(lower) });
+          } else {
+            continue;
+          }
+          if (bs === "jawOpen") hasJaw = true;
+          if (bs === "eyeBlinkLeft" || bs === "eyeBlinkRight") hasBlink++;
+        }
+        perfectSyncSupport = { count: entries.size, entries, hasJaw, hasBlink: hasBlink >= 2 };
+
+        // --- 疑似パーフェクトシンク検出 ---
+        // VRoid は "Face.M_F00_..._Fcl_BRW_Angry" 形式のため includes で探索
+        const targets = [];
+        for (const def of PSEUDO_SYNC_MAP) {
+          const lowerMorph = def.morph.toLowerCase();
+          const hit = [];
+          for (const e of dict.byInclude) {
+            if (e.lower.includes(lowerMorph)) hit.push({ mesh: e.mesh, index: e.index });
+          }
+          if (hit.length > 0) {
+            targets.push({ def, targets: hit, smoothed: 0 });
+          }
+        }
+        pseudoSyncTargets = targets;
+
+        updateSyncToggleUI();
+      }
+
+      // トグルの有効/無効・状態表示を更新（非対応なら強制 OFF）
+      function updateSyncToggleUI() {
+        const psCount = perfectSyncSupport ? perfectSyncSupport.count : 0;
+        const psOk = psCount >= PERFECT_SYNC_MIN_KEYS;
+        if (perfectSyncToggle) {
+          perfectSyncToggle.disabled = !psOk;
+          if (!psOk && perfectSyncToggle.checked) {
+            perfectSyncToggle.checked = false;
+            isPerfectSync = false;
+          }
+        }
+        if (perfectSyncLabel) perfectSyncLabel.style.opacity = psOk ? "1" : "0.45";
+        if (perfectSyncStatus) {
+          perfectSyncStatus.textContent =
+            psCount === 0 ? "非対応"
+            : psOk ? `対応 ${psCount}/52`
+            : `対応 ${psCount}/52（${PERFECT_SYNC_MIN_KEYS}以上で有効）`;
+        }
+
+        const pseudoCount = pseudoSyncTargets.length;
+        const pseudoOk = pseudoCount >= PSEUDO_SYNC_MIN_MORPHS;
+        if (pseudoSyncToggle) {
+          pseudoSyncToggle.disabled = !pseudoOk;
+          if (!pseudoOk && pseudoSyncToggle.checked) {
+            pseudoSyncToggle.checked = false;
+            isPseudoSync = false;
+          }
+        }
+        if (pseudoSyncLabel) pseudoSyncLabel.style.opacity = pseudoOk ? "1" : "0.45";
+        if (pseudoSyncStatus) {
+          pseudoSyncStatus.textContent =
+            pseudoCount === 0 ? "非対応"
+            : pseudoOk ? `対応 ${pseudoCount}/${PSEUDO_SYNC_MAP.length}`
+            : `対応 ${pseudoCount}/${PSEUDO_SYNC_MAP.length}（${PSEUDO_SYNC_MIN_MORPHS}以上で有効）`;
+        }
+      }
+
+      // シンク出力を 0 に戻し、スムージング状態をリセット（OFF/切替/モデル変更時）
+      function clearSyncOutputs() {
+        if (perfectSyncSupport && perfectSyncSupport.entries) {
+          for (const [, entry] of perfectSyncSupport.entries) {
+            if (entry.type === "expr" && currentVrm && currentVrm.expressionManager) {
+              currentVrm.expressionManager.setValue(entry.name, 0);
+            } else if (entry.type === "morph") {
+              for (const t of entry.targets) {
+                if (t.mesh.morphTargetInfluences) t.mesh.morphTargetInfluences[t.index] = 0;
+              }
+            }
+          }
+        }
+        perfectSyncSmoothed = Object.create(null);
+        for (const ps of pseudoSyncTargets) {
+          ps.smoothed = 0;
+          for (const t of ps.targets) {
+            if (t.mesh.morphTargetInfluences) t.mesh.morphTargetInfluences[t.index] = 0;
+          }
+        }
+      }
 
       function makeHeadOnly(vrm) {
         const hips = vrm.humanoid.getNormalizedBoneNode("hips");
