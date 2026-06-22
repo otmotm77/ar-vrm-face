@@ -1594,8 +1594,8 @@
 
     <script type="module">
       // ===== App Version (single source of truth) =====
-      const APP_VERSION = "v6.09.01";
-      const APP_VERSION_NOTE = "fix: スクショのキー表示を見やすく（ボタン横にキーキャップ風チップで表示）";
+      const APP_VERSION = "v6.09.05";
+      const APP_VERSION_NOTE = "fix: 横ロック+縦持ちで高さ/左右スライダーが両方とも同方向に潰れる不具合（高さをpose回転の外へ移動） / revert: 端末傾き入力回転の実験を取消";
 
       function getOverlayPixelRatio() {
         // Must match resizeCreamOverlayCanvas()/resizeBreathOverlayCanvas() DPR clamp for performance.
@@ -9053,12 +9053,17 @@
         const y = parseFloat(ySlider.value);
         const z = parseFloat(zSlider.value);
 
-        // X is applied to wrapperGroup so the rotation center (tracked pose origin) moves with the model.
-        // Multiply by baseScale so the slider keeps roughly the same "feel" as before.
-        if (wrapperGroup) wrapperGroup.position.x = x * MODEL_BASE_SCALE;
+        // X/Y are applied to wrapperGroup (OUTSIDE pivotGroup) so they stay in screen/world space and are
+        // NOT rotated by the tracked face pose. Otherwise, when the face pose has a ~90° roll (e.g. screen
+        // locked landscape + device held portrait), Y(高さ) would rotate into the screen-horizontal axis and
+        // collapse onto X — making both sliders move the model the same way. Keeping both on wrapperGroup
+        // makes 高さ=screen-vertical / 左右=screen-horizontal in any device hold.
+        // Multiply by baseScale so the sliders keep roughly the same "feel" as before
+        // (adjustmentGroup sat under pivotGroup's baseScale, so its y was effectively y*baseScale in world).
+        if (wrapperGroup) wrapperGroup.position.set(x * MODEL_BASE_SCALE, y * MODEL_BASE_SCALE, 0);
 
-        // Keep Y/Z (and any future offsets) on adjustmentGroup.
-        adjustmentGroup.position.set(0, y, z);
+        // Keep Z(前後) on adjustmentGroup (depth along the face-forward direction; unrelated to screen X/Y collapse).
+        adjustmentGroup.position.set(0, 0, z);
 
         // 位置を瞬間移動したので、揺れもの(spring bone)が旧位置に取り残されないよう次フレームでリセット
         adjustmentGroup.updateMatrixWorld(true);
