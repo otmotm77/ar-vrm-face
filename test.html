@@ -1594,8 +1594,8 @@
 
     <script type="module">
       // ===== App Version (single source of truth) =====
-      const APP_VERSION = "v6.09.05";
-      const APP_VERSION_NOTE = "fix: 横ロック+縦持ちで高さ/左右スライダーが両方とも同方向に潰れる不具合（高さをpose回転の外へ移動） / revert: 端末傾き入力回転の実験を取消";
+      const APP_VERSION = "v6.09.08";
+      const APP_VERSION_NOTE = "fix: 画面ロック縦持ち＋ミラー表示時に左右スライダーの向きが逆になるのを修正（ミラー時は左右軸を反転）";
 
       function getOverlayPixelRatio() {
         // Must match resizeCreamOverlayCanvas()/resizeBreathOverlayCanvas() DPR clamp for performance.
@@ -1851,6 +1851,10 @@
 
       let deviceGamma = 0;
       let deviceBeta = 0;
+      // Rotation (deg) applied to the X/Y slider offset so it follows the device's PHYSICAL orientation
+      // when the screen orientation is locked. Gravity-based (beta/gamma), with hysteresis. 0 = aligned.
+      let _modelOffsetRotDeg = 0;
+      let _lastMirrorForOffset = true; // tracks mirror state so a mirror toggle re-applies the rotated offset
       let inputRotationDeg = 0;
       let lastBaseInputRotDeg = 0;
       let autoInputRotationDeg = 0;
@@ -2121,6 +2125,31 @@
       nextBlinkTime = getRandomBlinkTime();
       let lightRelativePos = new THREE.Vector3(1, 1, 1);
       // --- Device tilt (for rotation-locked capture) ---
+      // Decide how much to rotate the X/Y slider offset so it tracks the device's PHYSICAL orientation
+      // even when the screen orientation is LOCKED (viewport can't reflect the physical hold). Uses gravity
+      // (beta/gamma) only — no face detection, so there is no feedback loop. Hysteresis avoids mid-rotation flicker.
+      // Returns 0 (aligned) or ±90. Falls back to current value when tilt is ambiguous (device near-flat),
+      // and to 0 when deviceorientation is unavailable (beta=gamma=0).
+      function computeModelOffsetRotDeg(beta, gamma) {
+        const b = typeof beta === "number" ? beta : 0;
+        const g = typeof gamma === "number" ? gamma : 0;
+        const ab = Math.abs(b);
+        const ag = Math.abs(g);
+        if (Math.max(ab, ag) <= 30) return 0; // near-flat / ambiguous -> no rotation
+        const pageIsPortrait = window.innerHeight >= window.innerWidth;
+        const physPortrait = ab > ag; // dominant gravity axis -> physical orientation
+        const misaligned = physPortrait !== pageIsPortrait;
+        const margin = Math.abs(ab - ag);
+        if (_modelOffsetRotDeg !== 0) {
+          // engaged: keep until clearly aligned again
+          if (!misaligned && margin > 15) return 0;
+          return _modelOffsetRotDeg;
+        }
+        // not engaged: rotate only when clearly misaligned
+        if (misaligned && margin > 15) return b > 0 ? -90 : 90; // rotation handedness verified on device
+        return 0;
+      }
+
       function computeInputRotationDeg(beta, gamma, videoW, videoH) {
         const b = typeof beta === "number" ? beta : 0;
         const g = typeof gamma === "number" ? gamma : 0;
@@ -8019,6 +8048,17 @@
             lastBaseInputRotDeg = baseRotDeg;
             inputRotationDeg = baseRotDeg;
 
+            // Keep the slider X/Y offset aligned to the device's physical orientation (screen-locked case).
+            // Re-apply the transform only when the quantized rotation changes (updateTransform otherwise only
+            // fires on slider input, so rotating the device alone wouldn't remap the offset).
+            const nextOffsetRot = computeModelOffsetRotDeg(deviceBeta, deviceGamma);
+            // Re-apply on rotation change, or when mirror is toggled while rotated (mirror flips the 左右 axis).
+            if (nextOffsetRot !== _modelOffsetRotDeg || (nextOffsetRot !== 0 && mirrorEnabled !== _lastMirrorForOffset)) {
+              _modelOffsetRotDeg = nextOffsetRot;
+              _lastMirrorForOffset = mirrorEnabled;
+              updateTransform();
+            }
+
             // 改善案E: skip detection every other frame to halve MediaPipe cost
             // (回転フレームのコピーも検出フレームのみ行うため、判定をここで先に行う)
             const canDetect = faceLandmarker && videoEl.readyState >= 2;
@@ -9054,13 +9094,30 @@
         const z = parseFloat(zSlider.value);
 
         // X/Y are applied to wrapperGroup (OUTSIDE pivotGroup) so they stay in screen/world space and are
-        // NOT rotated by the tracked face pose. Otherwise, when the face pose has a ~90° roll (e.g. screen
-        // locked landscape + device held portrait), Y(高さ) would rotate into the screen-horizontal axis and
-        // collapse onto X — making both sliders move the model the same way. Keeping both on wrapperGroup
-        // makes 高さ=screen-vertical / 左右=screen-horizontal in any device hold.
-        // Multiply by baseScale so the sliders keep roughly the same "feel" as before
-        // (adjustmentGroup sat under pivotGroup's baseScale, so its y was effectively y*baseScale in world).
-        if (wrapperGroup) wrapperGroup.position.set(x * MODEL_BASE_SCALE, y * MODEL_BASE_SCALE, 0);
+        // NOT rotated by the tracked face pose. Multiply by baseScale so the sliders keep roughly the same
+        // "feel" as before (adjustmentGroup sat under pivotGroup's baseScale, so its y was effectively y*baseScale).
+        // _modelOffsetRotDeg rotates the X/Y offset to follow the device's PHYSICAL orientation (gravity-based),
+        // so on a screen-locked device held 90° off, 左右→screen-horizontal / 高さ→screen-vertical from the
+        // user's viewpoint. 0 when aligned (and when device orientation is unavailable -> graceful fallback).
+        const bx = x * MODEL_BASE_SCALE;
+        const by = y * MODEL_BASE_SCALE;
+        let px = bx;
+        let py = by;
+        // When the offset is rotated ±90, the 左右(x) slider drives world-Y (the user's horizontal).
+        // The selfie mirror (CSS scaleX(-1)) flips that horizontal visually, so reverse the 左右 term
+        // under mirror to keep "+左右→右 / -左右→左" from the user's viewpoint. 高さ(y) is unaffected.
+        const mirrorSign = mirrorEnabled ? -1 : 1;
+        if (_modelOffsetRotDeg === 90) {
+          px = -by;
+          py = bx * mirrorSign;
+        } else if (_modelOffsetRotDeg === -90) {
+          px = by;
+          py = -bx * mirrorSign;
+        } else if (_modelOffsetRotDeg === 180) {
+          px = -bx;
+          py = -by;
+        }
+        if (wrapperGroup) wrapperGroup.position.set(px, py, 0);
 
         // Keep Z(前後) on adjustmentGroup (depth along the face-forward direction; unrelated to screen X/Y collapse).
         adjustmentGroup.position.set(0, 0, z);
