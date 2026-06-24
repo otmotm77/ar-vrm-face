@@ -1265,12 +1265,13 @@
           <div class="slider-container">
             <span class="slider-label">解像度</span>
             <select id="camera-res-select" class="select-control">
-              <option value="__max__">最大（推奨）</option>
+              <option id="camera-res-max-option" value="__max__">最大（推奨）</option>
               <option value="1920x1080">1080p</option>
               <option value="1280x720">720p</option>
               <option value="640x480">480p</option>
             </select>
           </div>
+          <div id="camera-res-caps-note" class="help-text" style="margin-top: -6px; margin-bottom: 6px; font-size: 12px; opacity: 0.75"></div>
           <div class="slider-container">
             <span class="slider-label">映像表示</span>
             <select id="bg-fit-select" class="select-control">
@@ -1583,6 +1584,17 @@
                 <input type="range" id="hw-color-temp-slider" min="2000" max="8000" step="100" value="4000" />
                 <span id="hw-color-temp-slider-val" class="val-display">4000</span>
               </div>
+              <div class="slider-container" id="hw-focus-mode-row" style="display: none">
+                <label class="toggle-label">
+                  <input type="checkbox" id="hw-focus-auto-toggle" class="toggle-checkbox" checked />
+                  オートフォーカス
+                </label>
+              </div>
+              <div class="slider-container" id="hw-focus-dist-row" style="display: none">
+                <span class="slider-label">フォーカス距離</span>
+                <input type="range" id="hw-focus-dist-slider" min="0" max="100" step="1" value="0" />
+                <span id="hw-focus-dist-slider-val" class="val-display">0</span>
+              </div>
               <button id="hw-light-reset-btn" class="restart-btn" style="background: #5c6bc0; margin-top: 8px">自動に戻す</button>
             </div>
           </div>
@@ -1594,8 +1606,8 @@
 
     <script type="module">
       // ===== App Version (single source of truth) =====
-      const APP_VERSION = "v6.09.08";
-      const APP_VERSION_NOTE = "fix: 画面ロック縦持ち＋ミラー表示時に左右スライダーの向きが逆になるのを修正（ミラー時は左右軸を反転）";
+      const APP_VERSION = "v6.09.10";
+      const APP_VERSION_NOTE = "feat: オートフォーカスON/OFF＋手動フォーカス距離のHW制御を追加（対応カメラのみ）";
 
       function getOverlayPixelRatio() {
         // Must match resizeCreamOverlayCanvas()/resizeBreathOverlayCanvas() DPR clamp for performance.
@@ -1877,6 +1889,7 @@
       const LS_CAMERA_RES = "camera_res";
       const LS_BG_FIT = "bg_fit2"; // v6.06.05: 旧"bg_fit"から改名し既存ユーザーも一旦レターボックス(contain)へ初期化
       let cameraRes = localStorage.getItem(LS_CAMERA_RES) || "__max__";
+      let _cameraResAutoDowngraded = false; // 高解像度起動失敗時の自動降格（セッション中1回／res手動変更でリセット）
       let bgFitMode = localStorage.getItem(LS_BG_FIT) || "contain";
       let mirrorEnabled = true; // デフォルト: インカメはミラー
       let mirrorUserOverride = false; // 手動切替したら自動追従しない
@@ -2768,11 +2781,15 @@
       const hwWbAutoToggle = document.getElementById("hw-wb-auto-toggle");
       const hwColorTempRow = document.getElementById("hw-color-temp-row");
       const hwColorTempSlider = document.getElementById("hw-color-temp-slider");
+      const hwFocusModeRow = document.getElementById("hw-focus-mode-row");
+      const hwFocusAutoToggle = document.getElementById("hw-focus-auto-toggle");
+      const hwFocusDistRow = document.getElementById("hw-focus-dist-row");
+      const hwFocusDistSlider = document.getElementById("hw-focus-dist-slider");
       const hwLightResetBtn = document.getElementById("hw-light-reset-btn");
 
       const LS_CAM_HW_LIGHT = "camera_hw_light";
       // null = ユーザー未変更（カメラのデフォルトに任せる）
-      const CAM_HW_LIGHT_DEFAULTS = { exposureAuto: true, exposureTime: null, exposureComp: null, brightness: null, wbAuto: true, colorTemp: null };
+      const CAM_HW_LIGHT_DEFAULTS = { exposureAuto: true, exposureTime: null, exposureComp: null, brightness: null, wbAuto: true, colorTemp: null, focusAuto: true, focusDistance: null };
       let camHwLight = { ...CAM_HW_LIGHT_DEFAULTS };
       try {
         const saved = JSON.parse(localStorage.getItem(LS_CAM_HW_LIGHT) || "null");
@@ -2849,6 +2866,19 @@
         await _applyHwAdvanced({ brightness: _clampToCapRange(camHwLight.brightness, _hwCaps.brightness) });
       };
 
+      const applyHwFocus = async () => {
+        if (!_hwCaps || !_hwCaps.focusManualOk) return;
+        if (camHwLight.focusAuto) {
+          await _applyHwAdvanced({ focusMode: "continuous" });
+        } else if (_hwCaps.focusDistance && camHwLight.focusDistance != null) {
+          // focusMode と focusDistance は同時に渡す（continuous のまま distance を送ると拒否されることがある）
+          await _applyHwAdvanced({ focusMode: "manual", focusDistance: _clampToCapRange(camHwLight.focusDistance, _hwCaps.focusDistance) });
+        } else {
+          // focusDistance 非対応カメラ：manual に切り替えて現在位置でロック
+          await _applyHwAdvanced({ focusMode: "manual" });
+        }
+      };
+
       // 露出時間（手動時）と露出補正（自動時）は排他表示
       const _updateHwExposureRows = () => {
         if (hwExposureTimeRow) hwExposureTimeRow.style.display = _hwCaps && _hwCaps.exposureManualOk && !camHwLight.exposureAuto ? "" : "none";
@@ -2857,6 +2887,11 @@
 
       const _updateHwColorTempRow = () => {
         if (hwColorTempRow) hwColorTempRow.style.display = _hwCaps && _hwCaps.wbManualOk && !camHwLight.wbAuto ? "" : "none";
+      };
+
+      // フォーカス距離スライダーは「手動(オートフォーカスOFF)かつ距離調整対応」のときだけ表示
+      const _updateHwFocusRow = () => {
+        if (hwFocusDistRow) hwFocusDistRow.style.display = _hwCaps && _hwCaps.focusManualOk && _hwCaps.focusDistance && !camHwLight.focusAuto ? "" : "none";
       };
 
       const initCamHwLightFromTrack = async (track) => {
@@ -2872,6 +2907,8 @@
         const exposureManualOk = expModes.includes("manual") && expModes.includes("continuous") && !!caps.exposureTime;
         const wbModes = Array.isArray(caps.whiteBalanceMode) ? caps.whiteBalanceMode : [];
         const wbManualOk = wbModes.includes("manual") && wbModes.includes("continuous") && !!caps.colorTemperature;
+        const focusModes = Array.isArray(caps.focusMode) ? caps.focusMode : [];
+        const focusManualOk = focusModes.includes("manual") && focusModes.includes("continuous");
 
         _hwCaps = {
           exposureManualOk,
@@ -2880,9 +2917,11 @@
           brightness: caps.brightness || null,
           wbManualOk,
           colorTemperature: wbManualOk ? caps.colorTemperature : null,
+          focusManualOk,
+          focusDistance: focusManualOk ? caps.focusDistance || null : null,
         };
 
-        const anySupported = exposureManualOk || _hwCaps.exposureCompensation || _hwCaps.brightness || wbManualOk;
+        const anySupported = exposureManualOk || _hwCaps.exposureCompensation || _hwCaps.brightness || wbManualOk || focusManualOk;
         if (!anySupported) {
           _hwCaps = null;
           camHwControlsEl.style.display = "none";
@@ -2923,14 +2962,25 @@
           const k = camHwLight.colorTemp != null ? camHwLight.colorTemp : kn;
           if (hwColorTempSlider) _setHwSliderFromCaps(hwColorTempSlider, _hwCaps.colorTemperature, k, kn);
         }
+        if (hwFocusModeRow) hwFocusModeRow.style.display = focusManualOk ? "" : "none";
+        if (focusManualOk) {
+          if (hwFocusAutoToggle) hwFocusAutoToggle.checked = !!camHwLight.focusAuto;
+          if (_hwCaps.focusDistance && hwFocusDistSlider) {
+            const fn = _neutralOf(_hwCaps.focusDistance, sets && sets.focusDistance);
+            const f = camHwLight.focusDistance != null ? camHwLight.focusDistance : fn;
+            _setHwSliderFromCaps(hwFocusDistSlider, _hwCaps.focusDistance, f, fn);
+          }
+        }
         _updateHwExposureRows();
         _updateHwColorTempRow();
+        _updateHwFocusRow();
         __updatingHwUI = false;
 
         // 保存済みのユーザー変更分だけ再適用（未変更項目はカメラのデフォルトを尊重）
         if (!camHwLight.exposureAuto || camHwLight.exposureComp != null) await applyHwExposure();
         await applyHwBrightness();
         if (!camHwLight.wbAuto) await applyHwWhiteBalance();
+        if (!camHwLight.focusAuto) await applyHwFocus();
       };
 
       if (hwExposureAutoToggle) {
@@ -3017,6 +3067,33 @@
           { passive: true },
         );
       }
+      if (hwFocusAutoToggle) {
+        hwFocusAutoToggle.addEventListener("change", async () => {
+          if (__updatingHwUI) return;
+          camHwLight.focusAuto = !!hwFocusAutoToggle.checked;
+          if (!camHwLight.focusAuto && hwFocusDistSlider && _hwCaps && _hwCaps.focusDistance) {
+            camHwLight.focusDistance = parseFloat(hwFocusDistSlider.value);
+          }
+          _saveCamHwLight();
+          _updateHwFocusRow();
+          await applyHwFocus();
+        });
+      }
+      if (hwFocusDistSlider) {
+        hwFocusDistSlider.addEventListener(
+          "input",
+          async () => {
+            if (__updatingHwUI) return;
+            const v = parseFloat(hwFocusDistSlider.value);
+            if (!isFinite(v)) return;
+            camHwLight.focusDistance = v;
+            _saveCamHwLight();
+            updateSliderDisplay(hwFocusDistSlider);
+            await applyHwFocus();
+          },
+          { passive: true },
+        );
+      }
       if (hwLightResetBtn) {
         hwLightResetBtn.addEventListener("click", async () => {
           camHwLight = { ...CAM_HW_LIGHT_DEFAULTS };
@@ -3024,6 +3101,7 @@
           if (_hwCaps) {
             if (_hwCaps.exposureManualOk) await _applyHwAdvanced({ exposureMode: "continuous" });
             if (_hwCaps.wbManualOk) await _applyHwAdvanced({ whiteBalanceMode: "continuous" });
+            if (_hwCaps.focusManualOk) await _applyHwAdvanced({ focusMode: "continuous" });
             if (_hwCaps.brightness && hwBrightnessSlider) {
               // 起動時に取得したニュートラル値（カメラの自動値 or caps 中央値）に戻す
               const nv = isFinite(_hwCaps.brightnessNeutral) ? _hwCaps.brightnessNeutral : _clampToCapRange((_hwCaps.brightness.min + _hwCaps.brightness.max) / 2, _hwCaps.brightness);
@@ -3037,9 +3115,11 @@
           __updatingHwUI = true;
           if (hwExposureAutoToggle) hwExposureAutoToggle.checked = true;
           if (hwWbAutoToggle) hwWbAutoToggle.checked = true;
+          if (hwFocusAutoToggle) hwFocusAutoToggle.checked = true;
           __updatingHwUI = false;
           _updateHwExposureRows();
           _updateHwColorTempRow();
+          _updateHwFocusRow();
           if (typeof showToast === "function") showToast("カメラのHW設定を自動に戻しました");
         });
       }
@@ -3125,6 +3205,8 @@
               if (caps.aspectRatio) lines.push(`caps.ar=${_fmt(caps.aspectRatio.min, 3)}..${_fmt(caps.aspectRatio.max, 3)}`);
 
               if ("torch" in caps) lines.push(`caps.torch=${caps.torch ? "Y" : "N"}`);
+              if (caps.focusMode) lines.push(`caps.focusMode=${(Array.isArray(caps.focusMode) ? caps.focusMode : []).join(",") || "?"}`);
+              if (caps.focusDistance) lines.push(`caps.focusDist=${_fmt(caps.focusDistance.min, 2)}..${_fmt(caps.focusDistance.max, 2)} step=${_fmt(caps.focusDistance.step ?? 0, 3)}`);
             } else {
               lines.push("caps=null");
             }
@@ -3134,6 +3216,8 @@
               lines.push(`set.facing=${sets.facingMode || ""} zoom=${Number.isFinite(zset) ? _fmt(zset, 2) : "N"}`);
               if (sets.width && sets.height) lines.push(`set.size=${sets.width}x${sets.height}`);
               if (sets.frameRate) lines.push(`set.fps=${_fmt(sets.frameRate, 1)}`);
+              if (sets.focusMode) lines.push(`set.focusMode=${sets.focusMode}`);
+              if (typeof sets.focusDistance === "number") lines.push(`set.focusDist=${_fmt(sets.focusDistance, 2)}`);
             }
 
             const zEl = document.getElementById("zoom-control");
@@ -3977,6 +4061,7 @@
           cameraResSelect.value = cameraRes || "__max__";
           cameraResSelect.addEventListener("change", () => {
             cameraRes = cameraResSelect.value || "__max__";
+            _cameraResAutoDowngraded = false; // 手動で解像度を選び直したら自動降格を再度1回許可
             try {
               localStorage.setItem(LS_CAMERA_RES, cameraRes);
             } catch (_) {}
@@ -7765,6 +7850,27 @@
         }
       }
 
+      // 起動成功後、実際に取れた解像度を「最大」ラベルに併記し、getCapabilities() の上限を解像度欄の下に説明表示する。
+      function updateResolutionInfoUI(tr) {
+        try {
+          const maxOpt = document.getElementById("camera-res-max-option");
+          if (maxOpt) {
+            const aw = videoEl && videoEl.videoWidth ? videoEl.videoWidth : 0;
+            const ah = videoEl && videoEl.videoHeight ? videoEl.videoHeight : 0;
+            maxOpt.textContent = aw && ah ? `最大（推奨・実 ${aw}×${ah}）` : "最大（推奨）";
+          }
+          const note = document.getElementById("camera-res-caps-note");
+          if (note) {
+            let text = "";
+            const caps = tr && tr.getCapabilities ? tr.getCapabilities() : null;
+            if (caps && caps.width && caps.height && Number.isFinite(caps.width.max) && Number.isFinite(caps.height.max)) {
+              text = `※このカメラの上限: ${caps.width.max}×${caps.height.max}（端末申告値。実際に出せない場合があります）`;
+            }
+            note.textContent = text;
+          }
+        } catch (_) {}
+      }
+
       async function startAR(isRestart = false) {
         try {
           setTrackingPaused(false, true);
@@ -7784,12 +7890,19 @@
           }
           _startVideoFrameDirtyLoop();
 
-          // Start camera (with a timeout)
-          // FIXME(既知の課題): setTimeout コールバック内の throw は外側の try/catch に届かないため、
-          // このタイムアウトは実質機能していない（未捕捉エラーになるだけでエラーUIは出ない）。修正は別タスク。
-          startTimeout = setTimeout(() => {
-            throw new Error("カメラの起動がタイムアウトしました。権限/他アプリ使用中/HTTPS を確認してください。");
-          }, 20000);
+          // カメラ起動の各 await は端末によってはハングし得る（特に高解像度/4K要求時）。
+          // 個々の await を実タイムアウトで包み、固まらず catch に抜けてエラーUI/自動降格へ進める。
+          const withTimeout = (p, ms, label) =>
+            Promise.race([
+              Promise.resolve(p),
+              new Promise((_, rej) =>
+                setTimeout(() => {
+                  const e = new Error((label || "カメラ起動") + "がタイムアウトしました");
+                  e.isTimeout = true;
+                  rej(e);
+                }, ms)
+              ),
+            ]);
 
           if (stream) {
             stream.getTracks().forEach((t) => t.stop());
@@ -7814,18 +7927,22 @@
           let pickedIndex = -1;
           for (let i = 0; i < attempts.length; i++) {
             try {
-              stream = await navigator.mediaDevices.getUserMedia(attempts[i]);
+              // 初回は権限ダイアログのユーザー操作待ちがあり得るため長め(25s)。
+              stream = await withTimeout(navigator.mediaDevices.getUserMedia(attempts[i]), 25000, "カメラ取得");
               pickedIndex = i;
               break;
             } catch (e) {
               lastErr = e;
+              // ハングは他 attempt も同様に固まるので即 catch へ（自動降格で復旧）。
+              if (e && e.isTimeout) break;
             }
           }
           if (!stream) throw lastErr;
 
           // Apply preferred resolution to the active track (best-effort)
+          // タイムアウト時は無視し、getUserMedia が返した解像度のまま続行（最大が無理なら取れた解像度で進む）。
           try {
-            await applyPreferredResolutionToTrack(stream.getVideoTracks()[0]);
+            await withTimeout(applyPreferredResolutionToTrack(stream.getVideoTracks()[0]), 6000, "解像度適用");
           } catch (_) {}
 
           // If deviceId selection failed and we fell back, clear the invalid selection
@@ -7837,16 +7954,22 @@
           }
 
           videoEl.srcObject = stream;
-          await new Promise((resolve) => {
-            videoEl.onloadedmetadata = () => resolve();
-          });
-          await videoEl.play();
+          await withTimeout(
+            new Promise((resolve) => {
+              if (videoEl.readyState >= 1) return resolve(); // メタデータ取得済みで onloadedmetadata が発火しないケース対策
+              videoEl.onloadedmetadata = () => resolve();
+            }),
+            8000,
+            "カメラ初期化"
+          );
+          await withTimeout(videoEl.play(), 8000, "カメラ再生");
 
           // Init zoom control (if supported)
           try {
             const vt = stream && stream.getVideoTracks ? stream.getVideoTracks()[0] : null;
             await initZoomControlFromTrack(vt);
             await initCamHwLightFromTrack(vt);
+            updateResolutionInfoUI(vt);
           } catch (_) {}
 
           // Populate camera list after permission is granted
@@ -8329,6 +8452,28 @@
         } catch (err) {
           console.error(err);
           if (startTimeout) clearTimeout(startTimeout);
+
+          // 高解像度(最大/1080p以上)での起動失敗・タイムアウト時は、安全な解像度(720p)へ自動降格して1回だけ再試行。
+          // 解像度セレクトは起動成功後しか開けないため、ここで自動復旧しないと詰む。
+          const _resW = parseInt(String(cameraRes).split("x")[0], 10);
+          const wasHighRes = cameraRes === "__max__" || (Number.isFinite(_resW) && _resW >= 1920);
+          if (!_cameraResAutoDowngraded && wasHighRes) {
+            _cameraResAutoDowngraded = true;
+            cameraRes = "1280x720";
+            try {
+              localStorage.setItem(LS_CAMERA_RES, cameraRes);
+            } catch (_) {}
+            if (cameraResSelect) cameraResSelect.value = cameraRes;
+            showToast("高解像度で起動できなかったため720pで再試行します");
+            try {
+              if (stream) {
+                stream.getTracks().forEach((t) => t.stop());
+                stream = null;
+              }
+            } catch (_) {}
+            return startAR(isRestart); // 1回だけ再帰再試行
+          }
+
           const msg = err && err.message ? err.message : "カメラの起動に失敗しました。";
           statusMsg.textContent = msg;
           startBtn.disabled = false;
