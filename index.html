@@ -620,6 +620,26 @@
         touch-action: manipulation;
       }
 
+      .preset-toggle-group {
+        display: flex;
+        gap: 6px;
+        margin-bottom: 10px;
+      }
+      .preset-btn {
+        flex: 1;
+        padding: 6px 0;
+        border: 1px solid #4a90e2;
+        border-radius: 6px;
+        background: #fff;
+        color: #4a90e2;
+        font-weight: bold;
+        cursor: pointer;
+      }
+      .preset-btn.active {
+        background: #4a90e2;
+        color: #fff;
+      }
+
       .restart-btn {
         width: 100%;
         background: #ff9800;
@@ -1458,6 +1478,11 @@
         <details class="acc-section" data-acc="light_cam">
           <summary>カメラ照明（共通）</summary>
           <div id="camera-settings" style="display: block">
+            <div class="preset-toggle-group" id="cam-light-preset-group">
+              <button type="button" class="preset-btn active" data-preset="1">1</button>
+              <button type="button" class="preset-btn" data-preset="2">2</button>
+              <button type="button" class="preset-btn" data-preset="3">3</button>
+            </div>
             <div class="slider-container" style="background: #e8f0fe; padding: 10px; border-radius: 8px; border: 1px solid #4a90e2; margin-bottom: 10px; display: block">
               <label class="toggle-label" style="color: #4a90e2; margin-bottom: 5px">
                 <input type="checkbox" id="skin-fx-toggle" class="toggle-checkbox" />
@@ -1606,8 +1631,8 @@
 
     <script type="module">
       // ===== App Version (single source of truth) =====
-      const APP_VERSION = "v6.09.10";
-      const APP_VERSION_NOTE = "feat: オートフォーカスON/OFF＋手動フォーカス距離のHW制御を追加（対応カメラのみ）";
+      const APP_VERSION = "v6.09.11";
+      const APP_VERSION_NOTE = "feat: カメラ照明にプリセット[1][2][3]を追加（全VRM共通・自動保存）";
 
       function getOverlayPixelRatio() {
         // Must match resizeCreamOverlayCanvas()/resizeBreathOverlayCanvas() DPR clamp for performance.
@@ -2798,11 +2823,14 @@
 
       let __updatingHwUI = false;
       let _hwCaps = null; // 現在のトラックの対応状況（非対応 or トラック無しは null）
+      let __applyingCamLightPreset = false; // プリセット適用中フラグ（自動保存の再帰防止）
+      let _currentVideoTrack = null; // HW UI 再同期用に現在のビデオトラックを保持
 
       const _saveCamHwLight = () => {
         try {
           localStorage.setItem(LS_CAM_HW_LIGHT, JSON.stringify(camHwLight));
         } catch (_) {}
+        if (!__applyingCamLightPreset && typeof saveActiveCamLightPreset === "function") saveActiveCamLightPreset();
       };
 
       // caps の min/max にクランプし step に丸める（UVC は step 外の値を拒否することがある）
@@ -3724,6 +3752,9 @@
         try {
           loadGlobalSettings();
         } catch (_) {}
+        try {
+          initCamLightPresets();
+        } catch (_) {}
       }, 0);
       // クリーム系スライダーの共通結線: 表示更新→値適用→(追加処理)→保存。
       // パース式・フォールバックは従来のまま各クロージャに温存する。
@@ -4388,6 +4419,7 @@
               // Init zoom control (if supported)
               try {
                 const vt = stream && stream.getVideoTracks ? stream.getVideoTracks()[0] : null;
+                _currentVideoTrack = vt;
                 await initZoomControlFromTrack(vt);
                 await initCamHwLightFromTrack(vt);
               } catch (_) {}
@@ -4940,6 +4972,132 @@
         try {
           localStorage.setItem(LS_CAM_GLOBAL, JSON.stringify(s));
         } catch (_) {}
+        if (!__applyingCamLightPreset) saveActiveCamLightPreset();
+      }
+
+      // ===== カメラ照明プリセット [1][2][3]（全VRM共通・自動保存） =====
+      const LS_CAM_LIGHT_PRESETS = "vrm_cam_light_presets";
+
+      // 現在のスライダー/HW値からプリセット用サブセットを取得
+      function readCamLightSubset() {
+        return {
+          skinFxOn: !!(skinFxToggle && skinFxToggle.checked),
+          skinSmooth: skinSmoothSlider.value,
+          skinSvgSmooth: skinSvgSmoothSlider ? skinSvgSmoothSlider.value : "0",
+          skinBright: skinBrightSlider ? skinBrightSlider.value : "100",
+          skinSat: skinSatSlider ? skinSatSlider.value : "100",
+          skinTemp: skinTempSlider ? skinTempSlider.value : "50",
+          skinRed: skinRedSlider ? skinRedSlider.value : "0",
+          camBright: camBrightSlider.value,
+          camSat: camSatSlider.value,
+          camCont: camContSlider.value,
+          camSvgSmoothFull: camSvgSmoothFullSlider ? camSvgSmoothFullSlider.value : "0",
+          camSepia: camSepiaSlider.value,
+          camBlack: camBlackSlider ? camBlackSlider.value : "0",
+          camTemp: camTempSlider ? camTempSlider.value : "50",
+          camRed: camRedSlider ? camRedSlider.value : "0",
+          camVignette: camVignetteSlider ? camVignetteSlider.value : "0",
+          camSoftGlow: camSoftGlowSlider ? camSoftGlowSlider.value : "0",
+          hw: { ...camHwLight },
+        };
+      }
+
+      // プリセットサブセットを各スライダー/HWへ反映（適用はupdateCameraFilter/HW側で実施）
+      function applyCamLightSubset(d) {
+        if (!d) return;
+        const has = (k) => Object.prototype.hasOwnProperty.call(d, k);
+        if (skinFxToggle && has("skinFxOn")) {
+          skinFxToggle.checked = !!d.skinFxOn;
+          if (skinFxControls) skinFxControls.style.display = skinFxToggle.checked ? "block" : "none";
+        }
+        if (has("skinSmooth") && skinSmoothSlider) skinSmoothSlider.value = d.skinSmooth;
+        if (has("skinSvgSmooth") && skinSvgSmoothSlider) skinSvgSmoothSlider.value = d.skinSvgSmooth;
+        if (has("skinBright") && skinBrightSlider) skinBrightSlider.value = d.skinBright;
+        if (has("skinSat") && skinSatSlider) skinSatSlider.value = d.skinSat;
+        if (has("skinTemp") && skinTempSlider) skinTempSlider.value = d.skinTemp;
+        if (has("skinRed") && skinRedSlider) skinRedSlider.value = d.skinRed;
+        if (has("camBright") && camBrightSlider) camBrightSlider.value = d.camBright;
+        if (has("camSat") && camSatSlider) camSatSlider.value = d.camSat;
+        if (has("camCont") && camContSlider) camContSlider.value = d.camCont;
+        if (has("camSvgSmoothFull") && camSvgSmoothFullSlider) camSvgSmoothFullSlider.value = d.camSvgSmoothFull;
+        if (has("camSepia") && camSepiaSlider) camSepiaSlider.value = d.camSepia;
+        if (has("camBlack") && camBlackSlider) camBlackSlider.value = d.camBlack;
+        if (has("camTemp") && camTempSlider) camTempSlider.value = d.camTemp;
+        if (has("camRed") && camRedSlider) camRedSlider.value = d.camRed;
+        if (has("camVignette") && camVignetteSlider) camVignetteSlider.value = d.camVignette;
+        if (has("camSoftGlow") && camSoftGlowSlider) camSoftGlowSlider.value = d.camSoftGlow;
+        camHwLight = { ...CAM_HW_LIGHT_DEFAULTS, ...(d.hw || {}) };
+        allSliders.forEach((el) => updateSliderDisplay(el));
+        try { updateCameraFilter(); } catch (_) {}
+      }
+
+      function _readCamLightPresetStore() {
+        let store = null;
+        try {
+          store = JSON.parse(localStorage.getItem(LS_CAM_LIGHT_PRESETS) || "null");
+        } catch (_) {}
+        if (!store || typeof store !== "object" || !store.slots) {
+          store = { active: 1, slots: {} };
+        }
+        if (![1, 2, 3].includes(store.active)) store.active = 1;
+        return store;
+      }
+
+      function _saveCamLightPresetStore(store) {
+        try {
+          localStorage.setItem(LS_CAM_LIGHT_PRESETS, JSON.stringify(store));
+        } catch (_) {}
+      }
+
+      // 選択中スロットへ現在値を書き戻す（自動保存）
+      function saveActiveCamLightPreset() {
+        const store = _readCamLightPresetStore();
+        store.slots[String(store.active)] = readCamLightSubset();
+        _saveCamLightPresetStore(store);
+      }
+
+      function _highlightCamLightPresetBtn(n) {
+        document.querySelectorAll("#cam-light-preset-group .preset-btn").forEach((btn) => {
+          btn.classList.toggle("active", parseInt(btn.dataset.preset, 10) === n);
+        });
+      }
+
+      // スロットnを適用（ライブ状態へ反映＋HW再同期＋永続化）
+      async function applyCamLightPreset(n) {
+        const store = _readCamLightPresetStore();
+        const data = store.slots[String(n)];
+        __applyingCamLightPreset = true;
+        try {
+          applyCamLightSubset(data);
+          _saveCamHwLight();
+          saveGlobalSettings();
+          if (_currentVideoTrack) {
+            try { await initCamHwLightFromTrack(_currentVideoTrack); } catch (_) {}
+          }
+          store.active = n;
+          _saveCamLightPresetStore(store);
+          _highlightCamLightPresetBtn(n);
+        } finally {
+          __applyingCamLightPreset = false;
+        }
+      }
+
+      // 起動時初期化: ストアが無ければ現在のライブ値をスロット1とし2/3にもコピー
+      function initCamLightPresets() {
+        let store = null;
+        try {
+          store = JSON.parse(localStorage.getItem(LS_CAM_LIGHT_PRESETS) || "null");
+        } catch (_) {}
+        if (!store || typeof store !== "object" || !store.slots || !store.slots["1"]) {
+          const cur = readCamLightSubset();
+          store = { active: 1, slots: { "1": cur, "2": { ...cur }, "3": { ...cur } } };
+          _saveCamLightPresetStore(store);
+        }
+        if (![1, 2, 3].includes(store.active)) store.active = 1;
+        _highlightCamLightPresetBtn(store.active);
+        document.querySelectorAll("#cam-light-preset-group .preset-btn").forEach((btn) => {
+          btn.addEventListener("click", () => applyCamLightPreset(parseInt(btn.dataset.preset, 10)));
+        });
       }
 
       function loadGlobalSettings() {
@@ -7967,6 +8125,7 @@
           // Init zoom control (if supported)
           try {
             const vt = stream && stream.getVideoTracks ? stream.getVideoTracks()[0] : null;
+            _currentVideoTrack = vt;
             await initZoomControlFromTrack(vt);
             await initCamHwLightFromTrack(vt);
             updateResolutionInfoUI(vt);
