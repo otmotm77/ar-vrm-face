@@ -855,7 +855,7 @@
           <span id="zoom-value" class="zoom-value">1.0×</span>
         </div>
         <div class="icon-buttons">
-          <button id="toggle-light-btn" class="icon-btn" title="照明・画質設定">💡</button>
+          <button id="toggle-light-btn" class="icon-btn" title="モデルオプション">🧍</button>
           <button id="toggle-menu-btn" class="icon-btn" title="全般オプション">⚙️</button>
           <button id="toggle-fullscreen-btn" class="icon-btn" title="全画面表示切替">⛶</button>
         </div>
@@ -896,7 +896,7 @@
       </button>
 
       <!-- Right-bottom toggle button: VRM hide -->
-      <button id="vrm-hide-btn" type="button" title="VRM一時非表示" aria-pressed="false">
+      <button id="vrm-hide-btn" type="button" title="モデル一時非表示" aria-pressed="false">
         <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
           <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
           <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
@@ -922,11 +922,365 @@
       <!-- メイン設定パネル -->
       <div class="control-panel" id="control-panel" style="display: none">
         <h1>全般オプション</h1>
+        <!-- #control-panel は全般タブ（全VRM共通の設定） -->
+
+        <details class="acc-section" data-acc="light_cam">
+          <summary>カメラ照明</summary>
+          <div id="camera-settings" style="display: block">
+            <div class="preset-toggle-group" id="cam-light-preset-group">
+              <button type="button" class="preset-btn active" data-preset="1">1</button>
+              <button type="button" class="preset-btn" data-preset="2">2</button>
+              <button type="button" class="preset-btn" data-preset="3">3</button>
+            </div>
+            <div class="slider-container" style="background: #e8f0fe; padding: 10px; border-radius: 8px; border: 1px solid #4a90e2; margin-bottom: 10px; display: block">
+              <label class="toggle-label" style="color: #4a90e2; margin-bottom: 5px">
+                <input type="checkbox" id="skin-fx-toggle" class="toggle-checkbox" />
+                <strong>美肌補正（高負荷）</strong>
+              </label>
+              <div id="skin-fx-controls" style="display: none; border-top: 1px dashed #abc; padding-top: 8px; margin-top: 5px">
+                <div class="slider-container">
+                  <span class="slider-label" style="font-size: 10px; color: #333">ガウス</span>
+                  <input type="range" id="skin-smooth-slider" min="0" max="100" step="1" value="0" />
+                  <span id="skin-smooth-slider-val" class="val-display">0</span>
+                </div>
+                <div class="slider-container" id="skin-svg-smooth-container">
+                  <span class="slider-label" style="font-size: 10px; color: #333">SVGスムージング</span>
+                  <input type="range" id="skin-svg-smooth-slider" min="0" max="100" step="1" value="0" />
+                  <span id="skin-svg-smooth-slider-val" class="val-display">0</span>
+                </div>
+                <div class="slider-container">
+                  <span class="slider-label" style="font-size: 10px; color: #333">明るさ(肌)</span>
+                  <input type="range" id="skin-bright-slider" min="50" max="150" step="1" value="100" />
+                  <span id="skin-bright-slider-val" class="val-display">100</span>
+                </div>
+                <div class="slider-container">
+                  <span class="slider-label" style="font-size: 10px; color: #333">彩度(肌)</span>
+                  <input type="range" id="skin-sat-slider" min="0" max="200" step="5" value="100" />
+                  <span id="skin-sat-slider-val" class="val-display">100</span>
+                </div>
+                <div class="slider-container">
+                  <span class="slider-label" style="font-size: 10px; color: #333">色温度(肌)</span>
+                  <input type="range" id="skin-temp-slider" min="0" max="100" step="1" value="50" />
+                  <span id="skin-temp-slider-val" class="val-display">50</span>
+                </div>
+                <div class="slider-container" style="margin-bottom: 0">
+                  <span class="slider-label" style="font-size: 10px; color: #333">赤み(肌)</span>
+                  <input type="range" id="skin-red-slider" min="0" max="150" step="1" value="0" />
+                  <span id="skin-red-slider-val" class="val-display">0</span>
+                </div>
+              </div>
+            </div>
+            <div class="slider-container">
+              <span class="slider-label">明るさ</span>
+              <input type="range" id="cam-bright-slider" min="50" max="150" step="1" value="100" />
+              <span id="cam-bright-slider-val" class="val-display">100</span>
+            </div>
+            <div class="slider-container">
+              <span class="slider-label">彩度</span>
+              <input type="range" id="cam-sat-slider" min="0" max="200" step="5" value="100" />
+              <span id="cam-sat-slider-val" class="val-display">100</span>
+            </div>
+            <div class="slider-container">
+              <span class="slider-label">コントラスト</span>
+              <input type="range" id="cam-cont-slider" min="50" max="150" step="1" value="100" />
+              <span id="cam-cont-slider-val" class="val-display">100</span>
+            </div>
+            <div class="slider-container">
+              <span class="slider-label">黒レベル</span>
+              <input type="range" id="cam-black-slider" min="0" max="100" step="1" value="0" />
+              <span id="cam-black-slider-val" class="val-display">0</span>
+            </div>
+            <div class="slider-container">
+              <span class="slider-label">色温度</span>
+              <input type="range" id="cam-temp-slider" min="0" max="100" step="1" value="50" />
+              <span id="cam-temp-slider-val" class="val-display">50</span>
+            </div>
+            <div class="slider-container" id="cam-red-container">
+              <span class="slider-label">赤み</span>
+              <input type="range" id="cam-red-slider" min="0" max="150" step="1" value="0" />
+              <span id="cam-red-slider-val" class="val-display">0</span>
+            </div>
+            <div class="slider-container">
+              <span class="slider-label">ビネット</span>
+              <input type="range" id="cam-vignette-slider" min="0" max="100" step="1" value="0" />
+              <span id="cam-vignette-slider-val" class="val-display">0</span>
+            </div>
+            <div class="slider-container">
+              <span class="slider-label">ソフトグロー</span>
+              <input type="range" id="cam-softglow-slider" min="0" max="100" step="1" value="0" />
+              <span id="cam-softglow-slider-val" class="val-display">0</span>
+            </div>
+            <div class="slider-container" id="cam-svg-smooth-container">
+              <span class="slider-label">スムージング</span>
+              <input type="range" id="cam-svg-smooth-slider" min="0" max="100" step="1" value="0" />
+              <span id="cam-svg-smooth-slider-val" class="val-display">0</span>
+            </div>
+            <div class="slider-container">
+              <span class="slider-label">セピア</span>
+              <input type="range" id="cam-sepia-slider" min="0" max="100" step="1" value="0" />
+              <span id="cam-sepia-slider-val" class="val-display">0</span>
+            </div>
+
+            <!-- ハードウェア制御（対応カメラのみ表示） -->
+            <div id="cam-hw-controls" style="display: none">
+              <div class="slider-container" style="margin-bottom: 5px">
+                <label class="toggle-label" style="color: #4a90e2">ハードウェア制御（カメラ依存）</label>
+              </div>
+              <div class="slider-container" id="hw-exposure-mode-row" style="display: none">
+                <label class="toggle-label">
+                  <input type="checkbox" id="hw-exposure-auto-toggle" class="toggle-checkbox" checked />
+                  露出 自動
+                </label>
+              </div>
+              <div class="slider-container" id="hw-exposure-time-row" style="display: none">
+                <span class="slider-label">露出時間</span>
+                <input type="range" id="hw-exposure-time-slider" min="0" max="100" step="1" value="0" />
+                <span id="hw-exposure-time-slider-val" class="val-display">0</span>
+              </div>
+              <div class="slider-container" id="hw-exposure-comp-row" style="display: none">
+                <span class="slider-label">露出補正</span>
+                <input type="range" id="hw-exposure-comp-slider" min="0" max="100" step="1" value="0" />
+                <span id="hw-exposure-comp-slider-val" class="val-display">0</span>
+              </div>
+              <div class="slider-container" id="hw-brightness-row" style="display: none">
+                <span class="slider-label">明るさ(HW)</span>
+                <input type="range" id="hw-brightness-slider" min="0" max="100" step="1" value="0" />
+                <span id="hw-brightness-slider-val" class="val-display">0</span>
+              </div>
+              <div class="slider-container" id="hw-wb-mode-row" style="display: none">
+                <label class="toggle-label">
+                  <input type="checkbox" id="hw-wb-auto-toggle" class="toggle-checkbox" checked />
+                  ホワイトバランス 自動
+                </label>
+              </div>
+              <div class="slider-container" id="hw-color-temp-row" style="display: none">
+                <span class="slider-label">色温度(HW)</span>
+                <input type="range" id="hw-color-temp-slider" min="2000" max="8000" step="100" value="4000" />
+                <span id="hw-color-temp-slider-val" class="val-display">4000</span>
+              </div>
+              <div class="slider-container" id="hw-focus-mode-row" style="display: none">
+                <label class="toggle-label">
+                  <input type="checkbox" id="hw-focus-auto-toggle" class="toggle-checkbox" checked />
+                  オートフォーカス
+                </label>
+              </div>
+              <div class="slider-container" id="hw-focus-dist-row" style="display: none">
+                <span class="slider-label">フォーカス距離</span>
+                <input type="range" id="hw-focus-dist-slider" min="0" max="100" step="1" value="0" />
+                <span id="hw-focus-dist-slider-val" class="val-display">0</span>
+              </div>
+              <button id="hw-light-reset-btn" class="restart-btn" style="background: #5c6bc0; margin-top: 8px">自動に戻す</button>
+            </div>
+          </div>
+        </details>
+
+        <details class="acc-section" data-acc="cream">
+          <summary>白濁液射出</summary>
+
+          <div class="slider-container">
+            <label class="toggle-label">
+              <input type="checkbox" id="cream-auto-toggle" class="toggle-checkbox" />
+              自動射出（左下ボタンでも切替）
+            </label>
+          </div>
+          <div class="slider-container">
+            <span class="slider-label">射出間隔秒数</span>
+            <input type="range" id="cream-auto-interval-slider" min="0.2" max="10" step="0.1" value="1.5" />
+            <span id="cream-auto-interval-slider-val" class="val-display">1.5</span>
+          </div>
+          <div class="slider-container">
+            <span class="slider-label">顔への集中率</span>
+            <input type="range" id="cream-face-ratio-slider" min="0" max="1" step="0.05" value="1" />
+            <span id="cream-face-ratio-slider-val" class="val-display">1</span>
+          </div>
+
+          <div class="slider-container">
+            <span class="slider-label">サイズ</span>
+            <input type="range" id="cream-size-mul-slider" min="0.5" max="2.0" step="0.05" value="1.0" />
+            <span id="cream-size-mul-slider-val" class="val-display">1.0</span>
+          </div>
+
+          <div class="slider-container">
+            <span class="slider-label">光沢</span>
+            <input type="range" id="cream-gloss-slider" min="0" max="2.0" step="0.05" value="1.0" />
+            <span id="cream-gloss-slider-val" class="val-display">1.0</span>
+          </div>
+
+          <div class="slider-container">
+            <span class="slider-label">粘度</span>
+            <input type="range" id="cream-viscosity-slider" min="0.2" max="5.0" step="0.05" value="1.0" />
+            <span id="cream-viscosity-slider-val" class="val-display">1.0</span>
+          </div>
+
+          <div class="slider-container">
+            <span class="slider-label">貼り付き（擬似Z）</span>
+            <input type="range" id="cream-z-attach-slider" min="0" max="1" step="0.05" value="0.92" />
+            <span id="cream-z-attach-slider-val" class="val-display">0.6</span>
+          </div>
+
+          <div class="slider-container">
+            <span class="slider-label">同時射出数</span>
+            <input type="range" id="cream-simul-count-slider" min="1" max="20" step="1" value="3" />
+            <span id="cream-simul-count-slider-val" class="val-display">3</span>
+          </div>
+
+          <div class="slider-container">
+            <span class="slider-label">消滅時間</span>
+            <input type="range" id="cream-life-slider" min="1" max="30" step="1" value="10" />
+            <span id="cream-life-slider-val" class="val-display">10</span>
+          </div>
+          <div class="slider-container">
+            <span class="slider-label">最大数</span>
+            <input type="range" id="cream-max-count-slider" min="10" max="200" step="1" value="40" />
+            <span id="cream-max-count-slider-val" class="val-display">40</span>
+          </div>
+        </details>
+
+        <details class="acc-section" data-acc="tracking">
+          <summary>トラッキング</summary>
+
+          <div class="slider-container">
+            <label class="toggle-label">
+              <input type="checkbox" id="tracking-facing-toggle" class="toggle-checkbox" />
+              アウトカメラ（背面）
+            </label>
+          </div>
+          <div class="slider-container">
+            <span class="slider-label">カメラ選択</span>
+            <select id="camera-device-select" class="select-control" disabled>
+              <option value="__auto__">自動（イン/アウト）</option>
+            </select>
+          </div>
+          <div class="help-text" style="margin-top: -6px; margin-bottom: 6px; font-size: 12px; opacity: 0.75">※一覧はカメラ許可後に表示されます。個別選択中は「アウトカメラ」切替は無効になります。</div>
+
+          <div class="slider-container">
+            <span class="slider-label">解像度</span>
+            <select id="camera-res-select" class="select-control">
+              <option id="camera-res-max-option" value="__max__">最大（推奨）</option>
+              <option value="1920x1080">1080p</option>
+              <option value="1280x720">720p</option>
+              <option value="640x480">480p</option>
+            </select>
+          </div>
+          <div id="camera-res-caps-note" class="help-text" style="margin-top: -6px; margin-bottom: 6px; font-size: 12px; opacity: 0.75"></div>
+          <div class="slider-container">
+            <span class="slider-label">映像表示</span>
+            <select id="bg-fit-select" class="select-control">
+              <option value="cover">画面いっぱい（クロップ）</option>
+              <option value="contain">全体表示（レターボックス）</option>
+            </select>
+          </div>
+
+          <div class="slider-container">
+            <label class="toggle-label">
+              <input type="checkbox" id="tracking-mirror-toggle" class="toggle-checkbox" />
+              ミラー表示
+            </label>
+          </div>
+
+          <div class="slider-container">
+            <span class="slider-label">目の感度</span>
+            <input type="range" id="eye-sens-slider" min="0.5" max="5.0" step="0.1" value="1.0" />
+            <span id="eye-sens-slider-val" class="val-display">1.0</span>
+          </div>
+          <div class="slider-container">
+            <span class="slider-label">口の感度</span>
+            <input type="range" id="mouth-sens-slider" min="0.5" max="5.0" step="0.1" value="1.5" />
+            <span id="mouth-sens-slider-val" class="val-display">1.5</span>
+          </div>
+          <div class="slider-container">
+            <span class="slider-label">表情シンク感度</span>
+            <input type="range" id="exprsync-sens-slider" min="0.2" max="3.0" step="0.05" value="1.0" />
+            <span id="exprsync-sens-slider-val" class="val-display">1.0</span>
+          </div>
+
+          <div class="slider-container">
+            <span class="slider-label">滑らかさ</span>
+            <input type="range" id="mincf-slider" min="0.0001" max="0.01" step="0.0001" value="0.0005" />
+            <span id="mincf-slider-val" class="val-display">0.0005</span>
+          </div>
+          <div class="slider-container">
+            <span class="slider-label">敏感さ</span>
+            <input type="range" id="beta-slider" min="0.001" max="2.0" step="0.02" value="0.04" />
+            <span id="beta-slider-val" class="val-display">0.04</span>
+          </div>
+
+          <button id="apply-tracking-btn" class="restart-btn">設定を適用して再起動</button>
+        </details>
+
+        <details class="acc-section" data-acc="help">
+          <summary>ヘルプ</summary>
+          <div style="font-size: 12px; line-height: 1.55; color: #222">
+            <p style="margin: 0 0 8px 0">このアプリはカメラ映像を使って端末内で顔認識を行い、モデルの頭部を重ねて表示します。</p>
+            <ul style="margin: 0; padding-left: 18px">
+              <li>
+                カメラアクセスは行いますが、映像の送信や保存は
+                <strong>一切行いません</strong>
+                （端末内で処理されますので、貴方のプライバシーは守られています）。
+              </li>
+              <li>設定名の <strong>モデル毎</strong> / <strong>共通</strong> が保存先を示します。</li>
+              <li><strong>モデル毎</strong>：読み込んだVRMファイル毎に個別に保存されます。</li>
+              <li><strong>共通</strong>：モデルに関係なく常に共通項目として保存されます。</li>
+              <li>
+                <strong>現在の設定をデフォルト設定として保存</strong>
+                を実行すると、現在のモデル毎設定をデフォルト設定として保存します。
+              </li>
+              <li>
+                保存されたデフォルト設定は
+                <strong>デフォルト設定を表示中のモデルに反映</strong>
+                を実行する事で、読み込んだモデルへ反映できます。
+              </li>
+              <li>設定が保存されてない（読み込んだ事が無い）モデルを読み込み時にもデフォルトオプションが反映されます。</li>
+            </ul>
+            <p style="margin: 8px 0 0 0">デフォルトモデルは[<a href="https://hub.vroid.com/characters/1245908975744054638/models/1933176825086822228" target="_blank" rel="noopener noreferrer">白い白米様のAo/stylish</a>]を使用させていただいております。</p>
+            <div class="slider-container" style="margin-top: 10px">
+              <label class="toggle-label">
+                <input type="checkbox" id="debugtext-toggle" class="toggle-checkbox" />
+                デバッグ表示
+              </label>
+              <div style="font-size: 11px; opacity: 0.85; margin-top: 4px; line-height: 1.4">自動射出などの内部値を画面上に表示します（不具合切り分け用）。</div>
+            </div>
+            <div id="blush-debug" style="display: none; font-family: monospace; font-size: 12px; line-height: 1.35; background: rgba(0, 0, 0, 0.55); color: #fff; padding: 6px; border-radius: 8px; margin-top: 6px; white-space: pre-wrap"></div>
+            <div class="slider-container" style="margin-top: 10px">
+              <label class="toggle-label">
+                <input type="checkbox" id="breath-debug-toggle" class="toggle-checkbox" />
+                吐息デバッグ（値表示）
+              </label>
+              <div style="font-size: 11px; opacity: 0.85; margin-top: 4px; line-height: 1.4">口の開き・座標・パーティクル数などを画面上に表示します。</div>
+            </div>
+            <div id="breath-debug" style="display: none; font-family: monospace; font-size: 11px; color: #fff; background: rgba(0, 0, 0, 0.55); padding: 6px; border-radius: 8px; margin-top: 6px; white-space: pre-wrap"></div>
+          </div>
+        </details>
+
+        <details class="acc-section" data-acc="default_settings">
+          <summary>設定の管理</summary>
+          <div class="slider-container" style="margin-top: 4px">
+            <span class="slider-label">スクショのキー</span>
+            <span style="margin-left: auto; display: inline-flex; align-items: center; gap: 8px">
+              <span id="screenshot-key-display" style="min-width: 28px; text-align: center; padding: 4px 10px; border-radius: 6px; border: 1px solid #b0b0b0; background: #fff; color: #222; font: bold 13px monospace; box-shadow: 0 1px 0 rgba(0, 0, 0, 0.2)">S</span>
+              <button id="screenshot-key-rebind-btn" type="button" style="padding: 4px 12px; border-radius: 8px; border: none; background: #5c6bc0; color: #fff; cursor: pointer">変更</button>
+            </span>
+          </div>
+          <div style="font-size: 12px; opacity: 0.85; margin-bottom: 12px; line-height: 1.4">このキーでスクショを保存します（入力欄フォーカス中は無効）。「変更」を押して任意のキーを押すと再設定。Escでキャンセル。</div>
+          <button id="export-settings-btn" class="restart-btn" style="background: #455a64">全設定をエクスポート（JSON）</button>
+          <button id="import-settings-btn" class="restart-btn" style="background: #455a64; margin-top: 8px">全設定をインポート（JSON）</button>
+          <input type="file" id="import-settings-file" accept="application/json,.json" style="display: none" />
+          <div style="font-size: 12px; opacity: 0.85; margin-top: 4px; line-height: 1.4">全設定（モデル毎・共通・カメラ・UI状態）をJSONで保存／復元します。インポートは現在の設定に上書きし、自動で再読み込みします。</div>
+          <button id="reset-all-settings-btn" class="restart-btn" style="background: #c62828; margin-top: 14px">全設定初期化</button>
+          <div style="font-size: 12px; opacity: 0.85; margin-top: 4px; line-height: 1.4">保存済みの全設定を消去して初期状態に戻します（アクセス解析オプトアウトは維持）。自動で再読み込みします。</div>
+        </details>
+      </div>
+
+      <!-- VRMパネル -->
+      <div class="control-panel" id="light-panel" style="display: none">
+        <h1>モデルオプション</h1>
+        <!-- #light-panel はVRMタブ（そのVRM固有の設定） -->
+
         <details class="acc-section" data-acc="basic" open>
-          <summary>モデル（VRM毎）</summary>
+          <summary>モデル</summary>
           <div id="vrm-license-info" style="display: none; font-size: 12px; line-height: 1.5; background: rgba(0, 0, 0, 0.04); border-radius: 6px; padding: 6px 8px; margin: 6px 0"></div>
 
-          <button id="load-default-vrm-btn" class="restart-btn" style="margin-bottom: 4px">デフォルトVRMを表示</button>
+          <button id="load-default-vrm-btn" class="restart-btn" style="margin-bottom: 4px">デフォルトモデルを表示</button>
           <div style="font-size: 12px; opacity: 0.85; margin-bottom: 8px; line-height: 1.4">※初回25MBのダウンロードが発生します。</div>
           <label for="vrm-upload" class="custom-file-upload">📂 VRMファイルを選択</label>
           <input type="file" id="vrm-upload" />
@@ -953,11 +1307,15 @@
             <span id="z-slider-val" class="val-display">-0.2</span>
           </div>
 
+          <button id="save-default-btn" class="restart-btn" style="background: #5c6bc0; margin-top: 14px">現在の設定をデフォルト設定として保存</button>
+          <button id="apply-default-to-vrm-btn" class="restart-btn" style="background: #26a69a; margin-top: 8px" disabled>デフォルト設定を表示中のモデルに反映</button>
+          <div style="font-size: 12px; opacity: 0.85; margin-top: 4px; line-height: 1.4">既に個別セーブがあるモデルに、保存済みデフォルト設定を反映（上書き保存）します。</div>
+
           <!-- マスキング設定 -->
         </details>
 
         <details class="acc-section" data-acc="mask">
-          <summary>肩マスキング（VRM毎）</summary>
+          <summary>肩マスキング</summary>
 
           <div class="slider-container">
             <label class="toggle-label">
@@ -1021,7 +1379,7 @@
         </details>
 
         <details class="acc-section" data-acc="expression">
-          <summary>表情（VRM毎）</summary>
+          <summary>表情</summary>
 
           <div class="slider-container">
             <label class="toggle-label">
@@ -1203,211 +1561,8 @@
           </div>
         </details>
 
-        <details class="acc-section" data-acc="cream">
-          <summary>白濁液射出（共通）</summary>
-
-          <div class="slider-container">
-            <label class="toggle-label">
-              <input type="checkbox" id="cream-auto-toggle" class="toggle-checkbox" />
-              自動射出（左下ボタンでも切替）
-            </label>
-          </div>
-          <div class="slider-container">
-            <span class="slider-label">射出間隔秒数</span>
-            <input type="range" id="cream-auto-interval-slider" min="0.2" max="10" step="0.1" value="1.5" />
-            <span id="cream-auto-interval-slider-val" class="val-display">1.5</span>
-          </div>
-          <div class="slider-container">
-            <span class="slider-label">顔への集中率</span>
-            <input type="range" id="cream-face-ratio-slider" min="0" max="1" step="0.05" value="1" />
-            <span id="cream-face-ratio-slider-val" class="val-display">1</span>
-          </div>
-
-          <div class="slider-container">
-            <span class="slider-label">サイズ</span>
-            <input type="range" id="cream-size-mul-slider" min="0.5" max="2.0" step="0.05" value="1.0" />
-            <span id="cream-size-mul-slider-val" class="val-display">1.0</span>
-          </div>
-
-          <div class="slider-container">
-            <span class="slider-label">光沢</span>
-            <input type="range" id="cream-gloss-slider" min="0" max="2.0" step="0.05" value="1.0" />
-            <span id="cream-gloss-slider-val" class="val-display">1.0</span>
-          </div>
-
-          <div class="slider-container">
-            <span class="slider-label">粘度</span>
-            <input type="range" id="cream-viscosity-slider" min="0.2" max="5.0" step="0.05" value="1.0" />
-            <span id="cream-viscosity-slider-val" class="val-display">1.0</span>
-          </div>
-
-          <div class="slider-container">
-            <span class="slider-label">貼り付き（擬似Z）</span>
-            <input type="range" id="cream-z-attach-slider" min="0" max="1" step="0.05" value="0.92" />
-            <span id="cream-z-attach-slider-val" class="val-display">0.6</span>
-          </div>
-
-          <div class="slider-container">
-            <span class="slider-label">同時射出数</span>
-            <input type="range" id="cream-simul-count-slider" min="1" max="20" step="1" value="3" />
-            <span id="cream-simul-count-slider-val" class="val-display">3</span>
-          </div>
-
-          <div class="slider-container">
-            <span class="slider-label">消滅時間</span>
-            <input type="range" id="cream-life-slider" min="1" max="30" step="1" value="10" />
-            <span id="cream-life-slider-val" class="val-display">10</span>
-          </div>
-          <div class="slider-container">
-            <span class="slider-label">最大数</span>
-            <input type="range" id="cream-max-count-slider" min="10" max="200" step="1" value="40" />
-            <span id="cream-max-count-slider-val" class="val-display">40</span>
-          </div>
-        </details>
-
-        <details class="acc-section" data-acc="tracking">
-          <summary>トラッキング（共通）</summary>
-
-          <div class="slider-container">
-            <label class="toggle-label">
-              <input type="checkbox" id="tracking-facing-toggle" class="toggle-checkbox" />
-              アウトカメラ（背面）
-            </label>
-          </div>
-          <div class="slider-container">
-            <span class="slider-label">カメラ選択</span>
-            <select id="camera-device-select" class="select-control" disabled>
-              <option value="__auto__">自動（イン/アウト）</option>
-            </select>
-          </div>
-          <div class="help-text" style="margin-top: -6px; margin-bottom: 6px; font-size: 12px; opacity: 0.75">※一覧はカメラ許可後に表示されます。個別選択中は「アウトカメラ」切替は無効になります。</div>
-
-          <div class="slider-container">
-            <span class="slider-label">解像度</span>
-            <select id="camera-res-select" class="select-control">
-              <option id="camera-res-max-option" value="__max__">最大（推奨）</option>
-              <option value="1920x1080">1080p</option>
-              <option value="1280x720">720p</option>
-              <option value="640x480">480p</option>
-            </select>
-          </div>
-          <div id="camera-res-caps-note" class="help-text" style="margin-top: -6px; margin-bottom: 6px; font-size: 12px; opacity: 0.75"></div>
-          <div class="slider-container">
-            <span class="slider-label">映像表示</span>
-            <select id="bg-fit-select" class="select-control">
-              <option value="cover">画面いっぱい（クロップ）</option>
-              <option value="contain">全体表示（レターボックス）</option>
-            </select>
-          </div>
-
-          <div class="slider-container">
-            <label class="toggle-label">
-              <input type="checkbox" id="tracking-mirror-toggle" class="toggle-checkbox" />
-              ミラー表示
-            </label>
-          </div>
-
-          <div class="slider-container">
-            <span class="slider-label">目の感度</span>
-            <input type="range" id="eye-sens-slider" min="0.5" max="5.0" step="0.1" value="1.0" />
-            <span id="eye-sens-slider-val" class="val-display">1.0</span>
-          </div>
-          <div class="slider-container">
-            <span class="slider-label">口の感度</span>
-            <input type="range" id="mouth-sens-slider" min="0.5" max="5.0" step="0.1" value="1.5" />
-            <span id="mouth-sens-slider-val" class="val-display">1.5</span>
-          </div>
-          <div class="slider-container">
-            <span class="slider-label">表情シンク感度</span>
-            <input type="range" id="exprsync-sens-slider" min="0.2" max="3.0" step="0.05" value="1.0" />
-            <span id="exprsync-sens-slider-val" class="val-display">1.0</span>
-          </div>
-
-          <div class="slider-container">
-            <span class="slider-label">滑らかさ</span>
-            <input type="range" id="mincf-slider" min="0.0001" max="0.01" step="0.0001" value="0.0005" />
-            <span id="mincf-slider-val" class="val-display">0.0005</span>
-          </div>
-          <div class="slider-container">
-            <span class="slider-label">敏感さ</span>
-            <input type="range" id="beta-slider" min="0.001" max="2.0" step="0.02" value="0.04" />
-            <span id="beta-slider-val" class="val-display">0.04</span>
-          </div>
-
-          <button id="apply-tracking-btn" class="restart-btn">設定を適用して再起動</button>
-        </details>
-
-        <details class="acc-section" data-acc="help">
-          <summary>ヘルプ</summary>
-          <div style="font-size: 12px; line-height: 1.55; color: #222">
-            <p style="margin: 0 0 8px 0">このアプリはカメラ映像を使って端末内で顔認識を行い、VRMの頭部を重ねて表示します。</p>
-            <ul style="margin: 0; padding-left: 18px">
-              <li>
-                カメラアクセスは行いますが、映像の送信や保存は
-                <strong>一切行いません</strong>
-                （端末内で処理されますので、貴方のプライバシーは守られています）。
-              </li>
-              <li>設定名の <strong>VRM毎</strong> / <strong>共通</strong> が保存先を示します。</li>
-              <li><strong>VRM毎</strong>：読み込んだVRMファイル毎に個別に保存されます。</li>
-              <li><strong>共通</strong>：VRMに関係なく常に共通項目として保存されます。</li>
-              <li>
-                <strong>現在の設定をデフォルト設定として保存</strong>
-                を実行すると、現在のVRM毎設定をデフォルト設定として保存します。
-              </li>
-              <li>
-                保存されたデフォルト設定は
-                <strong>デフォルト設定を表示中のVRMに反映</strong>
-                を実行する事で、読み込んだVRMへ反映できます。
-              </li>
-              <li>設定が保存されてない（読み込んだ事が無い）VRMを読み込み時にもデフォルトオプションが反映されます。</li>
-            </ul>
-            <p style="margin: 8px 0 0 0">デフォルトモデルは[<a href="https://hub.vroid.com/characters/1245908975744054638/models/6703365862776582786" target="_blank" rel="noopener noreferrer">白い白米様のAo/stylish</a>]を使用させていただいております。</p>
-            <div class="slider-container" style="margin-top: 10px">
-              <label class="toggle-label">
-                <input type="checkbox" id="debugtext-toggle" class="toggle-checkbox" />
-                デバッグ表示
-              </label>
-              <div style="font-size: 11px; opacity: 0.85; margin-top: 4px; line-height: 1.4">自動射出などの内部値を画面上に表示します（不具合切り分け用）。</div>
-            </div>
-            <div id="blush-debug" style="display: none; font-family: monospace; font-size: 12px; line-height: 1.35; background: rgba(0, 0, 0, 0.55); color: #fff; padding: 6px; border-radius: 8px; margin-top: 6px; white-space: pre-wrap"></div>
-            <div class="slider-container" style="margin-top: 10px">
-              <label class="toggle-label">
-                <input type="checkbox" id="breath-debug-toggle" class="toggle-checkbox" />
-                吐息デバッグ（値表示）
-              </label>
-              <div style="font-size: 11px; opacity: 0.85; margin-top: 4px; line-height: 1.4">口の開き・座標・パーティクル数などを画面上に表示します。</div>
-            </div>
-            <div id="breath-debug" style="display: none; font-family: monospace; font-size: 11px; color: #fff; background: rgba(0, 0, 0, 0.55); padding: 6px; border-radius: 8px; margin-top: 6px; white-space: pre-wrap"></div>
-          </div>
-        </details>
-
-        <details class="acc-section" data-acc="default_settings">
-          <summary>設定の管理</summary>
-          <div class="slider-container" style="margin-top: 4px">
-            <span class="slider-label">スクショのキー</span>
-            <span style="margin-left: auto; display: inline-flex; align-items: center; gap: 8px">
-              <span id="screenshot-key-display" style="min-width: 28px; text-align: center; padding: 4px 10px; border-radius: 6px; border: 1px solid #b0b0b0; background: #fff; color: #222; font: bold 13px monospace; box-shadow: 0 1px 0 rgba(0, 0, 0, 0.2)">S</span>
-              <button id="screenshot-key-rebind-btn" type="button" style="padding: 4px 12px; border-radius: 8px; border: none; background: #5c6bc0; color: #fff; cursor: pointer">変更</button>
-            </span>
-          </div>
-          <div style="font-size: 12px; opacity: 0.85; margin-bottom: 12px; line-height: 1.4">このキーでスクショを保存します（入力欄フォーカス中は無効）。「変更」を押して任意のキーを押すと再設定。Escでキャンセル。</div>
-          <button id="save-default-btn" class="restart-btn" style="background: #5c6bc0">現在の設定をデフォルト設定として保存</button>
-          <button id="apply-default-to-vrm-btn" class="restart-btn" style="background: #26a69a; margin-top: 8px" disabled>デフォルト設定を表示中のVRMに反映</button>
-          <div style="font-size: 12px; opacity: 0.85; margin-top: 4px; line-height: 1.4">既に個別セーブがあるVRMに、保存済みデフォルト設定を反映（上書き保存）します。</div>
-          <button id="export-settings-btn" class="restart-btn" style="background: #455a64; margin-top: 14px">全設定をエクスポート（JSON）</button>
-          <button id="import-settings-btn" class="restart-btn" style="background: #455a64; margin-top: 8px">全設定をインポート（JSON）</button>
-          <input type="file" id="import-settings-file" accept="application/json,.json" style="display: none" />
-          <div style="font-size: 12px; opacity: 0.85; margin-top: 4px; line-height: 1.4">全設定（VRM毎・共通・カメラ・UI状態）をJSONで保存／復元します。インポートは現在の設定に上書きし、自動で再読み込みします。</div>
-          <button id="reset-all-settings-btn" class="restart-btn" style="background: #c62828; margin-top: 14px">全設定初期化</button>
-          <div style="font-size: 12px; opacity: 0.85; margin-top: 4px; line-height: 1.4">保存済みの全設定を消去して初期状態に戻します（アクセス解析オプトアウトは維持）。自動で再読み込みします。</div>
-        </details>
-      </div>
-
-      <!-- 照明・画質設定パネル -->
-      <div class="control-panel" id="light-panel" style="display: none">
-        <h1>照明・画質</h1>
         <details class="acc-section" data-acc="light_vrm">
-          <summary>VRM照明（VRM毎）</summary>
+          <summary>モデル照明</summary>
           <div id="vrm-light-settings">
             <!-- 親コンテナのdisplayをblockにして改行を強制 -->
             <div class="slider-container" style="background: #e8f0fe; padding: 10px; border-radius: 8px; border: 1px solid #4a90e2; margin-bottom: 10px; display: block">
@@ -1456,173 +1611,23 @@
             </div>
 
             <div class="slider-container">
-              <span class="slider-label">VRM色温度</span>
+              <span class="slider-label">モデル色温度</span>
               <input type="range" id="light-color-slider" min="0" max="100" step="1" value="50" />
               <span id="light-color-slider-val" class="val-display">50</span>
             </div>
             <div class="slider-container">
-              <span class="slider-label">VRM彩度</span>
+              <span class="slider-label">モデル彩度</span>
               <input type="range" id="vrm-sat-slider" min="0" max="200" step="5" value="100" />
               <span id="vrm-sat-slider-val" class="val-display">100</span>
             </div>
             <div class="slider-container">
-              <span class="slider-label">VRM赤み</span>
+              <span class="slider-label">モデル赤み</span>
               <input type="range" id="vrm-red-slider" min="0" max="150" step="1" value="0" />
               <span id="vrm-red-slider-val" class="val-display">0</span>
             </div>
           </div>
 
           <!-- カメラ画質タブ -->
-        </details>
-
-        <details class="acc-section" data-acc="light_cam">
-          <summary>カメラ照明（共通）</summary>
-          <div id="camera-settings" style="display: block">
-            <div class="preset-toggle-group" id="cam-light-preset-group">
-              <button type="button" class="preset-btn active" data-preset="1">1</button>
-              <button type="button" class="preset-btn" data-preset="2">2</button>
-              <button type="button" class="preset-btn" data-preset="3">3</button>
-            </div>
-            <div class="slider-container" style="background: #e8f0fe; padding: 10px; border-radius: 8px; border: 1px solid #4a90e2; margin-bottom: 10px; display: block">
-              <label class="toggle-label" style="color: #4a90e2; margin-bottom: 5px">
-                <input type="checkbox" id="skin-fx-toggle" class="toggle-checkbox" />
-                <strong>美肌補正（高負荷）</strong>
-              </label>
-              <div id="skin-fx-controls" style="display: none; border-top: 1px dashed #abc; padding-top: 8px; margin-top: 5px">
-                <div class="slider-container">
-                  <span class="slider-label" style="font-size: 10px; color: #333">ガウス</span>
-                  <input type="range" id="skin-smooth-slider" min="0" max="100" step="1" value="0" />
-                  <span id="skin-smooth-slider-val" class="val-display">0</span>
-                </div>
-                <div class="slider-container" id="skin-svg-smooth-container">
-                  <span class="slider-label" style="font-size: 10px; color: #333">SVGスムージング</span>
-                  <input type="range" id="skin-svg-smooth-slider" min="0" max="100" step="1" value="0" />
-                  <span id="skin-svg-smooth-slider-val" class="val-display">0</span>
-                </div>
-                <div class="slider-container">
-                  <span class="slider-label" style="font-size: 10px; color: #333">明るさ(肌)</span>
-                  <input type="range" id="skin-bright-slider" min="50" max="150" step="1" value="100" />
-                  <span id="skin-bright-slider-val" class="val-display">100</span>
-                </div>
-                <div class="slider-container">
-                  <span class="slider-label" style="font-size: 10px; color: #333">彩度(肌)</span>
-                  <input type="range" id="skin-sat-slider" min="0" max="200" step="5" value="100" />
-                  <span id="skin-sat-slider-val" class="val-display">100</span>
-                </div>
-                <div class="slider-container">
-                  <span class="slider-label" style="font-size: 10px; color: #333">色温度(肌)</span>
-                  <input type="range" id="skin-temp-slider" min="0" max="100" step="1" value="50" />
-                  <span id="skin-temp-slider-val" class="val-display">50</span>
-                </div>
-                <div class="slider-container" style="margin-bottom: 0">
-                  <span class="slider-label" style="font-size: 10px; color: #333">赤み(肌)</span>
-                  <input type="range" id="skin-red-slider" min="0" max="150" step="1" value="0" />
-                  <span id="skin-red-slider-val" class="val-display">0</span>
-                </div>
-              </div>
-            </div>
-            <div class="slider-container">
-              <span class="slider-label">明るさ</span>
-              <input type="range" id="cam-bright-slider" min="50" max="150" step="1" value="100" />
-              <span id="cam-bright-slider-val" class="val-display">100</span>
-            </div>
-            <div class="slider-container">
-              <span class="slider-label">彩度</span>
-              <input type="range" id="cam-sat-slider" min="0" max="200" step="5" value="100" />
-              <span id="cam-sat-slider-val" class="val-display">100</span>
-            </div>
-            <div class="slider-container">
-              <span class="slider-label">コントラスト</span>
-              <input type="range" id="cam-cont-slider" min="50" max="150" step="1" value="100" />
-              <span id="cam-cont-slider-val" class="val-display">100</span>
-            </div>
-            <div class="slider-container">
-              <span class="slider-label">黒レベル</span>
-              <input type="range" id="cam-black-slider" min="0" max="100" step="1" value="0" />
-              <span id="cam-black-slider-val" class="val-display">0</span>
-            </div>
-            <div class="slider-container">
-              <span class="slider-label">色温度</span>
-              <input type="range" id="cam-temp-slider" min="0" max="100" step="1" value="50" />
-              <span id="cam-temp-slider-val" class="val-display">50</span>
-            </div>
-            <div class="slider-container" id="cam-red-container">
-              <span class="slider-label">赤み</span>
-              <input type="range" id="cam-red-slider" min="0" max="150" step="1" value="0" />
-              <span id="cam-red-slider-val" class="val-display">0</span>
-            </div>
-            <div class="slider-container">
-              <span class="slider-label">ビネット</span>
-              <input type="range" id="cam-vignette-slider" min="0" max="100" step="1" value="0" />
-              <span id="cam-vignette-slider-val" class="val-display">0</span>
-            </div>
-            <div class="slider-container">
-              <span class="slider-label">ソフトグロー</span>
-              <input type="range" id="cam-softglow-slider" min="0" max="100" step="1" value="0" />
-              <span id="cam-softglow-slider-val" class="val-display">0</span>
-            </div>
-            <div class="slider-container" id="cam-svg-smooth-container">
-              <span class="slider-label">スムージング</span>
-              <input type="range" id="cam-svg-smooth-slider" min="0" max="100" step="1" value="0" />
-              <span id="cam-svg-smooth-slider-val" class="val-display">0</span>
-            </div>
-            <div class="slider-container">
-              <span class="slider-label">セピア</span>
-              <input type="range" id="cam-sepia-slider" min="0" max="100" step="1" value="0" />
-              <span id="cam-sepia-slider-val" class="val-display">0</span>
-            </div>
-
-            <!-- ハードウェア制御（対応カメラのみ表示） -->
-            <div id="cam-hw-controls" style="display: none">
-              <div class="slider-container" style="margin-bottom: 5px">
-                <label class="toggle-label" style="color: #4a90e2">ハードウェア制御（カメラ依存）</label>
-              </div>
-              <div class="slider-container" id="hw-exposure-mode-row" style="display: none">
-                <label class="toggle-label">
-                  <input type="checkbox" id="hw-exposure-auto-toggle" class="toggle-checkbox" checked />
-                  露出 自動
-                </label>
-              </div>
-              <div class="slider-container" id="hw-exposure-time-row" style="display: none">
-                <span class="slider-label">露出時間</span>
-                <input type="range" id="hw-exposure-time-slider" min="0" max="100" step="1" value="0" />
-                <span id="hw-exposure-time-slider-val" class="val-display">0</span>
-              </div>
-              <div class="slider-container" id="hw-exposure-comp-row" style="display: none">
-                <span class="slider-label">露出補正</span>
-                <input type="range" id="hw-exposure-comp-slider" min="0" max="100" step="1" value="0" />
-                <span id="hw-exposure-comp-slider-val" class="val-display">0</span>
-              </div>
-              <div class="slider-container" id="hw-brightness-row" style="display: none">
-                <span class="slider-label">明るさ(HW)</span>
-                <input type="range" id="hw-brightness-slider" min="0" max="100" step="1" value="0" />
-                <span id="hw-brightness-slider-val" class="val-display">0</span>
-              </div>
-              <div class="slider-container" id="hw-wb-mode-row" style="display: none">
-                <label class="toggle-label">
-                  <input type="checkbox" id="hw-wb-auto-toggle" class="toggle-checkbox" checked />
-                  ホワイトバランス 自動
-                </label>
-              </div>
-              <div class="slider-container" id="hw-color-temp-row" style="display: none">
-                <span class="slider-label">色温度(HW)</span>
-                <input type="range" id="hw-color-temp-slider" min="2000" max="8000" step="100" value="4000" />
-                <span id="hw-color-temp-slider-val" class="val-display">4000</span>
-              </div>
-              <div class="slider-container" id="hw-focus-mode-row" style="display: none">
-                <label class="toggle-label">
-                  <input type="checkbox" id="hw-focus-auto-toggle" class="toggle-checkbox" checked />
-                  オートフォーカス
-                </label>
-              </div>
-              <div class="slider-container" id="hw-focus-dist-row" style="display: none">
-                <span class="slider-label">フォーカス距離</span>
-                <input type="range" id="hw-focus-dist-slider" min="0" max="100" step="1" value="0" />
-                <span id="hw-focus-dist-slider-val" class="val-display">0</span>
-              </div>
-              <button id="hw-light-reset-btn" class="restart-btn" style="background: #5c6bc0; margin-top: 8px">自動に戻す</button>
-            </div>
-          </div>
         </details>
       </div>
     </div>
@@ -1631,8 +1636,8 @@
 
     <script type="module">
       // ===== App Version (single source of truth) =====
-      const APP_VERSION = "v6.09.11";
-      const APP_VERSION_NOTE = "feat: カメラ照明にプリセット[1][2][3]を追加（全VRM共通・自動保存）";
+      const APP_VERSION = "v6.09.15";
+      const APP_VERSION_NOTE = "fix: ヘルプのデフォルトモデルのリンクURLを修正";
 
       function getOverlayPixelRatio() {
         // Must match resizeCreamOverlayCanvas()/resizeBreathOverlayCanvas() DPR clamp for performance.
@@ -2649,7 +2654,7 @@
           vrmHideBtn.setAttribute("aria-pressed", vrmHidden ? "true" : "false");
         }
         if (vrmHidden && pivotGroup) pivotGroup.visible = false;
-        showToast(vrmHidden ? "VRMを非表示にしました" : "VRMを表示しました");
+        showToast(vrmHidden ? "モデルを非表示にしました" : "モデルを表示しました");
       }
 
       if (vrmHideBtn) {
@@ -4026,17 +4031,8 @@
         if (isHidden) {
           controlPanel.style.display = "block";
 
-          // Restore saved accordion state first, then (only once) force-open the model section,
-          // keeping any other restored sections as-is.
           requestAnimationFrame(() => {
             _restoreAccordionState(controlPanel, "control");
-
-            if (_forceOpenBasicOnce) {
-              const modelSec = controlPanel.querySelector('details.acc-section[data-acc="basic"]');
-              if (modelSec) modelSec.open = true;
-              _forceOpenBasicOnce = false;
-            }
-
             _restorePanelScroll(controlPanel, "control");
           });
         } else {
@@ -4052,8 +4048,18 @@
         const isHidden = getComputedStyle(lightPanel).display === "none";
         if (isHidden) {
           lightPanel.style.display = "block";
-          _restoreAccordionState(lightPanel, "light");
-          requestAnimationFrame(() => _restorePanelScroll(lightPanel, "light"));
+          // Restore saved accordion state first, then (only once) force-open the model section.
+          requestAnimationFrame(() => {
+            _restoreAccordionState(lightPanel, "light");
+
+            if (_forceOpenBasicOnce) {
+              const modelSec = lightPanel.querySelector('details.acc-section[data-acc="basic"]');
+              if (modelSec) modelSec.open = true;
+              _forceOpenBasicOnce = false;
+            }
+
+            _restorePanelScroll(lightPanel, "light");
+          });
         } else {
           _savePanelScroll(lightPanel, "light");
           _saveAccordionState(lightPanel, "light");
@@ -8590,20 +8596,21 @@
           loadingText.style.display = "none";
           uiContainer.style.display = "block";
 
-          // Auto open main options on start
+          // Auto open VRM options on start
           // NOTE: Restore saved accordion/scroll first (so "all open" comes back),
           // then force-open the Model section (basic) for this initial open only.
+          // モデル（basic）はVRMタブ(#light-panel)へ移動したため、起動時はVRMパネルを開く。
           try {
-            lightPanel.style.display = "none";
-            controlPanel.style.display = "block";
+            controlPanel.style.display = "none";
+            lightPanel.style.display = "block";
 
             requestAnimationFrame(() => {
-              _restoreAccordionState(controlPanel, "control");
-              const modelSec = controlPanel.querySelector('details.acc-section[data-acc="basic"]');
+              _restoreAccordionState(lightPanel, "light");
+              const modelSec = lightPanel.querySelector('details.acc-section[data-acc="basic"]');
               if (modelSec) modelSec.open = true; // keep others as restored
               _forceOpenBasicOnce = false; // consume the one-time force-open on this auto-open
               // On auto-open right after camera starts, always show top (do not restore previous scroll)
-              controlPanel.scrollTop = 0;
+              lightPanel.scrollTop = 0;
             });
           } catch (_) {}
 
@@ -8828,7 +8835,7 @@
       if (applyDefaultToVrmBtn) {
         applyDefaultToVrmBtn.addEventListener("click", () => {
           if (!currentFileName) {
-            showToast("まずVRMを読み込んでください");
+            showToast("まずモデルを読み込んでください");
             return;
           }
           const ok = loadSettings("default", { silent: true, label: "デフォルト" });
@@ -8838,7 +8845,7 @@
           }
           // Overwrite per-VRM save with the defaults we just loaded
           saveSettings(currentVrmKey || currentFileName);
-          showToast("デフォルト設定をこのVRMに反映しました");
+          showToast("デフォルト設定をこのモデルに反映しました");
         });
       }
 
@@ -9175,7 +9182,7 @@
             loadVrmFromArrayBuffer(buf, "default.vrm", { isDefault: true });
           } catch (e) {
             console.warn("デフォルトVRMの取得に失敗:", e);
-            showToast("デフォルトVRMを読み込めませんでした");
+            showToast("デフォルトモデルを読み込めませんでした");
             loadingText.style.display = "none";
           } finally {
             loadDefaultVrmBtn.disabled = false;
