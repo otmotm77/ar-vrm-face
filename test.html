@@ -1164,6 +1164,15 @@
           </div>
           <div id="camera-res-caps-note" class="help-text" style="margin-top: -6px; margin-bottom: 6px; font-size: 12px; opacity: 0.75"></div>
           <div class="slider-container">
+            <span class="slider-label">フレームレート</span>
+            <select id="camera-fps-select" class="select-control">
+              <option id="camera-fps-auto-option" value="__auto__">自動（推奨）</option>
+              <option value="60">60fps</option>
+              <option value="30">30fps</option>
+            </select>
+          </div>
+          <div id="camera-fps-caps-note" class="help-text" style="margin-top: -6px; margin-bottom: 6px; font-size: 12px; opacity: 0.75"></div>
+          <div class="slider-container">
             <span class="slider-label">映像表示</span>
             <select id="bg-fit-select" class="select-control">
               <option value="cover">画面いっぱい（クロップ）</option>
@@ -1636,8 +1645,8 @@
 
     <script type="module">
       // ===== App Version (single source of truth) =====
-      const APP_VERSION = "v6.09.15";
-      const APP_VERSION_NOTE = "fix: ヘルプのデフォルトモデルのリンクURLを修正";
+      const APP_VERSION = "v6.09.16";
+      const APP_VERSION_NOTE = "feat: カメラのフレームレート選択（自動/60fps/30fps）を追加";
 
       function getOverlayPixelRatio() {
         // Must match resizeCreamOverlayCanvas()/resizeBreathOverlayCanvas() DPR clamp for performance.
@@ -1917,9 +1926,11 @@
       const LS_CAMERA_DEVICE_ID = "camera_device_id";
       let cameraDeviceId = localStorage.getItem(LS_CAMERA_DEVICE_ID) || "";
       const LS_CAMERA_RES = "camera_res";
+      const LS_CAMERA_FPS = "camera_fps";
       const LS_BG_FIT = "bg_fit2"; // v6.06.05: 旧"bg_fit"から改名し既存ユーザーも一旦レターボックス(contain)へ初期化
       let cameraRes = localStorage.getItem(LS_CAMERA_RES) || "__max__";
       let _cameraResAutoDowngraded = false; // 高解像度起動失敗時の自動降格（セッション中1回／res手動変更でリセット）
+      let cameraFps = localStorage.getItem(LS_CAMERA_FPS) || "__auto__"; // "__auto__" | "60" | "30"
       let bgFitMode = localStorage.getItem(LS_BG_FIT) || "contain";
       let mirrorEnabled = true; // デフォルト: インカメはミラー
       let mirrorUserOverride = false; // 手動切替したら自動追従しない
@@ -3220,7 +3231,7 @@
         if (videoEl) {
           lines.push(`video=${videoEl.videoWidth || 0}x${videoEl.videoHeight || 0}`);
           try {
-            lines.push(`prefRes=${cameraRes || "__max__"} bgFit=${bgFitMode || ""}`);
+            lines.push(`prefRes=${cameraRes || "__max__"} prefFps=${cameraFps || "__auto__"} bgFit=${bgFitMode || ""}`);
           } catch (_) {}
         }
         // Camera capabilities (to debug zoom availability)
@@ -4080,6 +4091,7 @@
       const cameraSelect = document.getElementById("camera-device-select");
       let __updatingCameraSelect = false;
       const cameraResSelect = document.getElementById("camera-res-select");
+      const cameraFpsSelect = document.getElementById("camera-fps-select");
       const bgFitSelect = document.getElementById("bg-fit-select");
 
       const syncCameraSelectUI = () => {
@@ -4103,6 +4115,17 @@
               localStorage.setItem(LS_CAMERA_RES, cameraRes);
             } catch (_) {}
             showToast("解像度を変更しました。再起動して反映します");
+            if (stream) restartAR();
+          });
+        }
+        if (cameraFpsSelect) {
+          cameraFpsSelect.value = cameraFps || "__auto__";
+          cameraFpsSelect.addEventListener("change", () => {
+            cameraFps = cameraFpsSelect.value || "__auto__";
+            try {
+              localStorage.setItem(LS_CAMERA_FPS, cameraFps);
+            } catch (_) {}
+            showToast("フレームレートを変更しました。再起動して反映します");
             if (stream) restartAR();
           });
         }
@@ -4310,6 +4333,8 @@
             v.width = base.width;
             v.height = base.height;
           }
+          const fr = getPreferredFrameRateConstraint();
+          if (fr) v.frameRate = fr;
           return { video: v, audio: false };
         };
 
@@ -7974,29 +7999,44 @@
         });
       }
 
-      // Build base getUserMedia constraints from the user's preferred resolution
+      // "__auto__" は端末任せ。数値指定時のみ ideal で希望fpsを伝える（exactにすると非対応端末で失敗するため）
+      function getPreferredFrameRateConstraint() {
+        const fps = parseInt(String(cameraFps), 10);
+        return Number.isFinite(fps) && fps > 0 ? { ideal: fps } : null;
+      }
+
+      // Build base getUserMedia constraints from the user's preferred resolution / frame rate
       function getBaseVideoConstraints() {
-        if (cameraRes && cameraRes !== "__max__") {
-          const parts = String(cameraRes).split("x");
-          const w = parseInt(parts[0], 10);
-          const h = parseInt(parts[1], 10);
-          if (Number.isFinite(w) && Number.isFinite(h) && w > 0 && h > 0) {
-            return { width: { ideal: w }, height: { ideal: h } };
-          }
-        }
-        // "__max__": use large ideals (won't throw, but nudges towards higher res)
-        return { width: { ideal: 4096 }, height: { ideal: 2160 } };
+        const base =
+          (() => {
+            if (cameraRes && cameraRes !== "__max__") {
+              const parts = String(cameraRes).split("x");
+              const w = parseInt(parts[0], 10);
+              const h = parseInt(parts[1], 10);
+              if (Number.isFinite(w) && Number.isFinite(h) && w > 0 && h > 0) {
+                return { width: { ideal: w }, height: { ideal: h } };
+              }
+            }
+            // "__max__": use large ideals (won't throw, but nudges towards higher res)
+            return { width: { ideal: 4096 }, height: { ideal: 2160 } };
+          })();
+        const fr = getPreferredFrameRateConstraint();
+        if (fr) base.frameRate = fr;
+        return base;
       }
 
       async function applyPreferredResolutionToTrack(tr) {
         if (!tr || !tr.applyConstraints) return;
         try {
+          const fr = getPreferredFrameRateConstraint();
           if (cameraRes && cameraRes !== "__max__") {
             const parts = String(cameraRes).split("x");
             const w = parseInt(parts[0], 10);
             const h = parseInt(parts[1], 10);
             if (Number.isFinite(w) && Number.isFinite(h) && w > 0 && h > 0) {
-              await tr.applyConstraints({ width: { ideal: w }, height: { ideal: h } });
+              await tr.applyConstraints({ width: { ideal: w }, height: { ideal: h }, ...(fr ? { frameRate: fr } : {}) });
+            } else if (fr) {
+              await tr.applyConstraints({ frameRate: fr });
             }
             return;
           }
@@ -8006,9 +8046,11 @@
             const wMax = caps.width.max;
             const hMax = caps.height.max;
             if (Number.isFinite(wMax) && Number.isFinite(hMax)) {
-              await tr.applyConstraints({ width: { ideal: wMax }, height: { ideal: hMax } });
+              await tr.applyConstraints({ width: { ideal: wMax }, height: { ideal: hMax }, ...(fr ? { frameRate: fr } : {}) });
+              return;
             }
           }
+          if (fr) await tr.applyConstraints({ frameRate: fr });
         } catch (_) {
           // ignore
         }
@@ -8031,6 +8073,23 @@
               text = `※このカメラの上限: ${caps.width.max}×${caps.height.max}（端末申告値。実際に出せない場合があります）`;
             }
             note.textContent = text;
+          }
+
+          const sets = tr && tr.getSettings ? tr.getSettings() : null;
+          const autoOpt = document.getElementById("camera-fps-auto-option");
+          if (autoOpt) {
+            const afps = sets && Number.isFinite(sets.frameRate) ? Math.round(sets.frameRate) : 0;
+            autoOpt.textContent = afps ? `自動（推奨・実 ${afps}fps）` : "自動（推奨）";
+          }
+          const fpsNote = document.getElementById("camera-fps-caps-note");
+          if (fpsNote) {
+            let text = "";
+            const caps = tr && tr.getCapabilities ? tr.getCapabilities() : null;
+            const fMax = caps && caps.frameRate ? caps.frameRate.max : null;
+            if (Number.isFinite(fMax)) {
+              text = `※このカメラの上限: ${Math.round(fMax)}fps（解像度によっては出せない場合があります）`;
+            }
+            fpsNote.textContent = text;
           }
         } catch (_) {}
       }
@@ -8861,7 +8920,7 @@
       // アプリ所有のlocalStorageキー（VRM毎/共通/カメラ/UI状態）だけを収集
       function _collectAppSettings() {
         const out = {};
-        const fixedKeys = [LS_CAM_GLOBAL, LS_BG_FIT, LS_CAMERA_RES, LS_CAMERA_ZOOM, LS_CAMERA_DEVICE_ID, LS_CAM_HW_LIGHT];
+        const fixedKeys = [LS_CAM_GLOBAL, LS_BG_FIT, LS_CAMERA_RES, LS_CAMERA_FPS, LS_CAMERA_ZOOM, LS_CAMERA_DEVICE_ID, LS_CAM_HW_LIGHT];
         try {
           const keys = [];
           for (let i = 0; i < localStorage.length; i++) keys.push(localStorage.key(i));
