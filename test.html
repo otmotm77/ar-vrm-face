@@ -992,12 +992,12 @@
             </div>
             <div class="slider-container">
               <span class="slider-label">色温度</span>
-              <input type="range" id="cam-temp-slider" min="0" max="100" step="1" value="50" />
+              <input type="range" id="cam-temp-slider" min="-25" max="125" step="1" value="50" />
               <span id="cam-temp-slider-val" class="val-display">50</span>
             </div>
             <div class="slider-container" id="cam-red-container">
               <span class="slider-label">赤み</span>
-              <input type="range" id="cam-red-slider" min="0" max="150" step="1" value="0" />
+              <input type="range" id="cam-red-slider" min="0" max="225" step="1" value="0" />
               <span id="cam-red-slider-val" class="val-display">0</span>
             </div>
             <div class="slider-container">
@@ -1645,8 +1645,8 @@
 
     <script type="module">
       // ===== App Version (single source of truth) =====
-      const APP_VERSION = "v6.09.16";
-      const APP_VERSION_NOTE = "feat: カメラのフレームレート選択（自動/60fps/30fps）を追加";
+      const APP_VERSION = "v6.09.17";
+      const APP_VERSION_NOTE = "feat: カメラ画質の色温度・赤みの上限を約1.5倍に拡張";
 
       function getOverlayPixelRatio() {
         // Must match resizeCreamOverlayCanvas()/resizeBreathOverlayCanvas() DPR clamp for performance.
@@ -1731,8 +1731,8 @@
       let camVignetteStrength = 0; // 0..1
       let camSoftGlowStrength = 0; // 0..1
       let camBlackLiftStrength = 0; // 0..1 (lift shadows)
-      let camTempStrength = 0; // -1..1 (warm(+)/cool(-))
-      let camRedStrength = 0; // 0..1
+      let camTempStrength = 0; // -1.5..1.5 (warm(+)/cool(-))
+      let camRedStrength = 0; // 0..2.25
       let camSkinSmoothStrength = 0; // 0..1
       // 美肌補正（高負荷）: 肌セグメンテーションマスク限定の個別調整
       let camSkinFxEnabled = false;
@@ -5477,8 +5477,8 @@
         camVignetteStrength = Math.max(0, Math.min(1, vg / 100));
         camSoftGlowStrength = Math.max(0, Math.min(1, gl / 100));
         camBlackLiftStrength = Math.max(0, Math.min(1, blk / 100));
-        camTempStrength = Math.max(-1, Math.min(1, (tmp - 50) / 50));
-        camRedStrength = Math.max(0, Math.min(1.5, red / 100));
+        camTempStrength = Math.max(-1.5, Math.min(1.5, (tmp - 50) / 50));
+        camRedStrength = Math.max(0, Math.min(2.25, red / 100));
 
         const skin = skinSmoothSlider ? parseFloat(skinSmoothSlider.value) : 0;
         camSkinSmoothStrength = Math.max(0, Math.min(1, skin / 100));
@@ -7682,7 +7682,7 @@
         // Color Temperature (warm/cool) - subtle tint
         const tempS = typeof camTempStrength === "number" ? camTempStrength : 0;
         if (Math.abs(tempS) > 0.001) {
-          const a = Math.min(0.35, Math.abs(tempS) * 0.28);
+          const a = Math.min(0.42, Math.abs(tempS) * 0.28);
           const tint =
             tempS > 0
               ? `rgba(255, 180, 110, ${a})` // warm
@@ -7698,7 +7698,7 @@
         // Red tint
         const redS = typeof camRedStrength === "number" ? camRedStrength : 0;
         if (redS > 0.001) {
-          const a = Math.min(0.6, redS * 0.35);
+          const a = Math.min(0.79, redS * 0.35);
           displayCtx.save();
           displayCtx.globalCompositeOperation = "soft-light";
           displayCtx.fillStyle = `rgba(255, 60, 60, ${a})`;
