@@ -199,6 +199,11 @@
       #screenshot-btn:active {
         transform: scale(0.96);
       }
+      /* 連続スクショ動作中 */
+      #screenshot-btn.active {
+        background: rgba(0, 0, 0, 0.18);
+        color: rgba(255, 255, 255, 0.92);
+      }
 
       /* UI dim mode (keep interactions) */
       body.ui-dim #toast,
@@ -1271,6 +1276,18 @@
             </span>
           </div>
           <div style="font-size: 12px; opacity: 0.85; margin-bottom: 12px; line-height: 1.4">このキーでスクショを保存します（入力欄フォーカス中は無効）。「変更」を押して任意のキーを押すと再設定。Escでキャンセル。</div>
+          <div class="slider-container">
+            <label class="toggle-label">
+              <input type="checkbox" id="auto-screenshot-mode-toggle" class="toggle-checkbox" />
+              スクショボタンを連続スクショのトグルにする
+            </label>
+          </div>
+          <div class="slider-container">
+            <span class="slider-label">連続スクショ間隔秒数</span>
+            <input type="range" id="auto-screenshot-interval-slider" min="1" max="60" step="1" value="5" />
+            <span id="auto-screenshot-interval-slider-val" class="val-display">5</span>
+          </div>
+          <div style="font-size: 12px; opacity: 0.85; margin-bottom: 12px; line-height: 1.4">ONにすると右下のスクショボタンが連続スクショのON/OFF切替になり、ONの間は設定秒数ごとにスクショを保存し続けます。</div>
           <button id="export-settings-btn" class="restart-btn" style="background: #455a64">全設定をエクスポート（JSON）</button>
           <button id="import-settings-btn" class="restart-btn" style="background: #455a64; margin-top: 8px">全設定をインポート（JSON）</button>
           <input type="file" id="import-settings-file" accept="application/json,.json" style="display: none" />
@@ -1645,8 +1662,8 @@
 
     <script type="module">
       // ===== App Version (single source of truth) =====
-      const APP_VERSION = "v6.09.19";
-      const APP_VERSION_NOTE = "feat: 起動時の自動表示パネルを最後に表示したパネルに変更";
+      const APP_VERSION = "v6.09.20";
+      const APP_VERSION_NOTE = "feat: スクショボタンを連続スクショ(設定秒数毎)のトグルにするオプション";
 
       function getOverlayPixelRatio() {
         // Must match resizeCreamOverlayCanvas()/resizeBreathOverlayCanvas() DPR clamp for performance.
@@ -2561,6 +2578,13 @@
       if (screenshotBtn) {
         screenshotBtn.addEventListener("click", (e) => {
           e.stopPropagation();
+          // 連続スクショモード時はON/OFFトグル、通常時は1枚撮影
+          if (autoScreenshotModeToggle && autoScreenshotModeToggle.checked) {
+            const next = !autoScreenshotTimer;
+            setAutoScreenshotEnabled(next);
+            if (typeof showToast === "function") showToast(next ? `連続スクショ: ON（${getAutoScreenshotIntervalSec()}秒毎）` : "連続スクショ: OFF");
+            return;
+          }
           captureScreenshot();
         });
       }
@@ -2604,6 +2628,45 @@
         });
       }
       updateShortcutDisplay();
+
+      // --- 連続スクショ（オプションON時、スクショボタンで設定秒数ごとの撮影をON/OFF）---
+      const autoScreenshotModeToggle = document.getElementById("auto-screenshot-mode-toggle");
+      const autoScreenshotIntervalSlider = document.getElementById("auto-screenshot-interval-slider");
+      let autoScreenshotTimer = null;
+
+      function getAutoScreenshotIntervalSec() {
+        const v = parseFloat(autoScreenshotIntervalSlider ? autoScreenshotIntervalSlider.value : "5");
+        return isFinite(v) && v >= 1 ? v : 5;
+      }
+
+      function setAutoScreenshotEnabled(enabled) {
+        if (autoScreenshotTimer) {
+          clearInterval(autoScreenshotTimer);
+          autoScreenshotTimer = null;
+        }
+        if (enabled) {
+          autoScreenshotTimer = setInterval(captureScreenshot, getAutoScreenshotIntervalSec() * 1000);
+        }
+        if (screenshotBtn) {
+          screenshotBtn.classList.toggle("active", !!enabled);
+          screenshotBtn.title = enabled ? `連続スクショ: ON（${getAutoScreenshotIntervalSec()}秒毎）` : "スクリーンショット";
+        }
+      }
+
+      if (autoScreenshotModeToggle) {
+        autoScreenshotModeToggle.addEventListener("change", () => {
+          if (!autoScreenshotModeToggle.checked) setAutoScreenshotEnabled(false); // モード解除時は停止
+          saveGlobalSettings();
+        });
+      }
+      if (autoScreenshotIntervalSlider) {
+        updateSliderDisplay(autoScreenshotIntervalSlider);
+        autoScreenshotIntervalSlider.addEventListener("input", () => {
+          updateSliderDisplay(autoScreenshotIntervalSlider);
+          if (autoScreenshotTimer) setAutoScreenshotEnabled(true); // 動作中なら新しい間隔で再開
+          saveGlobalSettings();
+        });
+      }
 
       // --- Tracking Pause Toggle (pose lock) ---
       const trackingPauseBtn = document.getElementById("tracking-pause-btn");
@@ -5008,6 +5071,9 @@
           beta: betaSlider ? betaSlider.value : "0.04",
           // スクショのショートカットキー
           screenshotKey: screenshotShortcut,
+          // 連続スクショ（スクショボタンのトグル化・間隔秒数）
+          autoScreenshotMode: !!(autoScreenshotModeToggle && autoScreenshotModeToggle.checked),
+          autoScreenshotInterval: autoScreenshotIntervalSlider ? autoScreenshotIntervalSlider.value : "5",
         };
         try {
           localStorage.setItem(LS_CAM_GLOBAL, JSON.stringify(s));
@@ -5197,6 +5263,11 @@
           if (hasOwn("screenshotKey") && s.screenshotKey && s.screenshotKey.code) {
             screenshotShortcut = s.screenshotKey;
             if (typeof updateShortcutDisplay === "function") updateShortcutDisplay();
+          }
+          if (hasOwn("autoScreenshotMode") && autoScreenshotModeToggle) autoScreenshotModeToggle.checked = !!s.autoScreenshotMode;
+          if (hasOwn("autoScreenshotInterval") && autoScreenshotIntervalSlider) {
+            autoScreenshotIntervalSlider.value = s.autoScreenshotInterval;
+            updateSliderDisplay(autoScreenshotIntervalSlider);
           }
 
           // --- クリーム射出 ---
